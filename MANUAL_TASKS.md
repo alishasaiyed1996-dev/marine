@@ -114,7 +114,7 @@ view). To activate it:
    | `EBAY_CLIENT_ID` | App ID |
    | `EBAY_CLIENT_SECRET` | Client Secret |
    | `EBAY_VERIFICATION_TOKEN` | any long random string (also entered on eBay) |
-   | `EBAY_PUBLIC_ENDPOINT` | `https://api.alkatraders.co` |
+   | `EBAY_PUBLIC_ENDPOINT` | `https://api.alkatraders.co/api/webhooks/ebay` (must match the registered endpoint URL exactly — it is hashed into the challenge response) |
    | `EBAY_MERCHANT_LOCATION_KEY` | from Seller Hub |
    | `EBAY_FULFILLMENT_POLICY_ID` / `EBAY_PAYMENT_POLICY_ID` / `EBAY_RETURN_POLICY_ID` | from Seller Hub |
 

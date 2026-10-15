@@ -5,7 +5,9 @@
  * cannot hold our JWTs). Two flows:
  *
  *  1. Endpoint challenge: eBay sends ?challenge_code=<code> on endpoint
- *     registration and responds 200 with { challengeResponse: md5(code + token + endpoint) }.
+ *     registration and responds 200 with { challengeResponse: sha256(code +
+ *     token + endpoint) } — per eBay's endpoint-validation spec (verified
+ *     against developer.ebay.com docs, Oct 2026).
  *  2. Notifications: every POST is persisted to ebay_event_log (UNIQUE event
  *     id = idempotency gate) and processed asynchronously; the HTTP response
  *     returns fast — eBay retries on non-2xx, so intake must not block.
