@@ -146,6 +146,12 @@ The integration is live on production. What was done:
    legacy-listing import tooling was removed the same day at the owner's
    request — old Seller-Hub listings are **not** managed by the app.
 
+   **Live-proven 2026-10-19:** a real eBay order for SKU `Z 40` claimed a
+   website product's central stock 1 → 0 through the webhook pipeline and the
+   product flipped to out-of-stock (no mirror listing row involved). The probe
+   product and all probe rows were deleted afterwards; the catalog is back to
+   its prior (empty) state.
+
 Still to do:
 - **MT-14** — subscribe to the order notification topic(s) in the portal.
 - **MT-15** — warehouse address → merchant location key (needed to list
