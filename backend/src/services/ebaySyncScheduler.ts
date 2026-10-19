@@ -3,18 +3,22 @@
  *
  * Follows the fixed-setInterval pattern of offerExpiryScheduler (no cron lib).
  *
- * Three jobs:
- *   1. syncPendingListings  — pushes CENTRAL stock to every eBay offer whose
+ * Four jobs:
+ *   1. pollRecentOrders — webhook-delivery net: recent Fulfillment orders run
+ *      through the same idempotent processor. Order-level dedupe keeps stock
+ *      claims single; failed orders retry on the next hourly bucket.
+ *   2. syncPendingListings — pushes CENTRAL stock to every eBay offer whose
  *      listing is marked sync-pending. Central inventory is authoritative:
  *      failures never roll stock back, only mark the mirror unhealthy.
- *   2. reconcileEbayQuantities — detects drift between central stock and the
+ *   3. reconcileEbayQuantities — detects drift between central stock and the
  *      last synced quantity (e.g. a missed webhook) and re-enqueues.
- *   3. retryPendingEvents — reprocesses deferred webhook events (temporary
+ *   4. retryPendingEvents — reprocesses deferred webhook events (temporary
  *      failures at delivery time) through the idempotent order processor.
  */
 import { prisma } from '../server.js'
 import logger from '../utils/logger.js'
 import { isEbayConfigured, updateOfferQuantity, isRetryableError } from './ebayClient.js'
+import { reviseInventoryStatus } from './ebayTradingClient.js'
 
 const log = logger.child({ context: 'ebay-sync' })
 
@@ -24,7 +28,14 @@ const BATCH_SIZE = 50
 /** Listings in sync-failed are terminal-ish; reconciliation re-enqueues on drift. */
 const RETRYABLE_WINDOW_MS = 24 * 60 * 60 * 1000
 
-/** Job 1: push central stock to eBay for all pending listings. */
+/** Job 1: pull recent orders (webhook-delivery net). */
+export async function pollRecentOrders(): Promise<number> {
+  if (!isEbayConfigured()) return 0
+  const { pollEbayOrders } = await import('./ebayOrderService.js')
+  return pollEbayOrders()
+}
+
+/** Job 2: push central stock to eBay for all pending listings. */
 export async function syncPendingListings(): Promise<{ synced: number; failed: number; skipped: number }> {
   const result = { synced: 0, failed: 0, skipped: 0 }
   if (!isEbayConfigured()) {
@@ -51,24 +62,35 @@ export async function syncPendingListings(): Promise<{ synced: number; failed: n
       result.skipped++
       continue
     }
-    if (!listing.ebayOfferId) {
+
+    // Inventory-API offers push through the REST offer API; legacy (Seller
+    // Hub era, cross-listed) listings push through the Trading API
+    // ReviseInventoryStatus, keyed by the stored ebayListingId.
+    const centralQty = listing.product.stockCount
+    const offerId = listing.ebayOfferId
+    const legacyItemId = listing.ebayListingId
+    const push: (() => Promise<void>) | null = offerId
+      ? () => updateOfferQuantity(offerId, centralQty)
+      : legacyItemId
+        ? () => reviseInventoryStatus(legacyItemId, centralQty, listing.marketplace)
+        : null
+    if (!push) {
       await prisma.ebayListing.update({
         where: { id: listing.id },
-        data: { status: 'sync-failed', lastError: 'no ebayOfferId stored — cannot push quantity' },
+        data: { status: 'sync-failed', lastError: 'no eBay offer/listing id stored — cannot push quantity' },
       })
       result.skipped++
       continue
     }
 
-    const centralQty = listing.product.stockCount
     try {
-      await updateOfferQuantity(listing.ebayOfferId, centralQty)
+      await push()
       await prisma.ebayListing.update({
         where: { id: listing.id },
         data: { status: 'synced', lastSyncedQty: centralQty, lastSyncAt: new Date(), lastError: null },
       })
       result.synced++
-      log.info({ sku: listing.sku, offerId: listing.ebayOfferId, qty: centralQty }, 'eBay quantity synced')
+      log.info({ sku: listing.sku, offerId, itemId: legacyItemId, qty: centralQty }, 'eBay quantity synced')
     } catch (err) {
       const retryable = isRetryableError(err)
       // NEVER roll back central stock because eBay failed (spec).
@@ -86,7 +108,7 @@ export async function syncPendingListings(): Promise<{ synced: number; failed: n
   return result
 }
 
-/** Job 2: detect drift between central stock and the last pushed quantity. */
+/** Job 3: detect drift between central stock and the last pushed quantity. */
 export async function reconcileEbayQuantities(): Promise<number> {
   if (!isEbayConfigured()) return 0
 
@@ -112,7 +134,7 @@ export async function reconcileEbayQuantities(): Promise<number> {
   return drifted
 }
 
-/** Job 3: reprocess webhook events that deferred on temporary failures. */
+/** Job 4: reprocess webhook events that deferred on temporary failures. */
 export async function retryDeferredEvents(): Promise<number> {
   if (!isEbayConfigured()) return 0
   const { retryPendingEvents } = await import('./ebayOrderService.js')
@@ -127,6 +149,8 @@ async function tick() {
   if (running) return // never overlap sweeps
   running = true
   try {
+    // A failed poll must not abort the quantity jobs.
+    await pollRecentOrders().catch((err) => log.error({ err }, 'eBay order poll failed'))
     await syncPendingListings()
     await reconcileEbayQuantities()
     await retryDeferredEvents()
@@ -151,7 +175,13 @@ export function stopEbaySyncScheduler() {
 
 /** Manual "sync now" for the admin view — runs one pass immediately. */
 export async function syncNow() {
+  let ordersPolled = 0
+  try {
+    ordersPolled = await pollRecentOrders()
+  } catch (err) {
+    log.error({ err }, 'eBay order poll failed (manual sync continues)')
+  }
   const listings = await syncPendingListings()
   const drift = await reconcileEbayQuantities()
-  return { ...listings, driftFound: drift }
+  return { ...listings, driftFound: drift, ordersPolled }
 }

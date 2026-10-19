@@ -1,9 +1,12 @@
 /**
- * Admin eBay routes (roadmap C25 + C30).
+ * Admin eBay routes (roadmap C25 + C30 + C33).
  *
  * All admin-authorized (inventory-manager+). The inventory view joins
  * products.stockCount (central truth) with the ebay_listings mirror so admins
  * see stock, eBay quantity, sync status, last error, and last sync time.
+ *
+ * Import mirrors the seller's LIVE (legacy) eBay listings into the table,
+ * matched to products by SKU — see ebayListingImport.ts.
  */
 import { Router } from 'express'
 import { z } from 'zod'
@@ -12,6 +15,7 @@ import { asyncHandler } from '../../middleware/validate.js'
 import { sendSuccess, sendError } from '../../middleware/response.js'
 import { prisma } from '../../server.js'
 import { createListingForProduct } from '../../services/ebayListingService.js'
+import { importActiveListings } from '../../services/ebayListingImport.js'
 import { syncNow } from '../../services/ebaySyncScheduler.js'
 
 const router = Router()
@@ -65,6 +69,26 @@ router.post('/listings', requireRole('inventory-manager'), asyncHandler(async (r
   try {
     const listing = await createListingForProduct(parsed.data, req.user!.id)
     return sendSuccess(res, { listing }, 201)
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status || 500
+    return sendError(res, (err as Error).message, status)
+  }
+}))
+
+// ─── Import live (legacy) eBay listings, matched to products by SKU ──
+const importSchema = z.object({ activate: z.boolean().optional() })
+
+router.post('/import-listings', requireRole('inventory-manager'), asyncHandler(async (req: AuthRequest, res) => {
+  const parsed = importSchema.safeParse(req.body ?? {})
+  if (!parsed.success) {
+    return sendError(res, 'Body must be { activate?: boolean }', 400)
+  }
+  try {
+    // Scans the live eBay store through the Trading API (~1 min for large
+    // stores) and mirrors matched (sku, marketplace) pairs. Observe mode by
+    // default — `activate: true` starts pushing central stock to them.
+    const result = await importActiveListings(parsed.data.activate === true)
+    return sendSuccess(res, result)
   } catch (err: unknown) {
     const status = (err as { status?: number }).status || 500
     return sendError(res, (err as Error).message, status)

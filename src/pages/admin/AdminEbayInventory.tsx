@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { RefreshCw, Store, ExternalLink, AlertCircle, CheckCircle2, Clock } from 'lucide-react'
+import { RefreshCw, Store, ExternalLink, AlertCircle, CheckCircle2, Clock, Download, Upload } from 'lucide-react'
 import { admin } from '../../lib/api'
 import { useToast } from '../../components/admin/toast-context'
 
@@ -30,6 +30,7 @@ const STATUS_BADGE: Record<string, string> = {
   'sync-pending': 'processing',
   'sync-failed': 'cancelled',
   pending: 'draft',
+  imported: 'draft',
 }
 
 function SyncStatus({ listing }: { listing: EbayListingRow }) {
@@ -50,6 +51,7 @@ export default function AdminEbayInventory() {
   const [products, setProducts] = useState<EbayInventoryProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
 
@@ -72,12 +74,34 @@ export default function AdminEbayInventory() {
     setSyncing(true)
     try {
       const r = await admin.ebay.syncNow()
-      toast(`Sync complete — pushed ${r.synced}, failed ${r.failed}, drift found ${r.driftFound}`, r.failed > 0 ? 'error' : 'success')
+      toast(`Sync complete — pushed ${r.synced}, failed ${r.failed}, drift found ${r.driftFound}, orders polled ${r.ordersPolled}`, r.failed > 0 ? 'error' : 'success')
       await load(page)
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Sync failed', 'error')
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handleImport = async (activate: boolean) => {
+    const ok = window.confirm(
+      activate
+        ? 'Import + ACTIVATE: this mirrors your live eBay listings and then pushes central stock quantities to every matched listing. Continue?'
+        : 'Import live eBay listings in OBSERVE mode (nothing is pushed to eBay yet). Continue?',
+    )
+    if (!ok) return
+    setImporting(true)
+    try {
+      const r = await admin.ebay.importListings(activate)
+      toast(
+        `Scanned ${r.scanned} listings — imported ${r.imported}, already mapped ${r.alreadyMapped}, without SKU ${r.skippedNoSku}, unmatched SKUs ${r.unmatchedSkuCount}${r.activated > 0 ? `, activated ${r.activated}` : ''}`,
+        'success',
+      )
+      await load(page)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Import failed', 'error')
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -93,14 +117,34 @@ export default function AdminEbayInventory() {
             </p>
           </div>
         </div>
-        <button
-          onClick={handleSyncNow}
-          disabled={syncing}
-          className="admin-btn inline-flex items-center gap-2"
-        >
-          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Syncing…' : 'Sync now'}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => handleImport(false)}
+            disabled={importing || syncing}
+            className="admin-btn inline-flex items-center gap-2"
+            title="Mirror your live eBay store into the sync table, matched to products by SKU (observe mode — no stock pushed)"
+          >
+            <Download size={15} className={importing ? 'animate-spin' : ''} />
+            {importing ? 'Importing…' : 'Import listings'}
+          </button>
+          <button
+            onClick={() => handleImport(true)}
+            disabled={importing || syncing}
+            className="admin-btn inline-flex items-center gap-2"
+            title="Push central stock to every matched eBay listing (activate sync)"
+          >
+            <Upload size={15} />
+            Activate sync
+          </button>
+          <button
+            onClick={handleSyncNow}
+            disabled={syncing || importing}
+            className="admin-btn inline-flex items-center gap-2"
+          >
+            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+        </div>
       </div>
 
       <div className="admin-card overflow-x-auto">

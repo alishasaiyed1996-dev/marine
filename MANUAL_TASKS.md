@@ -11,6 +11,33 @@ separately in the agent todo list; this file only holds manual actions.
 
 ## 🔴 Pending now
 
+### MT-13 · 🔴 URGENT — live storefront has no products (database question)
+
+**Diagnosed 2026-10-19.** The live API/database contains **no products**
+(published, draft **and** archived are all zero) — also no orders, customers,
+or media. Only brands + categories exist, all created **2026-10-15**, and the
+audit log's first entries are from that date. The live site confirms it:
+sitemap has no `/product/` URLs and the homepage renders no products. So this
+is a **fresh, mostly-empty database** — not a catalog deleted from it.
+
+Two possibilities:
+1. The real catalog lives in the **previous database (Neon)** and was never
+   (fully) migrated to Railway Postgres, or
+2. the catalog was intentionally wiped and needs rebuilding.
+
+**Action (project owner):**
+1. Open the Neon dashboard (see MT-7) → SQL editor → check
+   `select count(*) from products;` (and orders).
+2. If data exists there: export/restore it (point-in-time branch, or CSV
+   export), and we re-import through the admin importer or a script.
+3. If not: rebuild the catalog (option: seed from the live eBay store — 8,275
+   active listings / ~900+ SKUs are readable; see MT-5).
+
+Group C (eBay stock sync) lights up the moment products with matching SKUs
+(e.g. `Z 35`, `C 126`, `E 206`) exist in the catalog.
+
+---
+
 ### MT-1 · Submit Merchant Center feed (A3)
 
 **Where:** [Google Merchant Center](https://merchants.google.com/) (needs a Google account with an MC account created for alkatraders.co)
@@ -93,36 +120,59 @@ Products with identity filled feed better titles, richer JSON-LD, and a stronger
 Merchant feed. Until then the feed falls back to description parsing — correct
 but less complete.
 
-### MT-5 · eBay developer account + credentials (code is READY — waiting on these keys)
+### MT-5 · eBay integration — CONNECTED 2026-10-19 (two small steps remain)
 
-The integration code is complete (central inventory service, webhook intake,
-idempotent order processing, quantity sync + reconciliation scheduler, admin
-view). To activate it:
+The integration is live on production. What was done:
 
-1. Register at the [eBay Developers Program](https://developer.ebay.com/).
-2. Create an application → copy the **App ID (Client ID)** and **Client Secret**.
-3. In Seller Hub: note your **merchant location key** and create (or note)
-   fulfillment / payment / return **business policy IDs**.
-4. Register the notification endpoint in the eBay Application Settings:
-   `https://api.alkatraders.co/api/webhooks/ebay` — eBay sends a challenge;
-   the backend answers it using `EBAY_VERIFICATION_TOKEN`.
-5. Set these Railway env vars on the **api** service (never in the repo):
+1. eBay app created; `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` set on Railway `api`.
+2. Seller user-token (refresh grant) obtained and stored as
+   `EBAY_REFRESH_TOKEN` — valid until **~April 2028**; Sell APIs verified live
+   (orders, inventory, business policies, locations).
+3. Business policy IDs collected for **EBAY_US** (the marketplace the shop
+   actually sells on) and set on Railway:
 
    | Variable | Value |
    |---|---|
-   | `EBAY_ENV` | `sandbox` first, then `production` |
-   | `EBAY_CLIENT_ID` | App ID |
-   | `EBAY_CLIENT_SECRET` | Client Secret |
-   | `EBAY_VERIFICATION_TOKEN` | any long random string (also entered on eBay) |
-   | `EBAY_PUBLIC_ENDPOINT` | `https://api.alkatraders.co/api/webhooks/ebay` (must match the registered endpoint URL exactly — it is hashed into the challenge response) |
-   | `EBAY_MERCHANT_LOCATION_KEY` | from Seller Hub |
-   | `EBAY_FULFILLMENT_POLICY_ID` / `EBAY_PAYMENT_POLICY_ID` / `EBAY_RETURN_POLICY_ID` | from Seller Hub |
+   | `EBAY_FULFILLMENT_POLICY_ID` | `266639603012` (FREE SHIPPING, 3-day handling) |
+   | `EBAY_PAYMENT_POLICY_ID` | `255031886012` (eBay managed payments) |
+   | `EBAY_RETURN_POLICY_ID` | `255031915012` (RETURN 30 DAYS ALL PRODUCTS) |
 
-6. Then in the admin panel → **eBay Inventory** → list a product via
-   `POST /api/v1/admin/ebay/listings` (needs an eBay category id).
+4. Notification endpoint registered + challenge verified:
+   `https://api.alkatraders.co/api/webhooks/ebay`.
+5. Legacy (Seller-Hub-era) listings proven readable/writable through the
+   Trading API with the same token — the bridge for the existing **8,275 live
+   listings** is shipped: admin **Import listings** (observe) + **Activate
+   sync** pushes central stock via `ReviseInventoryStatus`.
 
-Everything else keeps working while these are unset — the eBay scheduler idles
-and admin eBay endpoints return 503.
+Still to do:
+- **MT-14** — subscribe to the order notification topic(s) in the portal.
+- **MT-15** — warehouse address → merchant location key (only needed to
+  create brand-new listings from the app).
+
+Then in the admin panel → **eBay Inventory** → **Import listings**, and
+**Activate sync** when ready to push central stock to the live listings.
+
+### MT-14 · eBay: subscribe to order notifications (portal)
+
+In the eBay developer portal → your app → **Notification subscriptions**,
+enable the **order-related topic(s)** (order created / order paid — pick the
+ones the portal lists). The backend verifies the endpoint and accepts any
+topic that carries an order id; deliveries are logged in `ebay_event_log`.
+
+A **polling safety net** is live regardless: the scheduler pulls recent
+Fulfillment orders every 10 minutes, so a missed webhook still imports the
+order (order-level dedupe prevents double stock claims).
+
+### MT-15 · eBay: warehouse address for the merchant location
+
+Creating **new listings through the app** (Inventory API) needs a
+`merchantLocationKey`. The account currently has **no** inventory locations
+(verified 2026-10-19) and the location must carry the real ship-from address.
+
+**Action:** send the dispatch address (warehouse name, street, city, state,
+postal code, country, phone). It gets created once via the Inventory API, then
+`EBAY_MERCHANT_LOCATION_KEY` is set on Railway. Stock sync for the existing
+legacy listings does **not** need this.
 
 ### MT-6 · Sentry (or similar) account + DSN (E41)
 
@@ -248,6 +298,10 @@ supplier standards, and how to request a quote. Paste into the category
 
 - **MT-10 (2026-10-01)** — test products removed from prod DB via
   `remove-test-products.ts --apply`; catalog verified clean.
+- **MT-5 (2026-10-19)** — eBay connected end-to-end on production: refresh
+  token stored (valid to ~April 2028), EBAY_US business policies collected +
+  set, webhook endpoint verified, Trading API bridge proven live (8,275
+  legacy listings readable). Follow-ups tracked as MT-14 / MT-15.
 
 ---
 
@@ -257,7 +311,8 @@ Set only in Railway dashboard → service → Variables. Never commit real secre
 
 | Variable | Service | Purpose | Status |
 |---|---|---|---|
-| `DATABASE_URL` | api | Neon Postgres connection | ✅ set |
+| `DATABASE_URL` | api | Postgres connection (MT-13: catalog currently missing) | ✅ set |
 | `SEO_API_BASE` | web (build) | Overrides the API the build fetches products from | optional (defaults to prod API) |
 | `SENTRY_DSN_*` | both | Error monitoring (MT-6) | ⬜ pending |
-| eBay OAuth creds | api | eBay integration (MT-5, group C) | ⬜ pending |
+| eBay OAuth creds | api | eBay integration (MT-5, group C) | ✅ connected 2026-10-19 |
+| `EBAY_MERCHANT_LOCATION_KEY` | api | Inventory-API merchant location (MT-15) | ⬜ pending |
