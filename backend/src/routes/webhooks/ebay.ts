@@ -69,7 +69,7 @@ router.get('/events', authenticateAdmin, async (_req, res) => {
   const events = await prisma.ebayEventLog.findMany({
     orderBy: { createdAt: 'desc' },
     take: 50,
-    select: { eventId: true, topic: true, status: true, error: true, createdAt: true, processedAt: true },
+    select: { eventId: true, topic: true, status: true, error: true, payload: true, createdAt: true, processedAt: true },
   })
   return res.json({ events })
 })
