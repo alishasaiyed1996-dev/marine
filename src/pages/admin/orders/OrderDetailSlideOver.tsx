@@ -170,7 +170,7 @@ export function OrderDetailSlideOver({
             <div className="space-y-2">
               <div className="flex items-start gap-2">
                 <MapPin size={12} className="text-[var(--text-muted)] mt-0.5 shrink-0" />
-                <span className="text-xs text-[var(--text-secondary)]">{order.shippingAddress}</span>
+                <span className="text-xs text-[var(--text-secondary)] whitespace-pre-line">{order.shippingAddress}</span>
               </div>
               {order.trackingNumber && (
                 <div className="flex items-center gap-2">

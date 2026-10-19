@@ -1,8 +1,8 @@
-import { useNavigate } from 'react-router-dom'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { Package, Eye, Clock, Truck, CheckCircle, XCircle, ChevronRight } from 'lucide-react'
 import { useOrders } from '../../hooks/useApiQuery'
 import { useStore } from '../../store/useStore'
+import { useLocalizedPath } from '../../lib/locale'
 import { Skeleton } from '../../components/ui/Skeleton'
 
 const statusConfig: Record<string, { color: string; icon: typeof Package }> = {
@@ -18,14 +18,15 @@ const statusConfig: Record<string, { color: string; icon: typeof Package }> = {
 }
 
 export default function OrderHistory() {
-  const navigate = useNavigate()
   const user = useStore((s) => s.user)
+  const lp = useLocalizedPath()
   const { data: orders, isLoading, isError, error } = useOrders(Boolean(user))
   const errorMessage = error instanceof Error ? error.message : 'Failed to load orders'
 
+  // Redirect after render instead of during it (React forbids navigation
+  // side effects in the render phase).
   if (!user) {
-    navigate('/')
-    return null
+    return <Navigate to={lp('/')} replace />
   }
 
   return (
@@ -65,7 +66,7 @@ export default function OrderHistory() {
               <h2 className="font-display text-xl font-bold text-[var(--text-primary)] mb-2">No orders yet</h2>
               <p className="text-sm text-[var(--text-secondary)] mb-6">Start shopping to see your orders here.</p>
               <Link
-                to="/products"
+                to={lp('/products')}
                 className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm rounded-xl hover:bg-[var(--accent-primary-hover)] transition-all"
               >
                 Browse Products
@@ -76,6 +77,7 @@ export default function OrderHistory() {
               {orders.map((order) => {
                 const status = statusConfig[order.status] || statusConfig.pending
                 const StatusIcon = status.icon
+                const items = order.items ?? []
                 return (
                   <div
                     key={order.id}
@@ -92,23 +94,23 @@ export default function OrderHistory() {
                         </div>
                         <p className="text-xs text-[var(--text-muted)]">
                           {new Date(order.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                          {order.items.length > 0 && (
-                            <> · {order.items.length} item{order.items.length > 1 ? 's' : ''}</>
+                          {items.length > 0 && (
+                            <> · {items.length} item{items.length > 1 ? 's' : ''}</>
                           )}
                         </p>
-                        {order.items.length > 0 && (
+                        {items.length > 0 && (
                           <p className="text-xs text-[var(--text-secondary)] mt-1 truncate">
-                            {order.items.slice(0, 3).map((i) => i.productName).join(', ')}
-                            {order.items.length > 3 && ` +${order.items.length - 3} more`}
+                            {items.slice(0, 3).map((i) => i.productName).join(', ')}
+                            {items.length > 3 && ` +${items.length - 3} more`}
                           </p>
                         )}
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="font-display text-lg font-bold text-[var(--text-primary)]">
-                          ${order.grandTotal.toFixed(2)}
+                          ${Number(order.grandTotal || 0).toFixed(2)}
                         </span>
                         <Link
-                          to={`/track-order?id=${order.orderNumber}`}
+                          to={lp(`/track-order?id=${encodeURIComponent(order.orderNumber)}`)}
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border border-[var(--border)] text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/5 rounded-xl transition-all"
                         >
                           <Eye size={12} /> Track

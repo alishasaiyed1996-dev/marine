@@ -417,6 +417,7 @@
     "cancelSubmitBtn": "Solicitar Cancelación de Pedido",
     "cancelSuccess": "Solicitud de Cancelación Enviada",
     "cancelSuccessDesc": "Hemos recibido su solicitud de cancelación. Nuestro equipo la procesará dentro de 24 horas. Recibirá un correo de confirmación una vez procesada.",
+    "cancelError": "No se pudo enviar su solicitud de cancelación. Inténtelo de nuevo.",
     "cardEnding": "Tarjeta de Crédito/Débito terminada en {{last4}}",
     "amountDue": "Monto Debido",
     "paypalLoginTitle": "Pagar con PayPal",

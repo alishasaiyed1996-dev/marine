@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { CircleCheck, Mail, Send } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { useStoreSettings } from '../../hooks/useStoreSettings'
+import { storefront } from '../../lib/api'
 import { WhatsAppIcon } from '../ui/WhatsAppIcon'
 import { ResponseCountdown } from '../ui/ResponseCountdown'
 import { getRfqResponseDeadline } from '../../lib/rfqSla'
@@ -29,11 +30,13 @@ export function RFQSection() {
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0)
   }, [])
-  const { rfqSubmitted, rfqId, setRfqSubmitted, generateRfqId, rfqDeadline, setRfqDeadline } = useStore()
+  const { rfqSubmitted, rfqId, rfqDeadline, setRfqDeadline } = useStore()
   const settings = useStoreSettings()
   // Persisted draft: a customer who hard-refreshes (or fat-fingers F5) keeps
   // every field they already typed instead of losing the whole form.
   const [formData, setFormData] = usePersistentState<typeof INITIAL_RFQ>('alka-rfq-draft', INITIAL_RFQ)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isTouchDevice) return
@@ -41,13 +44,38 @@ export function RFQSection() {
     setSpotlight({ x: e.clientX - rect.left, y: e.clientY - rect.top })
   }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    generateRfqId()
-    setRfqDeadline(getRfqResponseDeadline(formData.urgency))
-    setRfqSubmitted(true)
-    // Draft fulfilled — clear it so the next visit starts clean.
-    setFormData(INITIAL_RFQ)
+    if (submitting) return
+    setSubmitError('')
+    setSubmitting(true)
+    try {
+      // Real submission — the visitor must never see a success screen for an
+      // RFQ that was only written to a local store flag.
+      const result = await storefront.rfq.submit({
+        fullName: formData.name,
+        company: formData.company || undefined,
+        email: formData.email,
+        phone: formData.phone || undefined,
+        productDescription: formData.productDesc,
+        quantity: Math.max(1, Number(formData.quantity) || 1),
+        urgency: formData.urgency,
+        consent: true,
+        source: 'home-rfq-section',
+      })
+      useStore.setState({ rfqSubmitted: true, rfqId: result.rfqNumber || rfqId })
+      setRfqDeadline(getRfqResponseDeadline(formData.urgency))
+      // Draft fulfilled — clear it so the next visit starts clean.
+      setFormData(INITIAL_RFQ)
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Failed to send your RFQ. Please try again or contact us on WhatsApp.'
+      )
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (rfqSubmitted) {
@@ -203,12 +231,18 @@ export function RFQSection() {
               <option value="emergency">Emergency (Same day)</option>
             </select>
           </div>
+          {submitError && (
+            <p className="mb-3 rounded-lg border border-[var(--danger)]/30 bg-[var(--danger)]/10 px-4 py-3 text-xs text-[var(--danger)]" role="alert">
+              {submitError}
+            </p>
+          )}
           <button
             type="submit"
-            className="w-full flex items-center justify-center gap-2.5 btn-primary text-sm maritime-shimmer"
+            disabled={submitting}
+            className="w-full flex items-center justify-center gap-2.5 btn-primary text-sm maritime-shimmer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <Send size={14} />
-            Submit RFQ
+            {submitting ? 'Submitting…' : 'Submit RFQ'}
           </button>
         </form>
       </div>

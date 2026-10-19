@@ -1,6 +1,9 @@
+import { Link } from 'react-router-dom'
 import { SEO } from '../components/seo/SEO'
+import { useLocalizedPath } from '../lib/locale'
 
 export default function TermsOfService() {
+  const lp = useLocalizedPath()
   return (
     <div className="min-h-screen bg-[var(--primary-bg)]">
       <SEO
@@ -109,7 +112,7 @@ export default function TermsOfService() {
               In case of any cancellation from the seller due to unforeseen circumstances, a full refund will be initiated for prepaid orders.
             </p>
             <p className="text-sm leading-relaxed mt-3">
-              For more detail, please review our <a href="/refund-policy" className="text-[var(--accent-primary)] hover:underline">Returns Policy</a>.
+              For more detail, please review our <Link to={lp('/refund-policy')} className="text-[var(--accent-primary)] hover:underline">Returns Policy</Link>.
             </p>
           </section>
 

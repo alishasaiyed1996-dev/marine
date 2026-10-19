@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Check, X, Truck } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { useStoreSettings } from '../../hooks/useStoreSettings'
+import { storefront } from '../../lib/api'
+import { useLocalizedPath } from '../../lib/locale'
 
 interface CheckoutSuccessProps {
   subtotal: number
@@ -23,8 +26,11 @@ export function CheckoutSuccess({
 }: CheckoutSuccessProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const lp = useLocalizedPath()
   const { orderId, orderSummary, orderSkippedItems, setCancelRequested } = useStore()
   const settings = useStoreSettings()
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelError, setCancelError] = useState('')
   // Prefer the server-authoritative totals from the created order — they differ
   // from the client estimate when items were skipped and removed.
   const subtotalDisplay = orderSummary ? orderSummary.subtotal : subtotal
@@ -35,6 +41,26 @@ export function CheckoutSuccess({
     ? orderSummary.tax
     : Math.round(subtotal * settings.taxRate * 100) / 100
   const total = orderSummary ? orderSummary.total : subtotal + shippingCost + tax
+
+  const handleCancelRequest = async () => {
+    const reason = cancelReason.trim()
+    if (!reason || cancelLoading) return
+    if (!orderId) {
+      setCancelError(t('checkout.cancelError'))
+      return
+    }
+    setCancelLoading(true)
+    setCancelError('')
+    try {
+      await storefront.orders.cancel(orderId, reason)
+      setCancelSubmitted(true)
+      setCancelRequested(true)
+    } catch (err: unknown) {
+      setCancelError(err instanceof Error ? err.message : t('checkout.cancelError'))
+    } finally {
+      setCancelLoading(false)
+    }
+  }
 
   return (
     <div className="py-24">
@@ -47,7 +73,7 @@ export function CheckoutSuccess({
           />
         </div>
         <h2 className="heading-xl mb-2">{t('checkout.orderPlaced')}</h2>
-        <p className="font-mono text-lg text-[var(--accent-gold)] mb-2">Order #{orderId}</p>
+        <p className="font-mono text-lg text-[var(--accent-gold)] mb-2">Order #{orderSummary?.orderNumber || orderId}</p>
         <p className="text-sm text-[var(--text-secondary)] max-w-[480px] mx-auto">
           {t('checkout.orderConfirmation')} <strong className="text-[var(--accent-primary)]">{t('checkout.estimatedDelivery')}</strong>.
         </p>
@@ -108,16 +134,20 @@ export function CheckoutSuccess({
               placeholder={t('checkout.cancelPlaceholder')}
               className="w-full px-4 py-3 bg-[var(--primary-bg)] border border-[var(--border)] text-sm text-[var(--text-primary)] rounded-lg focus:border-[var(--accent-primary)] min-h-[80px] mb-3"
             />
+            {cancelError && (
+              <p className="text-xs text-[var(--danger)] mb-3" role="alert">{cancelError}</p>
+            )}
             <button
-              onClick={() => {
-                if (!cancelReason.trim()) return
-                setCancelSubmitted(true)
-                setCancelRequested(true)
-              }}
-              disabled={!cancelReason.trim()}
+              onClick={handleCancelRequest}
+              disabled={!cancelReason.trim() || cancelLoading}
               className="w-full py-3 bg-[var(--accent-gold)] text-[var(--btn-blue-text)] font-bold text-xs rounded-xl hover:brightness-95 transition-all border-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {t('checkout.cancelSubmitBtn')}
+              {cancelLoading ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" aria-hidden />
+                  {t('checkout.cancelSubmitBtn')}
+                </span>
+              ) : t('checkout.cancelSubmitBtn')}
             </button>
           </div>
         )}
@@ -129,7 +159,10 @@ export function CheckoutSuccess({
           >
             {t('checkout.continueShopping')}
           </button>
-          <button onClick={() => navigate('/products')} className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all cursor-pointer rounded-xl">
+          <button
+            onClick={() => navigate(lp(orderId ? `/track-order?id=${encodeURIComponent(orderId)}` : '/track-order'))}
+            className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all cursor-pointer rounded-xl"
+          >
             <Truck size={14} /> {t('checkout.trackOrder')}
           </button>
         </div>

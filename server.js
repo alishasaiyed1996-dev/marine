@@ -209,7 +209,10 @@ async function fetchHub(type, slug) {
   if (response.status === 404) return null
   if (!response.ok) throw new Error(`${type} API returned ${response.status}`)
   const payload = await response.json()
-  return payload[type.slice(0, -1)] || null
+  // Singular key of the API envelope: { brand: ... } / { category: ... }.
+  // (Naive de-pluralization produced `categorie`, so every category hub 404ed.)
+  const key = type === 'brands' ? 'brand' : 'category'
+  return payload[key] || null
 }
 
 function hubHtml(template, entity, type, locale = 'en') {
@@ -234,10 +237,12 @@ function hubHtml(template, entity, type, locale = 'en') {
 }
 
 // Canonical origin and route redirects are handled before the SPA fallback.
+// Legacy URLs keep their query string so ?category= / ?search= deep links
+// survive the jump to the localized products page.
 app.get('/', (_req, res) => res.redirect(301, '/en/'))
-app.get('/en/shop', (_req, res) => res.redirect(301, '/en/products/'))
-app.get('/shop', (_req, res) => res.redirect(301, '/en/products/'))
-app.get('/products', (_req, res) => res.redirect(301, '/en/products/'))
+app.get('/en/shop', (req, res) => res.redirect(301, `/en/products/${req.url.slice(req.path.length)}`))
+app.get('/shop', (req, res) => res.redirect(301, `/en/products/${req.url.slice(req.path.length)}`))
+app.get('/products', (req, res) => res.redirect(301, `/en/products/${req.url.slice(req.path.length)}`))
 app.get('/en/products', (req, res, next) => {
   if (req.path.endsWith('/')) return next()
   res.redirect(301, `/en/products/${req.url.slice(req.path.length)}`)
@@ -245,27 +250,35 @@ app.get('/en/products', (req, res, next) => {
 app.get('/:locale/product/:key', async (req, res, next) => {
   const { locale, key } = req.params
   if (!['en', 'ar', 'es'].includes(locale)) return next()
+  // Only English product content is published. For ar/es, fall through to the
+  // SPA fallback, which serves the shell with noindex signals — a missing
+  // translation must not be reported as a 404 to visitors or crawlers.
+  if (locale !== 'en') return next()
   try {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(key)
     const product = isUuid ? await fetchProductById(key) : await fetchPublishedProduct(key)
     if (product?.redirect) return res.redirect(301, product.redirect)
     if (!product) return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Product not found | Alka Traders</title><meta name="robots" content="noindex,follow"></head><body><main><h1>Product not found</h1><p>This product is no longer available.</p><a href="/en/products">Browse products</a></main></body></html>')
-    if (locale !== 'en') return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Page not found | Alka Traders</title><meta name="robots" content="noindex,follow"></head><body><main><h1>Page not found</h1><a href="/en">Continue to Alka Traders</a></main></body></html>')
     if (key !== product.slug) return res.redirect(301, `/en/product/${encodeURIComponent(product.slug)}/`)
     if (!req.path.endsWith('/')) return res.redirect(301, `${req.path}/${req.url.slice(req.path.length)}`)
     const template = fs.readFileSync(indexPath, 'utf8')
     res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800')
     res.type('html').send(productHtml(template, product, locale))
   } catch (error) {
-    next(error)
+    // Product API unreachable/erroring: serve the SPA shell so the app can
+    // retry in-place instead of showing a bare "Error" page.
+    log(`[product] render failed for ${req.path}: ${error.message}`)
+    next()
   }
 })
 app.get('/:locale/:hubType/:slug', async (req, res, next) => {
   const { locale, hubType, slug } = req.params
   if (!['brands', 'categories'].includes(hubType)) return next()
   if (!['en', 'ar', 'es'].includes(locale)) return next()
+  // Hub copy is English-only for now; untranslated locales fall through to
+  // the noindex SPA shell instead of a hard 404.
+  if (locale !== 'en') return next()
   try {
-    if (locale !== 'en') return res.status(404).set('X-Robots-Tag', 'noindex').send('Not found')
     const entity = await fetchHub(hubType, slug)
     if (!entity) return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send('<!doctype html><html><head><meta name="robots" content="noindex,follow"><title>Page not found | Alka Traders</title></head><body><h1>Page not found</h1></body></html>')
     if (!req.path.endsWith('/')) return res.redirect(301, `${req.path}/${req.url.slice(req.path.length)}`)
@@ -273,7 +286,10 @@ app.get('/:locale/:hubType/:slug', async (req, res, next) => {
     const rendered = hubHtml(template, entity, hubType, locale)
     if (!rendered.indexable) res.set('X-Robots-Tag', 'noindex, follow')
     res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800').type('html').send(rendered.html)
-  } catch (error) { next(error) }
+  } catch (error) {
+    log(`[hub] render failed for ${req.path}: ${error.message}`)
+    next()
+  }
 })
 app.use((req, res, next) => {
   if (/^\/(ar|es)(\/|$)/.test(req.path)) res.set('X-Robots-Tag', 'noindex, follow')

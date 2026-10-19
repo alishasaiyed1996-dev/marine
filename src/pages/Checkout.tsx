@@ -8,6 +8,7 @@ import { useStore, type SkippedCartItem } from '../store/useStore'
 import { storefront } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
 import { calcShippingCost } from '../lib/shipping'
+import { useLocalizedPath, useLocale } from '../lib/locale'
 import { SEO } from '../components/seo/SEO'
 import { CheckoutSuccess } from './checkout/CheckoutSuccess'
 import { CheckoutShipping } from './checkout/CheckoutShipping'
@@ -17,6 +18,8 @@ import { CheckoutReview } from './checkout/CheckoutReview'
 export default function Checkout() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const lp = useLocalizedPath()
+  const locale = useLocale()
   const stepLabels = [t('checkout.shippingLabel'), t('checkout.paymentLabel'), t('checkout.reviewLabel')]
   const {
     cart, user, getCartTotal, clearCart, getCartCount,
@@ -64,9 +67,9 @@ export default function Checkout() {
   // Redirect if empty cart (guest checkout is allowed)
   useEffect(() => {
     if (!orderPlaced && cart.length === 0) {
-      navigate('/products')
+      navigate(`/${locale}/products`)
     }
-  }, [cart.length, orderPlaced, navigate])
+  }, [cart.length, orderPlaced, navigate, locale])
 
   const settings = useStoreSettings()
   const subtotal = getCartTotal()
@@ -187,6 +190,7 @@ export default function Checkout() {
       // items were skipped) — shown on the confirmation page.
       orderSummary: result.order
         ? {
+            orderNumber: result.order.orderNumber,
             subtotal: Number(result.order.subtotal),
             shippingCost: Number(result.order.shippingCost),
             tax: Number(result.order.tax),
@@ -275,7 +279,7 @@ export default function Checkout() {
     setOrderPlaced(false)
     useStore.setState({ orderSkippedItems: [], orderSummary: null })
     setCheckoutStep(1)
-    navigate('/products')
+    navigate(lp('/products'))
   }
 
   const updateShipping = (field: string, value: string) => {

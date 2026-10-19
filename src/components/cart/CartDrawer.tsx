@@ -61,8 +61,14 @@ export function CartDrawer() {
       document.documentElement.style.overflow = 'hidden'
     }
     return () => {
-      // Only clear overflow if no other modal is open
-      if (!document.querySelector('[role="dialog"], [role="alertdialog"]')) {
+      // Only clear overflow if no other modal is open. The cart drawer itself
+      // is excluded: AnimatePresence keeps it mounted through its exit
+      // animation, so a plain [role="dialog"] query would always find it and
+      // leave the page unscrollable after close.
+      const otherModalOpen = Array.from(
+        document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')
+      ).some((el) => el.dataset.modal !== 'cart')
+      if (!otherModalOpen) {
         document.documentElement.style.overflow = ''
       }
     }
@@ -103,6 +109,7 @@ export function CartDrawer() {
             exit="exit"
             role="dialog"
             aria-label="Shopping cart"
+            data-modal="cart"
           >
             {/* ─── Header ─── */}
             <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Package, Truck, CheckCircle, Clock, XCircle, Search } from 'lucide-react'
+import { Package, Truck, CheckCircle, Clock, XCircle, Search, LogIn } from 'lucide-react'
 import { storefront } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
+import { useStore } from '../store/useStore'
 import { SEO } from '../components/seo/SEO'
 
 const statusSteps = [
@@ -21,6 +22,8 @@ const statusIndex: Record<string, number> = {
 
 export default function TrackOrder() {
   const { whatsappNumber } = useStoreSettings()
+  const user = useStore((s) => s.user)
+  const setShowAuthModal = useStore((s) => s.setShowAuthModal)
   const [searchParams] = useSearchParams()
   const initialId = searchParams.get('id') || ''
 
@@ -30,14 +33,21 @@ export default function TrackOrder() {
   const [error, setError] = useState('')
 
   const handleTrack = async (num?: string) => {
+    // The orders API is customer-authenticated. Guests (who can check out)
+    // cannot look an order up, so ask them to sign in instead of firing a 401.
+    if (!user) {
+      setShowAuthModal(true)
+      return
+    }
     const search = num || orderNumber
     if (!search.trim()) { setError('Please enter an order number'); return }
     setLoading(true)
     setError('')
     setOrder(null)
     try {
-      // Try direct ID lookup first, then search via list
-      const res = await storefront.orders.list({ search: search.trim() })
+      // The endpoint returns the signed-in customer's orders; look the number
+      // up across the first page of results (50 is the server-side maximum).
+      const res = await storefront.orders.list({ search: search.trim(), limit: '50' })
       const found = res.orders?.find((o: any) =>
         o.orderNumber?.toLowerCase() === search.trim().toLowerCase() ||
         o.id?.toLowerCase() === search.trim().toLowerCase()
@@ -55,8 +65,8 @@ export default function TrackOrder() {
   }
 
   useEffect(() => {
-    if (initialId) handleTrack(initialId)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (initialId && user) handleTrack(initialId)
+  }, [initialId, user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentStep = order ? (statusIndex[order.status] ?? -1) : -1
 
@@ -106,6 +116,20 @@ export default function TrackOrder() {
             </button>
           </div>
 
+          {!user && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--surface)] border border-[var(--border)] rounded-xl px-4 py-3 mb-6">
+              <p className="text-xs text-[var(--text-secondary)]">
+                Sign in to view your orders — order tracking is private to your account.
+              </p>
+              <button
+                onClick={() => setShowAuthModal(true)}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold bg-[var(--accent-primary)] text-[var(--btn-blue-text)] rounded-lg hover:bg-[var(--accent-primary-hover)] transition-all whitespace-nowrap"
+              >
+                <LogIn size={14} /> Sign In
+              </button>
+            </div>
+          )}
+
           {error && (
             <div className="bg-[var(--danger)]/10 border border-[var(--danger)]/20 text-[var(--danger)] text-sm px-4 py-3 rounded-xl mb-6 text-center">
               {error}
@@ -134,13 +158,13 @@ export default function TrackOrder() {
                        order.status === 'shipped' ? <Truck size={12} /> :
                        order.status === 'cancelled' ? <XCircle size={12} /> :
                        <Clock size={12} />}
-                      {order.status.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                      {String(order.status || '').replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                     </span>
                   </div>
                 </div>
                 <div className="flex gap-6 mt-4 text-xs text-[var(--text-muted)]">
                   <span>Placed: {new Date(order.createdAt).toLocaleDateString()}</span>
-                  <span>Total: <strong className="text-[var(--text-primary)]">${order.grandTotal?.toFixed(2)}</strong></span>
+                  <span>Total: <strong className="text-[var(--text-primary)]">${Number(order.grandTotal || 0).toFixed(2)}</strong></span>
                 </div>
               </div>
 
@@ -152,7 +176,7 @@ export default function TrackOrder() {
                     <div className="absolute top-5 left-0 right-0 h-0.5 bg-[var(--border)]" />
                     <div
                       className="absolute top-5 left-0 h-0.5 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] transition-all duration-500"
-                      style={{ width: `${Math.min(100, (currentStep / (statusSteps.length - 1)) * 100)}%` }}
+                      style={{ width: `${Math.max(0, Math.min(100, (currentStep / (statusSteps.length - 1)) * 100))}%` }}
                     />
 
                     {statusSteps.map((step, i) => {
@@ -191,15 +215,15 @@ export default function TrackOrder() {
                 </div>
               )}
 
-              {/* Shipping address */}
-              {order.shipping && (
+              {/* Shipping address — Order stores flat shipping* columns */}
+              {(order.shippingFullName || order.shippingAddressLine1) && (
                 <div className="px-6 pb-6">
                   <p className="text-xs font-medium text-[var(--text-muted)] mb-2 uppercase tracking-wider">Shipping To</p>
                   <p className="text-sm text-[var(--text-secondary)]">
-                    {order.shipping.fullName}<br />
-                    {order.shipping.addressLine1}{order.shipping.addressLine2 ? `, ${order.shipping.addressLine2}` : ''}<br />
-                    {order.shipping.city}, {order.shipping.state} {order.shipping.postalCode}<br />
-                    {order.shipping.country}
+                    {order.shippingFullName}<br />
+                    {order.shippingAddressLine1}{order.shippingAddressLine2 ? `, ${order.shippingAddressLine2}` : ''}<br />
+                    {[order.shippingCity, order.shippingState].filter(Boolean).join(', ')}{order.shippingPostalCode ? ` ${order.shippingPostalCode}` : ''}<br />
+                    {order.shippingCountry}
                   </p>
                 </div>
               )}

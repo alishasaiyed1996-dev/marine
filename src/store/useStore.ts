@@ -25,6 +25,7 @@ interface AdminUser {
 
 /** Server-authoritative totals for the most recently placed order. */
 export interface OrderSummary {
+  orderNumber?: string
   subtotal: number
   shippingCost: number
   tax: number

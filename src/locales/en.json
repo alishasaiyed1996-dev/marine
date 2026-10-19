@@ -420,6 +420,7 @@
     "cancelSubmitBtn": "Request Order Cancellation",
     "cancelSuccess": "Cancellation Request Submitted",
     "cancelSuccessDesc": "We have received your cancellation request. Our team will process it within 24 hours. You will receive a confirmation email once processed.",
+    "cancelError": "Could not submit your cancellation request. Please try again.",
     "cardEnding": "Credit/Debit Card ending in {{last4}}",
     "amountDue": "Amount Due",
     "paypalLoginTitle": "Pay with PayPal",

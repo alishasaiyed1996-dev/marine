@@ -74,8 +74,28 @@ export function SEO({
     if (!parsed.pathname.endsWith('/')) parsed.pathname += '/'
     return parsed.toString()
   }
+  // A locale-less canonical prop ("/products") must not resolve to the legacy
+  // unprefixed URL that only 301s to /en — canonical must always point at the
+  // URL actually being served, in the locale actually being viewed.
+  const withLocalePrefix = (value: string) => {
+    if (/^https?:\/\//i.test(value)) {
+      try {
+        const parsed = new URL(value)
+        if (parsed.origin !== new URL(BASE_URL).origin) return value
+        const segs = parsed.pathname.split('/').filter(Boolean)
+        if (VALID_LOCALES.includes(segs[0] as Language)) return value
+        parsed.pathname = `/${language}${parsed.pathname === '/' ? '/' : parsed.pathname}`
+        return parsed.toString()
+      } catch {
+        return value
+      }
+    }
+    const segs = value.split('/').filter(Boolean)
+    if (VALID_LOCALES.includes(segs[0] as Language)) return value
+    return `/${language}${value === '/' ? '/' : value}`
+  }
   const canonicalUrl = canonical
-    ? normalizeCanonical(canonical)
+    ? normalizeCanonical(withLocalePrefix(canonical))
     : isLocalePrefixed
       ? `${BASE_URL}/${language}${pathWithoutLocale === '/' ? '/' : `${pathWithoutLocale.replace(/\/+$/, '')}/`}`
       : `${BASE_URL}/en/`

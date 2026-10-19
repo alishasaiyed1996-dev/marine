@@ -55,12 +55,13 @@ export default function SearchPage() {
     }
 
     // Static results (pages + categories) — always available
+    const needle = q.trim().toLowerCase()
     const pageResults: SearchResult[] = pages
-      .filter((p) => p.title.toLowerCase().includes(q))
+      .filter((p) => p.title.toLowerCase().includes(needle))
       .map((p) => ({ id: p.path, type: 'page' as const, title: p.title, description: p.path, path: p.path }))
 
     const categoryResults: SearchResult[] = cats
-      .filter((c) => c.name.toLowerCase().includes(q))
+      .filter((c) => c.name.toLowerCase().includes(needle))
       .map((c) => ({ id: c.id, type: 'category' as const, title: c.name, description: `${c.count} products`, path: `/products?category=${c.id}` }))
 
     // Try API search for products and brands

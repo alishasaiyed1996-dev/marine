@@ -48,13 +48,26 @@ export function Testimonials() {
                     Sold by <span className="font-semibold text-[var(--text-primary)]">Alka Traders</span> on eBay
                   </span>
                   {review.productName && (
-                    <a
-                      href={review.productLink || '#'}
-                      className="text-[0.625rem] text-[var(--accent-primary)] block mt-0.5 font-medium truncate max-w-[200px] hover:underline"
-                      title={review.productName}
-                    >
-                      Reviewed: {review.productName}
-                    </a>
+                    review.productLink ? (
+                      <a
+                        href={review.productLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[0.625rem] text-[var(--accent-primary)] block mt-0.5 font-medium truncate max-w-[200px] hover:underline"
+                        title={review.productName}
+                      >
+                        Reviewed: {review.productName}
+                      </a>
+                    ) : (
+                      // No listing URL recorded for this review — render plain
+                      // text instead of a dead href="#".
+                      <span
+                        className="text-[0.625rem] text-[var(--text-muted)] block mt-0.5 font-medium truncate max-w-[200px]"
+                        title={review.productName}
+                      >
+                        Reviewed: {review.productName}
+                      </span>
+                    )
                   )}
                 </div>
               </div>

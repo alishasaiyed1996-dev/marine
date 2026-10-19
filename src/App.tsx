@@ -125,7 +125,7 @@ function LocaleLayout() {
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route index element={<Home />} />
-              <Route path="shop" element={<Navigate to="/products" replace />} />
+              <Route path="shop" element={<Navigate to="products" replace />} />
               <Route path="products" element={<Products />} />
               <Route path="industries" element={<Industries />} />
               <Route path="brands" element={<Brands />} />
