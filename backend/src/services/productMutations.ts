@@ -38,10 +38,59 @@ async function createProductImage(productId: string, img: any, sortOrder: number
   })
 }
 
+async function assertPublishableProduct(data: any, productId?: string) {
+  const details: { field: string; message: string }[] = []
+  const add = (field: string, message: string) => details.push({ field, message })
+  const name = String(data.name || '').trim()
+  const sku = String(data.sku || '').trim()
+  const description = String(data.description || '').trim()
+  const seoTitle = String(data.seoTitle || '').trim()
+  const seoDescription = String(data.seoDescription || '').trim()
+
+  if (!name) add('name', 'Add a product name before publishing.')
+  if (!sku) add('sku', 'Add a unique SKU or part number before publishing.')
+  if (!data.categoryId) add('categoryId', 'Assign a category before publishing.')
+  if (description.length < 120) add('description', 'Write at least 120 characters of product-specific description.')
+  if (!seoTitle || seoTitle.length > 70) add('seoTitle', 'Add an SEO title between 1 and 70 characters.')
+  if (seoDescription.length < 80 || seoDescription.length > 160) add('seoDescription', 'Add an SEO description between 80 and 160 characters.')
+  if (![data.modelNumber, data.mpn, data.impaCode].some((value) => String(value || '').trim())) {
+    add('mpn', 'Add a verified model number, manufacturer part number, or IMPA code. Do not guess identifiers.')
+  }
+
+  const images = data.images ?? (productId
+    ? await prisma.productImage.findMany({ where: { productId }, select: { url: true, altText: true, isMain: true } })
+    : [])
+  const usableImages = images.filter((image: any) => String(image.url || '').trim())
+  if (!usableImages.length) add('images', 'Add at least one product image before publishing.')
+  else {
+    const mainImage = usableImages.find((image: any) => image.isMain) || usableImages[0]
+    if (!String(mainImage.altText || '').trim()) add('images', 'Add descriptive alt text to the main product image.')
+  }
+
+  if (description.length >= 120 && data.allowDuplicateDescription !== true) {
+    const duplicateRows = await prisma.$queryRaw<{ id: string; name: string }[]>`
+      SELECT id, name
+      FROM products
+      WHERE status = 'published'
+        AND id::text <> ${productId ?? ''}
+        AND lower(regexp_replace(normalize(btrim(description), NFKC), '\\s+', ' ', 'g'))
+          = lower(regexp_replace(normalize(btrim(${description}), NFKC), '\\s+', ' ', 'g'))
+      LIMIT 1
+    `
+    const duplicate = duplicateRows[0]
+    if (duplicate) add('description', `This description is already used by published product "${duplicate.name}". Write product-specific copy.`)
+  }
+
+  if (details.length) {
+    throw Object.assign(new Error('Product is saved only after all publish requirements are met.'), { status: 422, details })
+  }
+}
+
 // ─── Create Product ────────────────────────────────────────────
 
 export async function createProduct(data: any, actor: AuthUser, ipAddress = '') {
-  const { specs, images, industryIds, ...fields } = data
+  const { specs, images, industryIds, allowDuplicateDescription, ...fields } = data
+  if (fields.status === 'published') await assertPublishableProduct({ ...fields, images, allowDuplicateDescription })
 
   let slug = generateSlug(fields.name)
   const existing = await prisma.product.findUnique({ where: { slug } })
@@ -55,6 +104,7 @@ export async function createProduct(data: any, actor: AuthUser, ipAddress = '') 
   const product = await prisma.product.create({
     data: {
       ...fields, slug,
+      ...(fields.status === 'published' ? { contentUpdatedAt: new Date() } : {}),
       createdBy: actor.id, updatedBy: actor.id,
     },
   })
@@ -88,7 +138,7 @@ export async function createProduct(data: any, actor: AuthUser, ipAddress = '') 
   await logAudit({
     actor, action: 'product.create', entityType: 'product',
     entityId: product.id, entityName: product.name,
-    newValue: { id: product.id, name: product.name, sku: product.sku, status: product.status, regularPrice: product.regularPrice },
+    newValue: { id: product.id, name: product.name, sku: product.sku, status: product.status, regularPrice: product.regularPrice, duplicateDescriptionOverride: allowDuplicateDescription === true },
     ipAddress,
   })
 
@@ -105,7 +155,11 @@ export async function updateProduct(id: string, data: any, actor: AuthUser, ipAd
     throw Object.assign(new Error('Product not found'), { status: 404 })
   }
 
-  const { specs, images, industryIds, ...fields } = data
+  const { specs, images, industryIds, allowDuplicateDescription, ...fields } = data
+
+  if (fields.status === 'published') {
+    await assertPublishableProduct({ ...existing, ...fields, images, allowDuplicateDescription }, id)
+  }
 
   if (fields.name && fields.name !== existing.name) {
     let slug = generateSlug(fields.name)
@@ -151,8 +205,17 @@ export async function updateProduct(id: string, data: any, actor: AuthUser, ipAd
   const { stockCount: requestedStock, ...otherFields } = fields
   await prisma.product.update({
     where: { id },
-    data: { ...otherFields, updatedBy: actor.id },
+    data: {
+      ...otherFields,
+      updatedBy: actor.id,
+      ...((Object.keys(otherFields).some((key) => !['stockCount', 'availability', 'status'].includes(key)) || fields.status === 'published')
+        ? { contentUpdatedAt: new Date() }
+        : {}),
+    },
   })
+  if (fields.slug && fields.slug !== existing.slug) {
+    await prisma.productSlugHistory.create({ data: { productId: id, slug: existing.slug } })
+  }
   if (requestedStock !== undefined && requestedStock !== null && Number(requestedStock) !== existing.stockCount) {
     const res = await setStock(id, Number(requestedStock), `product form update by ${actor.id}`)
     if (!res.ok) {
@@ -174,7 +237,7 @@ export async function updateProduct(id: string, data: any, actor: AuthUser, ipAd
     actor, action: 'product.update', entityType: 'product',
     entityId: product.id, entityName: product.name,
     previousValue: { id: existing.id, name: existing.name, sku: existing.sku, status: existing.status, regularPrice: existing.regularPrice },
-    newValue: { id: product.id, name: product.name, sku: product.sku, status: product.status, regularPrice: product.regularPrice },
+    newValue: { id: product.id, name: product.name, sku: product.sku, status: product.status, regularPrice: product.regularPrice, duplicateDescriptionOverride: allowDuplicateDescription === true },
     ipAddress,
   })
 
@@ -193,7 +256,7 @@ export async function archiveProduct(id: string, actor: AuthUser, ipAddress = ''
 
   await prisma.product.update({
     where: { id },
-    data: { status: 'archived', updatedBy: actor.id },
+    data: { status: 'archived', updatedBy: actor.id, contentUpdatedAt: new Date() },
   })
 
   await logAudit({
@@ -209,9 +272,9 @@ export async function archiveProduct(id: string, actor: AuthUser, ipAddress = ''
 export async function bulkUpdate(ids: string[], action: string, value: string | undefined, actor: AuthUser, ipAddress = '') {
   let updateData: any
   switch (action) {
-    case 'publish': updateData = { status: 'published' }; break
-    case 'unpublish': updateData = { status: 'hidden' }; break
-    case 'archive': updateData = { status: 'archived' }; break
+    case 'publish': updateData = { status: 'published', contentUpdatedAt: new Date() }; break
+    case 'unpublish': updateData = { status: 'hidden', contentUpdatedAt: new Date() }; break
+    case 'archive': updateData = { status: 'archived', contentUpdatedAt: new Date() }; break
     case 'set-featured': updateData = { isFeatured: true }; break
     case 'unset-featured': updateData = { isFeatured: false }; break
     case 'set-new-arrival': updateData = { isNewArrival: true }; break
@@ -219,6 +282,25 @@ export async function bulkUpdate(ids: string[], action: string, value: string | 
     case 'set-category': updateData = { categoryId: value }; break
     case 'set-brand': updateData = { brandId: value }; break
     default: throw Object.assign(new Error('Invalid action'), { status: 400 })
+  }
+
+  if (action === 'publish') {
+    const products = await prisma.product.findMany({
+      where: { id: { in: ids } },
+      include: { images: { select: { url: true, altText: true, isMain: true } } },
+    })
+    const failures: { field: string; message: string }[] = []
+    for (const product of products) {
+      try {
+        await assertPublishableProduct(product, product.id)
+      } catch (error) {
+        const details = (error as { details?: { field: string; message: string }[] }).details || []
+        failures.push(...details.map((item) => ({ field: `${product.sku}: ${item.field}`, message: item.message })))
+      }
+    }
+    if (failures.length) {
+      throw Object.assign(new Error(`${failures.length} publish requirement(s) need attention.`), { status: 422, details: failures })
+    }
   }
 
   updateData.updatedBy = actor.id

@@ -77,7 +77,7 @@ export default function SearchPage() {
               type: 'product',
               title: r.name || r.title || '',
               description: r.brand ? `${r.brand} · ${r.sku || ''}` : (r.sku || r.description || ''),
-              path: `/product/${r.id}`,
+              path: `/product/${r.slug || r.id}`,
             })
           } else if (r.type === 'brand') {
             apiResults.push({

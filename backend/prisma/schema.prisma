@@ -75,6 +75,7 @@ model Product {
   brandId            String?   @map("brand_id") @db.Uuid
   categoryId         String?   @map("category_id") @db.Uuid
   status             String    @default("draft") @db.VarChar(20)
+  contentUpdatedAt   DateTime  @default(now()) @map("content_updated_at")
   availability       String    @default("in-stock") @db.VarChar(20)
   condition          String    @default("used") @db.VarChar(30)
   shortDescription   String?   @map("short_description") @db.Text
@@ -135,6 +136,7 @@ model Product {
   brand         Brand?            @relation(fields: [brandId], references: [id], onDelete: SetNull)
   category      Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   images        ProductImage[]
+  slugHistory   ProductSlugHistory[]
   specs         ProductSpec[]
   industries    ProductIndustry[]
   ebayListings  EbayListing[]
@@ -153,6 +155,18 @@ model Product {
   // CREATE EXTENSION IF NOT EXISTS pg_trgm;
   // CREATE INDEX IF NOT EXISTS idx_products_search ON products USING GIN (to_tsvector('english', coalesce(name, '') || ' ' || coalesce(description, '')));
   @@map("products")
+}
+
+model ProductSlugHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  slug      String   @unique @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_slug_history")
 }
 
 // ─── Product Images ────────────────────────────────────────────

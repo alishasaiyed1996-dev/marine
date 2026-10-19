@@ -14,6 +14,7 @@ const productSchema = z.object({
   brandId: z.string().uuid().optional().nullable(),
   categoryId: z.string().uuid().optional().nullable(),
   status: z.enum(['draft', 'published', 'hidden', 'archived']).optional(),
+  allowDuplicateDescription: z.boolean().optional(),
   availability: z.enum(['in-stock', 'sourced', 'emergency', 'out-of-stock']).optional(),
   condition: z.enum(['new', 'unused', 'used', 'refurbished', 'reconditioned']).optional(),
   shortDescription: z.string().optional().nullable(),
@@ -136,7 +137,7 @@ router.post('/', requireRole('inventory-manager'), validateBody(productSchema), 
     const product = await productService.createProduct(req.body, req.user!, req.ip)
     sendSuccess(res, { product }, 201)
   } catch (err: any) {
-    sendError(res, err.message, err.status || 500)
+    sendError(res, err.message, err.status || 500, err.details)
   }
 }))
 
@@ -146,7 +147,7 @@ router.put('/:id', requireRole('inventory-manager'), validateBody(productSchema.
     const product = await productService.updateProduct(req.params.id as string, req.body, req.user!, req.ip)
     sendSuccess(res, { product })
   } catch (err: any) {
-    sendError(res, err.message, err.status || 500)
+    sendError(res, err.message, err.status || 500, err.details)
   }
 }))
 
@@ -156,7 +157,7 @@ router.delete('/:id', requireRole('store-manager'), asyncHandler(async (req: Aut
     await productService.archiveProduct(req.params.id as string, req.user!, req.ip)
     sendSuccess(res, { message: 'Product archived successfully' })
   } catch (err: any) {
-    sendError(res, err.message, err.status || 500)
+    sendError(res, err.message, err.status || 500, err.details)
   }
 }))
 
@@ -171,7 +172,7 @@ router.patch('/bulk', requireRole('inventory-manager'), asyncHandler(async (req:
     const result = await productService.bulkUpdate(ids, action, value, req.user!, req.ip)
     sendSuccess(res, result)
   } catch (err: any) {
-    sendError(res, err.message, err.status || 500)
+    sendError(res, err.message, err.status || 500, err.details)
   }
 }))
 
@@ -191,7 +192,7 @@ router.post('/import/csv', requireRole('inventory-manager'), asyncHandler(async 
     const result = await productService.importProducts(req.body.rows, req.user!, req.ip)
     sendSuccess(res, result)
   } catch (err: any) {
-    sendError(res, err.message, err.status || 500)
+    sendError(res, err.message, err.status || 500, err.details)
   }
 }))
 

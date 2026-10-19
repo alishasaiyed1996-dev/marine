@@ -23,6 +23,8 @@ interface SEOProps {
    *  results, junk filter combinations, and unavailable products (B18/B20). */
   noindex?: boolean
   jsonLd?: Record<string, any>[]
+  /** Explicit locales with genuinely equivalent translated page content. */
+  alternateLocales?: Language[]
 }
 
 const BASE_URL = import.meta.env.VITE_SITE_URL || 'https://alkatraders.co'
@@ -31,23 +33,8 @@ const DEFAULT_DESCRIPTION = 'Marine & industrial equipment supplier — ship spa
 const DEFAULT_OG_IMAGE = `${BASE_URL}/images/alka-traders-logo.png`
 
 /** Build absolute hreflang links for all supported locales. */
-function buildHreflangLinks(_locale: Language, pathWithoutLocale: string): Array<{ hreflang: string; href: string }> {
-  const links: Array<{ hreflang: string; href: string }> = []
-
-  for (const lang of VALID_LOCALES) {
-    const fullPath = lang === 'en' && (pathWithoutLocale === '' || pathWithoutLocale === '/')
-      ? BASE_URL
-      : `${BASE_URL}/${lang}${pathWithoutLocale === '/' ? '' : pathWithoutLocale}`
-    links.push({ hreflang: lang, href: fullPath })
-  }
-
-  // x-default points to English
-  const defaultHref = pathWithoutLocale === '/' || pathWithoutLocale === ''
-    ? BASE_URL
-    : `${BASE_URL}/en${pathWithoutLocale === '/' ? '' : pathWithoutLocale}`
-  links.push({ hreflang: 'x-default', href: defaultHref })
-
-  return links
+function buildHreflangLinks(_locale: Language, _pathWithoutLocale: string): Array<{ hreflang: string; href: string }> {
+  return []
 }
 
 export function SEO({
@@ -67,6 +54,7 @@ export function SEO({
   keywords,
   noindex,
   jsonLd,
+  alternateLocales = ['en'],
 }: SEOProps) {
   const { pathname } = useLocation()
   const language = useStore((s) => s.language)
@@ -80,11 +68,17 @@ export function SEO({
     : pathname
 
   const fullTitle = `${title} | ${SITE_NAME}`
+  const normalizeCanonical = (value: string) => {
+    const absolute = /^https?:\/\//i.test(value) ? value : `${BASE_URL}${value}`
+    const parsed = new URL(absolute)
+    if (!parsed.pathname.endsWith('/')) parsed.pathname += '/'
+    return parsed.toString()
+  }
   const canonicalUrl = canonical
-    ? `${BASE_URL}${canonical}`
+    ? normalizeCanonical(canonical)
     : isLocalePrefixed
-      ? `${BASE_URL}/${language}${pathWithoutLocale === '/' && segments.length <= 1 ? '' : pathWithoutLocale}`
-      : BASE_URL
+      ? `${BASE_URL}/${language}${pathWithoutLocale === '/' ? '/' : `${pathWithoutLocale.replace(/\/+$/, '')}/`}`
+      : `${BASE_URL}/en/`
   // ogImage may be an absolute URL (Cloudinary product images arrive via
   // getProductImageUrl). Only prefix site-relative paths — prepending BASE_URL
   // to an absolute URL produced
@@ -96,7 +90,9 @@ export function SEO({
       : `${BASE_URL}${ogImage}`
     : DEFAULT_OG_IMAGE
   const ogLocale = LOCALE_TO_OG[language] || 'en_US'
-  const hreflangLinks = buildHreflangLinks(language, pathWithoutLocale)
+  const hreflangLinks = buildHreflangLinks(language, pathWithoutLocale).filter((link) =>
+    link.hreflang === 'x-default' || alternateLocales.includes(link.hreflang as Language),
+  )
 
   // Build default JSON-LD for Organization
   const organizationJsonLd = {
@@ -216,7 +212,7 @@ export function SEO({
       <meta name="description" content={description || DEFAULT_DESCRIPTION} />
       {keywords && <meta name="keywords" content={keywords} />}
       <link rel="canonical" href={canonicalUrl} />
-      {noindex && <meta name="robots" content="noindex, follow" />}
+      {(noindex || (isLocalePrefixed && firstSegment !== 'en')) && <meta name="robots" content="noindex, follow" />}
 
       {hreflangLinks.map(({ hreflang, href }) => (
         <link key={hreflang} rel="alternate" hrefLang={hreflang} href={href} />

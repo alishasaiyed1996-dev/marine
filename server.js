@@ -25,6 +25,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const app = express()
 const PORT = process.env.PORT || 3000
+const API_ORIGIN = (process.env.VITE_API_URL || 'https://api.alkatraders.co').replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '')
+const SITE_ORIGIN = (process.env.VITE_SITE_URL || 'https://alkatraders.co').replace(/\/+$/, '')
 const distPath = path.join(__dirname, 'frontend', 'dist')
 const indexPath = path.join(distPath, 'index.html')
 // Whether the built SPA is actually present — surfaced by the heartbeat so a
@@ -146,20 +148,174 @@ app.get('/health/ready', (_req, res) => {
   res.status(serving ? 200 : 503).json({ status: serving ? 'ok' : 'error', build: serving ? 'present' : 'missing' })
 })
 
-// ─── Serve the built SPA ───────────────────────────────────────────
-// On Railway the build step runs before start, so dist should always be present.
-// If it is somehow missing (e.g. a bad deploy), fail fast rather than looping.
-app.use(express.static(distPath))
+function escapeHtml(value = '') {
+  return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+}
 
-// SPA fallback — any non-asset route returns index.html so client-side
-// routing (e.g. /products, /admin) works on refresh / deep links.
-app.get('/{*splat}', (_req, res) => {
-  res.sendFile(indexPath)
+function productHtml(template, product, locale = 'en') {
+  const path = `/${locale}/product/${product.slug}/`
+  const canonical = `${SITE_ORIGIN}${path}`
+  const title = `${product.seoTitle || product.name} | Alka Traders`
+  const description = (product.seoDescription || product.shortDescription || product.description || `${product.name} marine and industrial spare supplied by Alka Traders.`).slice(0, 300)
+  const image = product.images?.find((item) => item.isMain)?.url || product.images?.[0]?.url || ''
+  const price = Number(product.salePrice && Number(product.salePrice) < Number(product.regularPrice) ? product.salePrice : product.regularPrice)
+  const productSchema = {
+    '@context': 'https://schema.org', '@type': 'Product', name: product.name,
+    sku: product.sku, description,
+    ...(product.mpn ? { mpn: product.mpn } : {}),
+    ...(product.brand?.name ? { brand: { '@type': 'Brand', name: product.brand.name } } : {}),
+    ...(image ? { image: [image] } : {}),
+    ...(Number.isFinite(price) && price > 0 ? { offers: {
+      '@type': 'Offer', url: canonical, priceCurrency: product.currency || 'USD', price: price.toFixed(2),
+      availability: product.availability === 'out-of-stock' ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
+      itemCondition: 'https://schema.org/UsedCondition', seller: { '@type': 'Organization', name: 'Alka Traders' },
+    } } : {}),
+  }
+  const content = `<main class="seo-product"><nav aria-label="Breadcrumb"><a href="/${locale}">Home</a> › <a href="/${locale}/products">Products</a> › ${escapeHtml(product.category?.name || 'Marine spares')}</nav><h1>${escapeHtml(product.name)}</h1>${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(product.images?.find((item) => item.isMain)?.altText || product.name)}" width="640" height="640" fetchpriority="high">` : ''}<p>${escapeHtml(description)}</p><dl><dt>SKU</dt><dd>${escapeHtml(product.sku)}</dd>${product.brand?.name ? `<dt>Brand</dt><dd>${escapeHtml(product.brand.name)}</dd>` : ''}${product.category?.name ? `<dt>Category</dt><dd>${escapeHtml(product.category.name)}</dd>` : ''}<dt>Condition</dt><dd>${escapeHtml(product.condition || 'Used')}</dd></dl>${Number.isFinite(price) && price > 0 ? `<p>Price: ${price.toFixed(2)} ${escapeHtml(product.currency || 'USD')}</p>` : '<p>Contact us for price and availability.</p>'}<a href="/${locale}/rfq">Request a quote</a></main>`
+  let html = template.replace(/<title>[^<]*<\/title>/i, '')
+  html = html.replace(/<link rel="canonical"[^>]*>/gi, '').replace(/<link rel="alternate"[^>]*>/gi, '')
+  html = html.replace(/<meta name="description"[^>]*>/gi, '').replace(/<meta name="robots"[^>]*>/gi, '')
+  html = html.replace(/<meta property="og:[^"]*"[^>]*>/gi, '')
+  const head = `<title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="index,follow,max-image-preview:large"><link rel="canonical" href="${escapeHtml(canonical)}"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${escapeHtml(canonical)}"><meta property="og:type" content="product">${image ? `<meta property="og:image" content="${escapeHtml(image)}">` : ''}<script type="application/ld+json">${JSON.stringify(productSchema).replace(/</g, '\\u003c')}</script>`
+  html = html.replace(/<head>/i, `<head>\n${head}`)
+  html = html.replace(/<div id="root">[\s\S]*?<\/div>/i, `<div id="root">${content}</div>`)
+  // Keep the HTML readable if JavaScript is unavailable while hiding the
+  // server content only after React hydrates and replaces it.
+  return html
+}
+
+async function fetchPublishedProduct(key) {
+  const response = await fetch(`${API_ORIGIN}/api/v1/storefront/products/by-slug/${encodeURIComponent(key)}`, { headers: { accept: 'application/json' } })
+  if (response.status === 404) {
+    const oldResponse = await fetch(`${API_ORIGIN}/api/v1/storefront/products/slug-history/${encodeURIComponent(key)}`, { headers: { accept: 'application/json' }, redirect: 'manual' })
+    if (oldResponse.status >= 300 && oldResponse.status < 400 && oldResponse.headers.get('location')) return { redirect: oldResponse.headers.get('location') }
+    return null
+  }
+  if (!response.ok) throw new Error(`Product API returned ${response.status}`)
+  const payload = await response.json()
+  return payload.product || null
+}
+
+async function fetchProductById(id) {
+  const response = await fetch(`${API_ORIGIN}/api/v1/storefront/products/${encodeURIComponent(id)}`, { headers: { accept: 'application/json' } })
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(`Product API returned ${response.status}`)
+  const payload = await response.json()
+  return payload.product || null
+}
+
+async function fetchHub(type, slug) {
+  const response = await fetch(`${API_ORIGIN}/api/v1/storefront/${type}/${encodeURIComponent(slug)}`, { headers: { accept: 'application/json' } })
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(`${type} API returned ${response.status}`)
+  const payload = await response.json()
+  return payload[type.slice(0, -1)] || null
+}
+
+function hubHtml(template, entity, type, locale = 'en') {
+  const isBrand = type === 'brands'
+  const path = `/${locale}/${type}/${entity.slug}/`
+  const canonical = `${SITE_ORIGIN}${path}`
+  const description = String(entity.description || '').trim()
+  const title = entity.seoTitle || `${entity.name} ${isBrand ? 'spare parts' : 'marine spare parts'} | Alka Traders`
+  const metaDescription = String(entity.seoDescription || description).slice(0, 160)
+  const products = entity.products || []
+  const indexable = description.length >= 120 && String(entity.seoTitle || '').trim().length > 0 && String(entity.seoDescription || '').trim().length >= 80 && products.length > 0
+  const main = `<main class="seo-hub"><nav aria-label="Breadcrumb"><a href="/${locale}/">Home</a> › <a href="/${locale}/${isBrand ? 'brands' : 'products'}/">${isBrand ? 'Brands' : 'Products'}</a> › ${escapeHtml(entity.name)}</nav><h1>${escapeHtml(entity.name)} ${isBrand ? 'spare parts' : 'spare parts'}</h1>${description ? `<p>${escapeHtml(description)}</p>` : ''}<h2>Available ${escapeHtml(entity.name)} products</h2><ul>${products.map((product) => `<li><a href="/${locale}/product/${encodeURIComponent(product.slug)}/">${escapeHtml(product.name)}${product.sku ? ` — ${escapeHtml(product.sku)}` : ''}</a></li>`).join('')}</ul>${!indexable ? '<meta name="robots" content="noindex,follow">' : ''}</main>`
+  const robots = indexable ? 'index,follow,max-image-preview:large' : 'noindex,follow'
+  const schema = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: title, description: metaDescription, url: canonical, mainEntity: { '@type': 'ItemList', numberOfItems: products.length, itemListElement: products.map((product, index) => ({ '@type': 'ListItem', position: index + 1, url: `${SITE_ORIGIN}/${locale}/product/${encodeURIComponent(product.slug)}/`, name: product.name })) } }
+  let html = template.replace(/<title>[^<]*<\/title>/i, '')
+  html = html.replace(/<link rel="canonical"[^>]*>/gi, '').replace(/<link rel="alternate"[^>]*>/gi, '')
+  html = html.replace(/<meta name="description"[^>]*>/gi, '').replace(/<meta name="robots"[^>]*>/gi, '')
+  const head = `<title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(metaDescription)}"><meta name="robots" content="${robots}"><link rel="canonical" href="${escapeHtml(canonical)}"><script type="application/ld+json">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>`
+  html = html.replace(/<head>/i, `<head>\n${head}`)
+  html = html.replace(/<div id="root">[\s\S]*?<\/div>/i, `<div id="root">${main}</div>`)
+  return { html, indexable }
+}
+
+// Canonical origin and route redirects are handled before the SPA fallback.
+app.get('/', (_req, res) => res.redirect(301, '/en/'))
+app.get('/en/shop', (_req, res) => res.redirect(301, '/en/products/'))
+app.get('/shop', (_req, res) => res.redirect(301, '/en/products/'))
+app.get('/products', (_req, res) => res.redirect(301, '/en/products/'))
+app.get('/en/products', (req, res, next) => {
+  if (req.path.endsWith('/')) return next()
+  res.redirect(301, `/en/products/${req.url.slice(req.path.length)}`)
+})
+app.get('/:locale/product/:key', async (req, res, next) => {
+  const { locale, key } = req.params
+  if (!['en', 'ar', 'es'].includes(locale)) return next()
+  try {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(key)
+    const product = isUuid ? await fetchProductById(key) : await fetchPublishedProduct(key)
+    if (product?.redirect) return res.redirect(301, product.redirect)
+    if (!product) return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Product not found | Alka Traders</title><meta name="robots" content="noindex,follow"></head><body><main><h1>Product not found</h1><p>This product is no longer available.</p><a href="/en/products">Browse products</a></main></body></html>')
+    if (locale !== 'en') return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Page not found | Alka Traders</title><meta name="robots" content="noindex,follow"></head><body><main><h1>Page not found</h1><a href="/en">Continue to Alka Traders</a></main></body></html>')
+    if (key !== product.slug) return res.redirect(301, `/en/product/${encodeURIComponent(product.slug)}/`)
+    if (!req.path.endsWith('/')) return res.redirect(301, `${req.path}/${req.url.slice(req.path.length)}`)
+    const template = fs.readFileSync(indexPath, 'utf8')
+    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800')
+    res.type('html').send(productHtml(template, product, locale))
+  } catch (error) {
+    next(error)
+  }
+})
+app.get('/:locale/:hubType/:slug', async (req, res, next) => {
+  const { locale, hubType, slug } = req.params
+  if (!['brands', 'categories'].includes(hubType)) return next()
+  if (!['en', 'ar', 'es'].includes(locale)) return next()
+  try {
+    if (locale !== 'en') return res.status(404).set('X-Robots-Tag', 'noindex').send('Not found')
+    const entity = await fetchHub(hubType, slug)
+    if (!entity) return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send('<!doctype html><html><head><meta name="robots" content="noindex,follow"><title>Page not found | Alka Traders</title></head><body><h1>Page not found</h1></body></html>')
+    if (!req.path.endsWith('/')) return res.redirect(301, `${req.path}/${req.url.slice(req.path.length)}`)
+    const template = fs.readFileSync(indexPath, 'utf8')
+    const rendered = hubHtml(template, entity, hubType, locale)
+    if (!rendered.indexable) res.set('X-Robots-Tag', 'noindex, follow')
+    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800').type('html').send(rendered.html)
+  } catch (error) { next(error) }
+})
+app.use((req, res, next) => {
+  if (/^\/(ar|es)(\/|$)/.test(req.path)) res.set('X-Robots-Tag', 'noindex, follow')
+  if (/^\/admin(\/|$)/.test(req.path)) res.set('X-Robots-Tag', 'noindex, nofollow')
+  next()
+})
+app.get('/sitemap.xml', async (_req, res, next) => {
+  try {
+    const response = await fetch(`${API_ORIGIN}/api/v1/sitemap.xml`, { headers: { accept: 'application/xml' } })
+    const xml = await response.text()
+    if (!response.ok || !xml.trimStart().startsWith('<?xml')) throw new Error(`API sitemap returned ${response.status}`)
+    res.type('application/xml').set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300').send(xml)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Serve assets directly, but let route handlers own root, sitemap and dynamic
+// product URLs. Disable Express's directory redirect so canonical slash policy
+// is explicit and consistent with the prerendered directory index files.
+app.use(express.static(distPath, { index: false, redirect: false }))
+
+// SPA/prerender fallback. Directory index files are canonical with trailing
+// slashes; non-slash forms redirect once. Untranslated locales are returned
+// with both header and HTML noindex signals.
+app.get('/{*splat}', (req, res) => {
+  const rel = req.path.replace(/^\/+|\/+$/g, '')
+  const prerendered = path.join(distPath, rel, 'index.html')
+  if (req.path !== '/' && !req.path.endsWith('/') && fs.existsSync(prerendered)) {
+    return res.redirect(301, `${req.path}/${req.url.slice(req.path.length)}`)
+  }
+  const localizedUntranslated = /^\/(ar|es)(\/|$)/.test(req.path)
+  const target = fs.existsSync(prerendered) ? prerendered : indexPath
+  if (!localizedUntranslated) return res.sendFile(target)
+  const html = fs.readFileSync(target, 'utf8').replace(/<head>/i, '<head><meta name="robots" content="noindex,follow">')
+  res.status(200).type('html').send(html)
 })
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   log(`Frontend serving ${distPath} on port ${PORT}`)
 })
+export { server }
 
 // Proxy-friendly socket timeouts: Node's default 5s keepAliveTimeout closes
 // idle keep-alive sockets the platform proxy still reuses, surfacing as

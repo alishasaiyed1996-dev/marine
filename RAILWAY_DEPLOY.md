@@ -4,7 +4,7 @@ Two services in one Railway project:
 
 ```
 alka-traders/                     # Railway project
-├── web   (frontend)              # Serves the Vite-built SPA
+├── marine (frontend)             # Express server.js + Vite-built storefront
 └── api   (backend)              # Express API + Prisma + PostgreSQL
 ```
 
@@ -16,7 +16,7 @@ alka-traders/                     # Railway project
 2. In Railway, click **New Project → Deploy from GitHub repo** and select this repo.
 3. Railway will auto-detect services. If it doesn't, create two services manually:
 
-### Service 1 — `web` (frontend)
+### Service 1 — `marine` (frontend)
 
 - **Source directory:** `/` (repository root)
 - **Build command:** `npm run build`
@@ -29,16 +29,15 @@ The root `package.json` `build` script runs the full pipeline:
 npm run build:backend && node ./node_modules/typescript/bin/tsc -b && \
 node ./node_modules/vite/bin/vite.js build && \
 node scripts/prerender.mjs --dist frontend/dist && \
-node scripts/generate-sitemap.mjs --dist frontend/dist && \
 node scripts/copy-frontend.mjs
 ```
-That means **one build command at the root builds both backend and frontend**. The `web` service only needs the frontend dist, but building from root is fine — it's the same command you used on Hostinger.
+That means **one build command at the root builds both backend and frontend**. The `marine` service uses the built frontend and the Express routes in `server.js`; `/sitemap.xml` is a runtime API proxy, not a build-generated static file.
 
-If you want the `web` service to build only the frontend (faster, fewer deps), set its build command to:
+If you want the `marine` service to build only the frontend (faster, fewer deps), set its build command to:
 ```bash
 npm run build:frontend
 ```
-and its start command to `node server.js` — same as now. Either works.
+and its start command to `npm start` (runs `node server.js`).
 
 ### Service 2 — `api` (backend)
 
@@ -85,7 +84,7 @@ These are **required** for the server to start in production. `env.ts` refuses t
 | `JWT_SECRET` | Random 64+ char string — **do not reuse the dev fallback** |
 | `CSRF_SECRET` | Random 64+ char string — falls back to `JWT_SECRET` if unset |
 | `FRONTEND_URL` | Your frontend URL (e.g. `https://alkatraders.co` or the `web` service's `*.railway.app` URL) |
-| `CORS_ORIGIN` | Comma-separated origins allowed to call the API with credentials. Include your frontend domain. Example: `https://alkatraders.co,https://www.alkatraders.co` |
+| `CORS_ORIGIN` | Comma-separated origins allowed to call the API with credentials. Include your frontend domain. Example: `https://alkatraders.co` (non-www apex — `www` is not attached to Railway) |
 | `ADMIN_URL` | Admin panel base URL (used in some email links). Example: `https://alkatraders.co/admin` |
 
 ### `api` service — email
@@ -233,18 +232,53 @@ No persistent volume is required.
 
 ## 7. Custom domains
 
-If you're keeping your Hostinger domains (`alkatraders.co`, `www.alkatraders.co`, `api.alkatraders.co`):
+The Hobby plan allows **1 custom domain per service** (Trial: 1 per workspace,
+Pro: 20 per service). This project uses exactly two custom domains:
 
-1. In Railway, go to each service → **Domains** → **Add Custom Domain**.
-2. Add `alkatraders.co` and `www.alkatraders.co` to the `web` service.
-3. Add `api.alkatraders.co` to the `api` service.
-4. In Hostinger DNS, point the domains to Railway. Railway gives you the exact records to add (usually a CNAME for `www` and an A / CNAME for the apex, or a proxy setup).
+| Domain | Service | Railway host target |
+|---|---|---|
+| `alkatraders.co` (canonical, non-www) | `marine` | `l7nm3ssc.up.railway.app` |
+| `api.alkatraders.co` | `api` | `c0qivzai.up.railway.app` |
 
-Until DNS is updated, use the `*.railway.app` URLs:
-- Frontend: `https://web-xxx.railway.app`
-- Backend: `https://api-xxx.railway.app`
+`www.alkatraders.co` is **not** attached to Railway (no slot left on Hobby) —
+do not point its DNS at Railway, or it will 404 / fail TLS.
 
-Set `VITE_API_URL` on the `web` service to the `api` service's URL (the `*.railway.app` one until custom domain is live).
+### Hostinger DNS records
+
+In hPanel → **Domains** → `alkatraders.co` → **DNS / Nameservers**:
+
+| Type | Name | Value |
+|---|---|---|
+| CNAME (stored as **CNAME ALIAS**) | `@` | `l7nm3ssc.up.railway.app` |
+| TXT | `_railway-verify` | `railway-verify=76ee0d19d070183cc435ffefa4ea1ae00a537cb7ae476e404e52d5167b2bedc0` |
+| CNAME | `api` | `c0qivzai.up.railway.app` |
+| TXT | `_railway-verify.api` | `railway-verify=d7cbf584c4883b1c4da9bbfd5cafe20b2b59589dd7680bc3596b421730f8c1f2` |
+
+Keep the existing MX (`mx1/mx2.hostinger.com`) and SPF TXT records — email runs on
+Hostinger. Delete the old root A/AAAA records (Hostinger parking IPs) before adding
+the `@` ALIAS.
+
+Notes:
+- Railway requires **both** the CNAME/host record and the TXT verification record.
+  Without the TXT record the domain resolves but returns `404`.
+- Hostinger does not allow a plain CNAME at `@`; adding record type **CNAME** with
+  name `@` saves it as an **ALIAS** and flattens it automatically — this is what
+  Railway requires for root domains.
+- If Hostinger CDN / Website Builder is attached to the domain it creates its own
+  ALIAS on `@` — detach it first.
+- Certificates are issued automatically within ~1 hour of DNS verification.
+- To keep `www` usable, use hPanel → Domains → **DNS / Nameservers → Redirects**
+  to 301 `https://www.alkatraders.co` → `https://alkatraders.co` (Hostinger
+  redirects are HTTP-only unless the domain has hosting; otherwise just remove
+  the old `www` CNAME record).
+
+Until DNS propagates, use the `*.railway.app` URLs:
+- Frontend: `https://marine-production-5b1c.up.railway.app`
+- Backend: `https://api-production-d183.up.railway.app`
+
+`VITE_API_URL` on the `marine` service is set to `https://api.alkatraders.co`
+(baked into the bundle at build time) — redeploy `marine` after DNS is fixed if
+the API URL ever changes.
 
 ---
 
@@ -258,9 +292,9 @@ Set `VITE_API_URL` on the `web` service to the `api` service's URL (the `*.railw
    - Run `npx prisma migrate deploy` + `npx tsx prisma/seed.ts` against the new DB (or restore from Neon with pg_dump/pg_restore).
    - Redeploy `api` so the generated Prisma client is up to date.
 5. **Verify:**
-   - `https://web-xxx.railway.app/health/live` → `{"status":"ok"}`
-   - `https://api-xxx.railway.app/api/health` → `{"status":"ok","database":"connected"}`
-   - `https://api-xxx.railway.app/api/v1/info` → API version info
+   - `https://marine-production-5b1c.up.railway.app/health/live` → `{"status":"ok"}`
+   - `https://api-production-d183.up.railway.app/api/health` → `{"status":"ok","database":"connected"}`
+   - `https://api-production-d183.up.railway.app/api/v1/info` → API version info
    - Log in to `/admin` with your admin credentials.
 6. **Point custom domains** at Railway when ready (update `VITE_API_URL`, `FRONTEND_URL`, `CORS_ORIGIN` to the custom domains).
 

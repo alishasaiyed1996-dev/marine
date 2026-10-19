@@ -57,7 +57,7 @@ export default function AdminProductForm() {
           </button>
           {hook.isEditing && hook.form.status === 'published' && (
             <a
-              href={`/product/${hook.id}`}
+              href={`/en/product/${encodeURIComponent(hook.publicSlug)}/`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] no-underline hover:border-[var(--accent-blue)] transition-colors"
@@ -89,6 +89,13 @@ export default function AdminProductForm() {
           </button>
         </div>
       </div>
+
+      {hook.publishVerification && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${hook.publishVerification.ok ? 'border-[var(--success)]/30 bg-[var(--success)]/5 text-[var(--success)]' : 'border-[var(--danger)]/30 bg-[var(--danger)]/5 text-[var(--danger)]'}`} role="status">
+          <p className="font-bold">{hook.publishVerification.message}</p>
+          <a className="mt-1 inline-block underline" href={hook.publishVerification.url} target="_blank" rel="noreferrer">Open public page</a>
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-5">
         {/* Tab Navigation */}

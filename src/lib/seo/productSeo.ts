@@ -15,6 +15,9 @@ import { parseDescription } from '../description'
 
 export interface ProductSeoInput {
   id: string
+  seoTitle?: string | null
+  seoDescription?: string | null
+  slug?: string
   name: string
   sku: string
   brand: string
@@ -223,11 +226,13 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
     impaCode: input.impaCode,
   })
   const productType = extractProductType(input.name, input.category)
-  const title = buildProductTitle(input, identity, productType)
-  const metaDescription = buildMetaDescription(input, identity, productType)
+  const generatedTitle = buildProductTitle(input, identity, productType)
+  const title = input.seoTitle?.trim() || generatedTitle
+  const metaDescription = input.seoDescription?.trim() || buildMetaDescription(input, identity, productType)
   const h1 = buildH1(input, identity, productType)
 
   const effectivePrice = input.onSale && input.salePrice ? input.salePrice : input.price
+  const hasRealPrice = Number.isFinite(effectivePrice) && effectivePrice > 0
   const mainImage = input.images?.[0]?.url
   const ogImageAlt = `${h1}${identity.size ? ` — ${identity.size}` : ''}`
 
@@ -271,16 +276,16 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
           ],
         }
       : {}),
-    offers: {
+    ...(hasRealPrice ? { offers: {
       '@type': 'Offer',
-      // Canonical product URL — id-based route used by the SPA.
-      url: `https://alkatraders.co/en/product/${input.id}`,
+      // Canonical URL uses the stable public slug (UUID remains a redirect alias).
+      url: `https://alkatraders.co/en/product/${input.slug || input.id}/`,
       priceCurrency: 'USD',
       price: effectivePrice.toFixed(2),
       availability: input.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
       itemCondition: mapCondition(input.condition),
       seller: { '@type': 'Organization', name: 'Alka Traders' },
-    },
+    } } : {}),
   }
   jsonLd.push(product)
 

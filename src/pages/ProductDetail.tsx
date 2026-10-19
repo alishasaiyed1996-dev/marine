@@ -25,10 +25,13 @@ import { ProductImageGallery } from '../components/product/ProductImageGallery'
 import { OfferModal } from '../components/product/OfferModal'
 import { Skeleton } from '../components/ui/Skeleton'
 import { RelatedProducts } from '../components/product/RelatedProducts'
+import { useLocale } from '../lib/locale'
 
 export default function ProductDetail() {
   const { t } = useTranslation()
-  const { id } = useParams()
+  const { key } = useParams()
+  const id = key
+  const locale = useLocale()
   const navigate = useNavigate()
   const { addToCart } = useStore()
   const { whatsappNumber } = useStoreSettings()
@@ -149,12 +152,15 @@ export default function ProductDetail() {
   // brand is asserted only when a real manufacturer/brand is known.
   const productSeo = buildProductSeo({
     id: product.id,
+    slug: product.slug,
     name: product.name,
     sku: product.sku,
     brand: product.brand,
     category: product.category,
     condition: product.condition,
     description: product.description,
+    seoTitle: product.seoTitle,
+    seoDescription: product.seoDescription,
     price: product.price,
     onSale: product.onSale,
     salePrice: product.salePrice,
@@ -186,7 +192,7 @@ export default function ProductDetail() {
       <SEO
         title={productSeo.title}
         description={productSeo.metaDescription}
-        canonical={`/product/${id}`}
+        canonical={`/${locale}/product/${product.slug || id}/`}
         ogImage={productSeo.ogImage}
         ogType="product"
         productPrice={productSeo.productPrice}

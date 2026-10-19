@@ -23,6 +23,7 @@ const FILTER_PARAMS = ['search', 'category', 'brand', 'industry', 'priceMin', 'p
 export default function Products() {
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
+  const language = useStore((s) => s.language)
   const {
     searchQuery, setSearchQuery,
     selectedCategories, setSelectedCategories,
@@ -279,12 +280,12 @@ export default function Products() {
   const hasActiveFilters = searchQuery || selectedCategories.length > 0 || selectedBrands.length > 0 || showOnSale || urgencyFilter === 'emergency'
   const seoQueryLabel = searchQuery || selectedCategories[0]?.replace(/-/g, ' ') || selectedBrands[0] || ''
   const canonicalQuery = searchParams.get('category')
-    ? `/products?category=${encodeURIComponent(searchParams.get('category') || '')}`
+    ? `/${language}/products?category=${encodeURIComponent(searchParams.get('category') || '')}`
     : searchParams.get('brand')
-      ? `/products?brand=${encodeURIComponent(searchParams.get('brand') || '')}`
+      ? `/${language}/products?brand=${encodeURIComponent(searchParams.get('brand') || '')}`
       : searchParams.get('search')
-        ? `/products?search=${encodeURIComponent(searchParams.get('search') || '')}`
-        : '/products'
+        ? `/${language}/products?search=${encodeURIComponent(searchParams.get('search') || '')}`
+        : `/${language}/products`
   // B18 faceted-navigation rule: a single facet (category OR brand OR search)
   // keeps its own canonical (above); COMBINATIONS and paginated views are
   // thin near-duplicates — noindex,follow so crawlers keep the canonical set
@@ -316,7 +317,7 @@ export default function Products() {
       itemListElement: products.slice(0, 24).map((product, index) => ({
         '@type': 'ListItem',
         position: index + 1,
-        url: `https://alkatraders.co/product/${product.id}`,
+        url: `https://alkatraders.co/en/product/${product.slug || product.id}/`,
         name: product.name,
       })),
     },

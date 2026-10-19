@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { brandImages } from '../data/brandImages'
 import { brands as staticBrands } from '../data/brands'
 import { useBrands } from '../hooks/useApiQuery'
@@ -14,7 +14,6 @@ const filters = ['All', 'Marine', 'Industrial', 'Automation', 'Pneumatic'] as co
 export default function Brands() {
   const { t } = useTranslation()
   const [activeFilter, setActiveFilter] = useState<string>('All')
-  const navigate = useNavigate()
 
   // React Query caches brands — no manual loading/state management needed
   const { data: brandsData } = useBrands()
@@ -147,18 +146,10 @@ export default function Brands() {
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
             {filtered.map((brand) => (
-              <div
+              <Link
                 key={brand.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`View products from ${brand.name}`}
-                onClick={() => navigate(`/products?brand=${brand.slug}`)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    navigate(`/products?brand=${brand.slug}`)
-                  }
-                }}
+                to={`/en/brands/${brand.slug}/`}
+                aria-label={`View ${brand.name} marine and industrial spare parts`}
                 className="bg-[var(--secondary-bg)] border border-[var(--border)] border-l-[3px] border-l-transparent p-6 cursor-pointer transition-all duration-300 hover:border-l-[var(--accent-primary)] hover:-translate-y-1 focus-visible:border-l-[var(--accent-primary)]"
               >
                 <h3 className="heading-xl mb-2">{brand.name}</h3>
@@ -170,7 +161,7 @@ export default function Brands() {
                   ))}
                 </div>
                 <span className="font-mono text-xs text-[var(--accent-gold)]">{t('brands.productCount', { count: brand.productCount })}</span>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

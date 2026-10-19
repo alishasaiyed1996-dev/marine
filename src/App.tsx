@@ -15,9 +15,10 @@ const CartDrawer = lazy(() => import('./components/cart/CartDrawer').then(m => (
 
 const Home = lazy(() => import('./pages/Home'))
 const Products = lazy(() => import('./pages/Products'))
-const Shop = lazy(() => import('./pages/Shop'))
 const Industries = lazy(() => import('./pages/Industries'))
 const Brands = lazy(() => import('./pages/Brands'))
+const BrandHub = lazy(() => import('./pages/BrandHub'))
+const CategoryHub = lazy(() => import('./pages/CategoryHub'))
 const About = lazy(() => import('./pages/About'))
 const RFQ = lazy(() => import('./pages/RFQ'))
 const Contact = lazy(() => import('./pages/Contact'))
@@ -124,10 +125,12 @@ function LocaleLayout() {
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route index element={<Home />} />
-              <Route path="shop" element={<Shop />} />
+              <Route path="shop" element={<Navigate to="/products" replace />} />
               <Route path="products" element={<Products />} />
               <Route path="industries" element={<Industries />} />
               <Route path="brands" element={<Brands />} />
+              <Route path="brands/:slug" element={<BrandHub />} />
+              <Route path="categories/:slug" element={<CategoryHub />} />
               <Route path="about" element={<About />} />
               <Route path="rfq" element={<RFQ />} />
               <Route path="contact" element={<Contact />} />
@@ -143,7 +146,7 @@ function LocaleLayout() {
               <Route path="account/offers" element={<MyOffers />} />
               <Route path="account/offers/:id/pay" element={<OfferCheckout />} />
               <Route path="account/profile" element={<ProfileEdit />} />
-              <Route path="product/:id" element={<ProductDetail />} />
+              <Route path="product/:key" element={<ProductDetail />} />
               <Route path="privacy-policy" element={<PrivacyPolicy />} />
               <Route path="terms-of-service" element={<TermsOfService />} />
               <Route path="refund-policy" element={<RefundPolicy />} />
@@ -156,14 +159,9 @@ function LocaleLayout() {
   )
 }
 
-/** Redirects / to the detected browser language or English. */
+/** Root fallback for client-side navigation; production server redirects / to /en. */
 function RootRedirect() {
-  const detected: Language = navigator.language?.startsWith('ar')
-    ? 'ar'
-    : navigator.language?.startsWith('es')
-      ? 'es'
-      : 'en'
-  return <Navigate to={`/${detected}`} replace />
+  return <Navigate to="/en" replace />
 }
 
 function AppContent() {
@@ -261,9 +259,7 @@ export default function App() {
   return (
     <ToastProvider>
     <PayPalProvider>
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
+    <BrowserRouter><AppContent /></BrowserRouter>
     </PayPalProvider>
     <CookieConsent />
     <WhatsAppFloat />

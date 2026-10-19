@@ -146,6 +146,7 @@ interface AppState {
 }
 
 function loadState<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
   try {
     const raw = localStorage.getItem(`alka-${key}`)
     return raw ? JSON.parse(raw) : fallback
@@ -157,6 +158,7 @@ function loadState<T>(key: string, fallback: T): T {
 }
 
 function saveState(key: string, value: unknown) {
+  if (typeof window === 'undefined') return
   try {
     localStorage.setItem(`alka-${key}`, JSON.stringify(value))
   } catch { /* quota exceeded, expected behavior for full localStorage */ }

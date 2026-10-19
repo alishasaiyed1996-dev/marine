@@ -7,13 +7,13 @@ const router = Router()
 router.get('/', async (_req, res) => {
   try {
     res.setHeader('Content-Type', 'application/xml')
-    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
 
     const xml = await sitemapService.generateSitemap()
     res.send(xml)
   } catch (err) {
     console.error('Sitemap generation error:', err)
-    res.send(sitemapService.getFallbackSitemap())
+    res.status(503).send(sitemapService.getFallbackSitemap())
   }
 })
 

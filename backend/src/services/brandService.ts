@@ -28,7 +28,13 @@ export async function listStorefrontBrands() {
 export async function getBrandBySlug(slug: string) {
   const brand = await prisma.brand.findFirst({
     where: { slug, isVisible: true },
-    include: { _count: { select: { products: { where: { status: 'published' } } } } },
+    include: {
+      _count: { select: { products: { where: { status: 'published' } } } },
+      products: {
+        where: { status: 'published' }, orderBy: { contentUpdatedAt: 'desc' }, take: 24,
+        include: { brand: true, category: true, images: { where: { isMain: true }, take: 1 }, specs: { where: { isPublic: true }, orderBy: { sortOrder: 'asc' } } },
+      },
+    },
   })
   if (!brand) throw Object.assign(new Error('Brand not found'), { status: 404 })
   return { brand }

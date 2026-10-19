@@ -25,7 +25,7 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
               key={item.id}
               className="bg-[var(--secondary-bg)] border border-[var(--border)] overflow-hidden transition-all duration-300 hover:border-l-[var(--accent-primary)] hover:-translate-y-1 rounded-xl group flex flex-col justify-between"
             >
-              <Link to={`/product/${item.id}`} className="overflow-hidden bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-center relative block">
+              <Link to={`/product/${item.slug || item.id}`} className="overflow-hidden bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-center relative block">
                 {/* object-contain: related photos keep their full shape instead
                     of being cropped by object-cover */}
                 <div className="aspect-square w-full flex items-center justify-center p-3">
@@ -55,7 +55,7 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
               <div className="p-4 flex-1 flex flex-col justify-between">
                 <div>
                   <span className="font-mono text-xs text-[var(--text-muted)] uppercase tracking-wider block mb-1">{item.brand}</span>
-                  <Link to={`/product/${item.id}`} className="text-xs font-semibold leading-tight text-[var(--text-primary)] hover:text-[var(--accent-primary)] block mb-2 line-clamp-2">
+                  <Link to={`/product/${item.slug || item.id}`} className="text-xs font-semibold leading-tight text-[var(--text-primary)] hover:text-[var(--accent-primary)] block mb-2 line-clamp-2">
                     {item.name}
                   </Link>
                 </div>
@@ -70,7 +70,7 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
                       <span className="font-display font-bold text-sm text-[var(--accent-primary)]">${itemPrice.toFixed(2)}</span>
                     )}
                   </div>
-                  <Link to={`/product/${item.id}`} className="text-xs font-semibold text-[var(--accent-primary)] hover:underline">
+                  <Link to={`/product/${item.slug || item.id}`} className="text-xs font-semibold text-[var(--accent-primary)] hover:underline">
                     {t('product.viewInfo')}
                   </Link>
                 </div>

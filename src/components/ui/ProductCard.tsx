@@ -83,7 +83,7 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
 
   return (
     <article ref={cardRef} className="group card relative flex h-full flex-col overflow-hidden" onMouseEnter={prefetchDetail}>
-      <Link to={'/product/' + product.id} className="relative block overflow-hidden bg-[var(--surface-raised)] no-underline">
+      <Link to={'/product/' + (product.slug || product.id)} className="relative block overflow-hidden bg-[var(--surface-raised)] no-underline">
         {/* object-contain on a padded stage: product photos keep their full
             shape (nameplates, IMPA codes stay readable) instead of being
             cropped by object-cover. transformWidth caps uploads at 600px. */}
@@ -149,7 +149,7 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
         </div>
 
         <h3 className="line-clamp-2 min-h-[48px] font-display text-[1.05rem] font-bold leading-[1.3] tracking-tight text-[var(--text-primary)]">
-          <Link to={'/product/' + product.id} className="no-underline transition-colors hover:text-[var(--accent-primary)]">
+          <Link to={'/product/' + (product.slug || product.id)} className="no-underline transition-colors hover:text-[var(--accent-primary)]">
             {product.name}
           </Link>
         </h3>
@@ -198,7 +198,7 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
               )}
             </div>
             <Link
-              to={'/product/' + product.id}
+              to={'/product/' + (product.slug || product.id)}
               className="rounded-full border border-[var(--border)] px-3 py-2 text-[11px] font-extrabold text-[var(--text-secondary)] no-underline transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
             >
               Details

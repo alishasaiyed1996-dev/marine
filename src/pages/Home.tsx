@@ -64,7 +64,7 @@ export default function Home() {
       <SEO
         title="Marine Spare Parts Online | Ship Spares, Engine Parts & Industrial Equipment"
         description="Shop marine spare parts, ship spares, marine engine parts, hydraulic pumps, electrical automation spares, navigation equipment, safety gear, rigging, and surplus industrial equipment from Bhavnagar and Alang, India."
-        canonical="/"
+        canonical="/en"
         keywords="marine spare parts, ship spares, ship spare parts supplier, marine spare parts online, marine engine spare parts, ship machinery parts, marine hydraulic pump, marine electrical equipment, navigation equipment spares, Alang ship spare parts, Bhavnagar marine supplier, surplus industrial equipment, ABB spares, Siemens PLC, Parker hydraulic, Bosch Rexroth pump"
         jsonLd={[
           {
@@ -74,7 +74,7 @@ export default function Home() {
             url: 'https://alkatraders.co',
             potentialAction: {
               '@type': 'SearchAction',
-              target: 'https://alkatraders.co/products?search={search_term_string}',
+            target: 'https://alkatraders.co/en/products?search={search_term_string}',
               'query-input': 'required name=search_term_string',
             },
           },
@@ -83,7 +83,7 @@ export default function Home() {
             '@type': 'CollectionPage',
             name: 'Marine Spare Parts Online Store',
             description: 'Ecommerce storefront for ship spares, marine equipment, engine spare parts, hydraulic systems, electrical automation, navigation spares, safety gear, rigging, and industrial surplus parts.',
-            url: 'https://alkatraders.co/',
+            url: 'https://alkatraders.co/en',
             about: highIntentSearches,
           },
           {

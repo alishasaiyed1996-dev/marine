@@ -120,8 +120,8 @@ async function buildFeed(): Promise<string> {
     lines.push(`      <g:id>${escapeXml(p.id)}</g:id>`)
     lines.push(`      <g:title>${escapeXml([brand, mpn || p.name.slice(0, 40), productTypeOf(p.name, p.category?.slug || '')].filter(Boolean).join(' ').slice(0, 150))}</g:title>`)
     lines.push(`      <g:description>${escapeXml(feedDescription(p.name, p.description, p.shortDescription))}</g:description>`)
-    lines.push(`      <g:link>${BASE_URL}/en/product/${escapeXml(p.id)}</g:link>`)
-    lines.push(`      <g:canonical_link>${BASE_URL}/en/product/${escapeXml(p.id)}</g:canonical_link>`)
+    lines.push(`      <g:link>${BASE_URL}/en/product/${escapeXml(p.slug)}/</g:link>`)
+    lines.push(`      <g:canonical_link>${BASE_URL}/en/product/${escapeXml(p.slug)}/</g:canonical_link>`)
     if (p.images[0]?.url) {
       lines.push(`      <g:image_link>${escapeXml(p.images[0].url)}</g:image_link>`)
       for (const img of p.images.slice(1)) {

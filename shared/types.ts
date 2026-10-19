@@ -63,6 +63,7 @@ export interface Product {
   sortPriority: number
   seoTitle?: string | null
   seoDescription?: string | null
+  contentUpdatedAt?: string | null
   ogImageUrl?: string | null
   keyFeatures?: string[]
   compatibilityNotes?: string

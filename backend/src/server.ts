@@ -31,7 +31,6 @@ const ENV_CORS_ORIGINS = (process.env.CORS_ORIGIN || '')
 
 const PRODUCTION_DEFAULT_ORIGINS = [
   'https://alkatraders.co',
-  'https://www.alkatraders.co',
 ]
 
 const DEVELOPMENT_CORS_ORIGINS = [

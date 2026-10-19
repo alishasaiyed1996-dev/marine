@@ -25,6 +25,8 @@ interface Category {
   name: string
   slug: string
   description: string
+  seoTitle: string
+  seoDescription: string
   parentId: string | null
   sortOrder: number
   isVisible: boolean
@@ -97,11 +99,13 @@ export default function AdminCategories() {
         name: c.name,
         slug: c.slug,
         description: c.description || '',
+        seoTitle: c.seoTitle || '',
+        seoDescription: c.seoDescription || '',
         parentId: c.parentId || null,
         sortOrder: c.sortOrder ?? 0,
         isVisible: c.isVisible ?? true,
         productCount: c._count?.products ?? c.productCount ?? 0,
-      }))
+      })) as Category[]
       setCategories(cats)
       // Auto-expand top-level
       setExpandedIds(new Set(cats.filter((c: Category) => !c.parentId).map((c: Category) => c.id)))
@@ -145,11 +149,11 @@ export default function AdminCategories() {
   const handleSave = async (cat: Partial<Category>) => {
     try {
       if (editingCategory) {
-        await admin.categories.update(editingCategory, { name: cat.name, slug: cat.slug, description: cat.description, parentId: cat.parentId, sortOrder: cat.sortOrder })
+        await admin.categories.update(editingCategory, { name: cat.name, slug: cat.slug, description: cat.description, seoTitle: cat.seoTitle, seoDescription: cat.seoDescription, parentId: cat.parentId, sortOrder: cat.sortOrder })
         toast('Category updated', 'success')
         setEditingCategory(null)
       } else {
-        await admin.categories.create({ name: cat.name, slug: cat.slug, description: cat.description, parentId: newParentId })
+        await admin.categories.create({ name: cat.name, slug: cat.slug, description: cat.description, seoTitle: cat.seoTitle, seoDescription: cat.seoDescription, parentId: newParentId })
         toast('Category created', 'success')
         setNewCategoryOpen(false)
         setNewParentId(null)
@@ -348,12 +352,20 @@ export default function AdminCategories() {
               </div>
               <div className="sm:col-span-2">
                 <label className={labelClass}>Description</label>
-                <input value={node.description} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, description: e.target.value } : c))} className={inputClass} />
+                <textarea value={node.description} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, description: e.target.value } : c))} rows={3} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>SEO Title (max 70)</label>
+                <input value={node.seoTitle} maxLength={70} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, seoTitle: e.target.value } : c))} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>SEO Description (max 160)</label>
+                <textarea value={node.seoDescription} maxLength={160} rows={2} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, seoDescription: e.target.value } : c))} className={inputClass} />
               </div>
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => handleSave({ id: node.id, name: node.name, slug: node.slug, description: node.description })}
+                onClick={() => handleSave({ id: node.id, name: node.name, slug: node.slug, description: node.description, seoTitle: node.seoTitle, seoDescription: node.seoDescription })}
                 className="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-gold)] px-3 py-1.5 text-[0.625rem] font-bold text-[var(--btn-blue-text)]"
               >
                 <CheckCircle size={10} /> Save
@@ -436,6 +448,8 @@ function NewCategoryForm({ parentId, categories, onAdd, onCancel }: { parentId: 
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
+  const [seoTitle, setSeoTitle] = useState('')
+  const [seoDescription, setSeoDescription] = useState('')
 
   const parentName = parentId ? categories.find((c) => c.id === parentId)?.name : null
 
@@ -460,12 +474,20 @@ function NewCategoryForm({ parentId, categories, onAdd, onCancel }: { parentId: 
         </div>
         <div className="sm:col-span-2">
           <label className={labelClass}>Description</label>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this category" className={inputClass} />
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Write original category copy for shoppers" className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>SEO Title (max 70)</label>
+          <input value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} maxLength={70} className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>SEO Description (max 160)</label>
+          <textarea value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} maxLength={160} rows={2} className={inputClass} />
         </div>
       </div>
       <div className="flex gap-2">
         <button
-          onClick={() => onAdd({ name: name || 'New Category', slug, description })}
+          onClick={() => onAdd({ name: name || 'New Category', slug, description, seoTitle, seoDescription })}
           disabled={!name.trim()}
           className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-gold)] px-4 py-2.5 text-xs font-bold text-[var(--btn-blue-text)] hover:shadow-[0_4px_12px_rgba(232,170,36,0.3)] transition-all disabled:opacity-40"
         >

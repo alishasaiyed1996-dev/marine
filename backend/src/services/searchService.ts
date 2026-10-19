@@ -4,6 +4,7 @@ export type SearchResultType = 'product' | 'category' | 'brand'
 
 export interface SearchResult {
   id: string
+  slug?: string
   type: SearchResultType
   title: string
   description: string
@@ -54,10 +55,11 @@ export async function fullTextSearch(query: string): Promise<{
   const results: SearchResult[] = [
     ...products.map(p => ({
       id: p.id,
+      slug: p.slug,
       type: 'product' as const,
       title: p.name,
       description: p.description?.slice(0, 120) || '',
-      path: `/product/${p.id}`,
+      path: `/product/${p.slug}`,
       price: Number(p.salePrice && Number(p.salePrice) < Number(p.regularPrice) ? p.salePrice : p.regularPrice),
       imageUrl: p.images[0]?.url,
       brand: p.brand?.name,

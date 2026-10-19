@@ -35,6 +35,8 @@ interface ApiProduct {
   customLabel?: string | null
   customLabelColor?: string | null
   sortPriority: number
+  seoTitle?: string | null
+  seoDescription?: string | null
   images: { id: string; url: string; altText?: string | null; label?: string | null; isMain: boolean; sortOrder: number }[]
   specs: { name: string; value: string }[]
   industries: { industry: { id: string; name: string; slug: string } }[]
@@ -78,6 +80,9 @@ export function apiProductToFrontend(api: ApiProduct): Product {
 
   return {
     id: api.id,
+    slug: api.slug,
+    seoTitle: api.seoTitle,
+    seoDescription: api.seoDescription,
     filename,
     name: api.name,
     brand: api.brand?.name || 'Unknown',
@@ -118,5 +123,5 @@ export function apiProductToFrontend(api: ApiProduct): Product {
 }
 
 export function apiProductsToFrontend(apiProducts: ApiProduct[]): Product[] {
-  return apiProducts.map(apiProductToFrontend)
+  return apiProducts.map((product) => apiProductToFrontend(product as Parameters<typeof apiProductToFrontend>[0]))
 }

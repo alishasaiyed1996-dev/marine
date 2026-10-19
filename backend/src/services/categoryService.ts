@@ -48,6 +48,10 @@ export async function getCategoryBySlug(slug: string) {
         include: { _count: { select: { products: { where: { status: 'published' } } } } },
       },
       _count: { select: { products: { where: { status: 'published' } } } },
+      products: {
+        where: { status: 'published' }, orderBy: { contentUpdatedAt: 'desc' }, take: 24,
+        include: { brand: true, category: true, images: { where: { isMain: true }, take: 1 }, specs: { where: { isPublic: true }, orderBy: { sortOrder: 'asc' } } },
+      },
     },
   })
   if (!category) throw Object.assign(new Error('Category not found'), { status: 404 })

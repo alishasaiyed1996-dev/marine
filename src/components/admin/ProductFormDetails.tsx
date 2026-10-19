@@ -20,6 +20,11 @@ export function ProductFormDetails({
     <div className="space-y-6">
       <h2 className="font-display text-lg font-bold text-[var(--text-primary)]">Product Details</h2>
 
+      <label className="flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3 text-sm text-[var(--text-secondary)]">
+        <input type="checkbox" checked={form.allowDuplicateDescription} onChange={(event) => updateField('allowDuplicateDescription', event.target.checked)} />
+        <span>Allow an exact duplicate description for a legitimate product variant. Use only when the model/size details distinguish this part.</span>
+      </label>
+
       {/* Key Features */}
       <div>
         <div className="flex items-center justify-between mb-3">

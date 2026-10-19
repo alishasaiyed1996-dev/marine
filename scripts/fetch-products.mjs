@@ -17,7 +17,9 @@ export async function fetchPublishedProducts({ maxPages = 50, pageSize = 100 } =
   while (page <= maxPages) {
     let res
     try {
-      res = await fetch(`${API}/api/v1/storefront/products?limit=${pageSize}&page=${page}&sort=name-asc`)
+      res = await fetch(`${API}/api/v1/storefront/products?limit=${pageSize}&page=${page}&sort=name-asc`, {
+        signal: AbortSignal.timeout(12000),
+      })
     } catch (err) {
       console.warn(`  ⚠️  Product API unreachable (${err.message}) — building without product pages.`)
       return products
@@ -37,6 +39,8 @@ export async function fetchPublishedProducts({ maxPages = 50, pageSize = 100 } =
         name: p.name || '',
         slug: p.slug || '',
         sku: p.sku || '',
+        seoTitle: p.seoTitle || '',
+        seoDescription: p.seoDescription || '',
         brand: p.brand?.name || 'Unknown',
         category: p.category?.slug || 'other-business',
         condition: p.condition || 'used',
@@ -54,6 +58,7 @@ export async function fetchPublishedProducts({ maxPages = 50, pageSize = 100 } =
         mpn: p.mpn || null,
         impaCode: p.impaCode || null,
         updatedAt: p.updatedAt || null,
+        contentUpdatedAt: p.contentUpdatedAt || p.updatedAt || null,
       })
     }
     const totalPages = data?.pagination?.totalPages ?? 1

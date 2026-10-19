@@ -33,6 +33,7 @@ interface ProductImage {
 
 export interface Product {
   id: string
+  slug?: string
   filename: string
   name: string
   brand: string
@@ -59,6 +60,8 @@ export interface Product {
   dateAdded?: string
   makeOffer?: boolean
   seoKeywords?: string[]
+  seoTitle?: string | null
+  seoDescription?: string | null
   // Structured, verified identity (admin-entered; NULL = unknown, never guessed).
   manufacturer?: string | null
   modelNumber?: string | null

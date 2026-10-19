@@ -4,9 +4,10 @@
 # Default: allow all crawlers
 User-agent: *
 Allow: /
-Disallow: /admin/
-Disallow: /checkout
+Disallow: /admin
 Disallow: /api/
+Disallow: /*/checkout
+Disallow: /*/account/
 
 # AI Crawlers - Explicitly allow for AI chatbot SEO
 User-agent: GPTBot
@@ -35,6 +36,3 @@ Allow: /
 
 # Sitemaps
 Sitemap: https://alkatraders.co/sitemap.xml
-
-# Crawl-delay for polite bots
-Crawl-delay: 1

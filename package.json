@@ -9,14 +9,13 @@
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
     "build:backend": "cd backend && npm install --include=dev && npx prisma generate && npx tsc",
-    "build": "npm run build:backend && node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build && node scripts/prerender.mjs --dist frontend/dist && node scripts/generate-sitemap.mjs --dist frontend/dist && node scripts/copy-frontend.mjs",
+    "build": "npm run build:backend && node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build && node scripts/prerender.mjs --dist frontend/dist && node scripts/copy-frontend.mjs",
     "build:frontend": "node ./node_modules/vite/bin/vite.js build",
     "start": "node server.js",
     "typecheck": "node ./node_modules/typescript/bin/tsc -b --noEmit",
     "lint": "node ./node_modules/eslint/bin/eslint.js .",
     "seo:audit": "node scripts/seo-audit.mjs",
     "seo:prerender": "node scripts/prerender.mjs --dist frontend/dist",
-    "seo:sitemap": "node scripts/generate-sitemap.mjs --dist frontend/dist",
     "preview": "node ./node_modules/vite/bin/vite.js preview",
     "test:e2e": "npx playwright test",
     "test:e2e:ui": "npx playwright test --ui"

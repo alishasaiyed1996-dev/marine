@@ -21,6 +21,7 @@ export interface ProductFormData {
   availability: string
   shortDescription: string
   description: string
+  allowDuplicateDescription: boolean
   images: { url: string; alt: string; label: string }[]
   regularPrice: string
   salePrice: string
@@ -82,6 +83,7 @@ function getEmptyForm(): ProductFormData {
     availability: 'in-stock',
     shortDescription: '',
     description: '',
+    allowDuplicateDescription: false,
     images: [{ url: '', alt: '', label: 'Main' }],
     regularPrice: '',
     salePrice: '',
@@ -132,6 +134,7 @@ function getFormFromProduct(product: ApiProduct): ProductFormData {
     availability: product.availability || 'in-stock',
     shortDescription: product.shortDescription || product.description?.split('—')[0]?.trim() || '',
     description: product.description || '',
+    allowDuplicateDescription: false,
     images: Array.isArray(product.images) && product.images.length > 0
       ? product.images.map((img) => ({
           url: img.url || '',
@@ -189,6 +192,8 @@ export function useProductForm() {
   const [loadingProduct, setLoadingProduct] = useState(isEditing)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [publicSlug, setPublicSlug] = useState('')
+  const [publishVerification, setPublishVerification] = useState<{ url: string; ok: boolean; message: string } | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [attempted, setAttempted] = useState(false)
@@ -237,6 +242,7 @@ export function useProductForm() {
         if (!cancelled && res.product) {
           suppressNextDirtyRef.current = true
           setForm(getFormFromProduct(res.product))
+          setPublicSlug(res.product.slug)
         }
       })
       .catch((err) => {
@@ -367,11 +373,20 @@ export function useProductForm() {
     // browsing and filters count by categoryId, so an uncategorized product
     // never appears under any category. Drafts/partials stay unrestricted.
     const statusForValidation = forStatus || form.status
-    if (statusForValidation === 'published' && !form.category) {
-      e.category = 'Select a category before publishing — uncategorized products cannot be found via category browsing'
+    if (statusForValidation === 'published') {
+      if (!form.name.trim()) e.name = 'Add a product name before publishing.'
+      if (!form.sku.trim()) e.sku = 'Add a unique SKU or part number before publishing.'
+      if (!form.category) e.category = 'Select a category before publishing.'
+      if (form.description.trim().length < 120) e.description = 'Write at least 120 characters of product-specific description.'
+      if (!form.seoTitle.trim() || form.seoTitle.trim().length > 70) e.seoTitle = 'Add an SEO title between 1 and 70 characters.'
+      if (form.seoDescription.trim().length < 80 || form.seoDescription.trim().length > 160) e.seoDescription = 'Add an SEO description between 80 and 160 characters.'
+      if (![form.modelNumber, form.mpn, form.impaCode].some((value) => value.trim())) e.mpn = 'Add a verified model number, manufacturer part number, or IMPA code.'
+      const images = form.images.filter((image) => image.url.trim())
+      if (!images.length) e.images = 'Add at least one product image before publishing.'
+      else if (!images[0].alt.trim()) e.images = 'Add descriptive alt text to the main product image.'
     }
     return e
-  }, [form.salePrice, form.regularPrice, form.saleStartsAt, form.saleEndsAt, form.makeOfferEnabled, form.minimumOfferPrice, form.category, form.status, form.gtin])
+  }, [form.salePrice, form.regularPrice, form.saleStartsAt, form.saleEndsAt, form.makeOfferEnabled, form.minimumOfferPrice, form.category, form.status, form.gtin, form.name, form.sku, form.description, form.seoTitle, form.seoDescription, form.modelNumber, form.mpn, form.impaCode, form.images])
 
   const isValid = Object.keys(validate()).length === 0
 
@@ -439,7 +454,8 @@ export function useProductForm() {
     setErrors(validationErrors)
     setAttempted(true)
     if (Object.keys(validationErrors).length > 0) {
-      setActiveTab('basics')
+      const firstField = Object.keys(validationErrors)[0]
+      setActiveTab(firstField === 'images' ? 'images' : firstField === 'description' ? 'details' : ['seoTitle', 'seoDescription', 'mpn'].includes(firstField) ? 'seo' : 'basics')
       return
     }
 
@@ -471,7 +487,7 @@ export function useProductForm() {
         }
       }
 
-      const payload: Partial<ApiProduct> = {
+      const payload: Partial<ApiProduct> & { allowDuplicateDescription?: boolean } = {
         name: form.name,
         sku: finalSku,
         brandId: brandId || null,
@@ -482,6 +498,7 @@ export function useProductForm() {
         availability: form.availability,
         shortDescription: form.shortDescription,
         description: form.description,
+        allowDuplicateDescription: form.allowDuplicateDescription,
         images: form.images.filter((img) => img.url).map((img, i) => ({
           url: img.url,
           altText: img.alt,
@@ -527,10 +544,40 @@ export function useProductForm() {
         customLabelColor: form.customLabel ? form.customLabelColor : null,
       }
 
-      if (isEditing && id) {
-        await admin.products.update(id, payload)
+      const response = isEditing && id
+        ? await admin.products.update(id, payload)
+        : await admin.products.create(payload)
+      const product = response.product
+      setPublicSlug(product.slug)
+
+      if (finalStatus === 'published') {
+        const liveUrl = `/en/product/${encodeURIComponent(product.slug || '')}/`
+        let verified = false
+        let reason = 'Public product page did not return a valid product document.'
+        for (let attempt = 0; attempt < 3 && !verified; attempt += 1) {
+          if (attempt) await new Promise((resolve) => setTimeout(resolve, 700))
+          try {
+            const pageResponse = await fetch(liveUrl, { cache: 'no-store', headers: { accept: 'text/html' } })
+            const html = await pageResponse.text()
+            const doc = new DOMParser().parseFromString(html, 'text/html')
+            const canonical = doc.querySelector('link[rel="canonical"]')?.getAttribute('href')
+            const schema = Array.from(doc.querySelectorAll('script[type="application/ld+json"]')).some((script) => {
+              try { return JSON.parse(script.textContent || '{}')?.['@type'] === 'Product' } catch { return false }
+            })
+            verified = pageResponse.ok && canonical === `${window.location.origin}${liveUrl}` && schema && doc.querySelector('h1')?.textContent?.trim() === product.name
+            if (!verified) reason = `HTTP ${pageResponse.status}; canonical, product heading, or Product structured data did not match.`
+          } catch {
+            reason = 'Could not fetch the public product URL from this browser.'
+          }
+        }
+        setPublishVerification({ url: liveUrl, ok: verified, message: verified ? 'Published and verified from the public page.' : `Saved as published, but public verification failed: ${reason}` })
+        if (!verified) {
+          setSaved(false)
+          toast(`Published, but live page check failed: ${reason}`, 'error')
+          return
+        }
       } else {
-        await admin.products.create(payload)
+        setPublishVerification(null)
       }
 
       // Reflect the intent in the form so the Visibility dropdown and the
@@ -539,7 +586,7 @@ export function useProductForm() {
 
       isDirtyRef.current = false
       setSaved(true)
-      setTimeout(() => { setSaved(false); navigate('/admin/products') }, 1500)
+      setTimeout(() => { setSaved(false); navigate('/admin/products') }, 1800)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to save product'
       if (err instanceof Error && 'details' in err && Array.isArray((err as { details?: unknown }).details)) {
@@ -547,7 +594,8 @@ export function useProductForm() {
         const fieldErrors: Record<string, string> = {}
         details.forEach((d) => { fieldErrors[d.field] = d.message })
         setErrors(fieldErrors)
-        setActiveTab('basics')
+        const firstField = details[0]?.field
+        setActiveTab(firstField === 'images' ? 'images' : firstField === 'description' ? 'details' : ['seoTitle', 'seoDescription', 'mpn'].includes(firstField) ? 'seo' : 'basics')
         toast('Please fix the highlighted field errors', 'error')
       } else {
         toast(msg, 'error')
@@ -558,11 +606,11 @@ export function useProductForm() {
   }, [form, isEditing, id, navigate, toast, validate, updateField])
 
   return {
-    id, isEditing, navigate,
+    id, isEditing, navigate, publicSlug,
     activeTab, setActiveTab,
     form, setForm,
     loadingProduct,
-    saving, saved,
+    saving, saved, publishVerification,
     errors, touched, attempted,
     brandList, categoryList, industryList,
     uploadingImage,

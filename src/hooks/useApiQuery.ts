@@ -88,7 +88,10 @@ export function useProductDetail(id?: string) {
       }
 
       try {
-        const res = await storefront.products.get(id)
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id)
+        const res = isUuid
+          ? await storefront.products.get(id)
+          : await api.get<{ product?: ApiProduct | null; related?: ApiProduct[] | null }>(`/storefront/products/by-slug/${encodeURIComponent(id)}`)
         if (res.product) {
           return toResult(res)
         }

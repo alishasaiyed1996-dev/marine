@@ -57,34 +57,10 @@ const LOCALE_DIR_MAP = { en: 'ltr', ar: 'rtl', es: 'ltr' }
  * Generate hreflang <link> tags for all three locales plus x-default.
  * @param {string} path - The FULL locale-prefixed path, e.g. "/en/products"
  */
-function hreflangTags(path) {
-  // Extract the path without locale prefix
-  const segments = path.split('/').filter(Boolean)
-  const locale = segments[0] // 'en', 'ar', or 'es'
-  const rest = segments.slice(1).join('/') // 'products', 'product/prod-001', etc.
-
-  const tags = []
-  const locales = ['en', 'ar', 'es']
-
-  for (const lang of locales) {
-    let href
-    if (lang === 'en' && !rest) {
-      href = BASE_URL
-    } else if (lang === 'en' && rest) {
-      href = `${BASE_URL}/en/${rest}`
-    } else if (!rest) {
-      href = `${BASE_URL}/${lang}`
-    } else {
-      href = `${BASE_URL}/${lang}/${rest}`
-    }
-    tags.push(`<link rel="alternate" hreflang="${lang}" href="${href}" />`)
-  }
-
-  // x-default → English
-  const defaultHref = !rest ? BASE_URL : `${BASE_URL}/en/${rest}`
-  tags.push(`<link rel="alternate" hreflang="x-default" href="${defaultHref}" />`)
-
-  return tags.join('\n  ')
+function hreflangTags() {
+  // Do not claim untranslated Arabic/Spanish equivalents. Add reciprocal
+  // locale alternates only when localized content is available.
+  return ''
 }
 
 // ─── JSON-LD Generators ─────────────────────────────────────────
@@ -154,9 +130,9 @@ function productJsonLd(p, locale) {
     ...(identity.impa
       ? { additionalProperty: [{ '@type': 'PropertyValue', name: 'IMPA Code', value: identity.impa.replace(/\s+/g, '') }] }
       : {}),
-    offers: {
+    ...(effectivePrice > 0 ? { offers: {
       '@type': 'Offer',
-      url: `${BASE_URL}/${locale}/product/${p.id}`,
+      url: `${BASE_URL}/${locale}/product/${p.slug || p.id}/`,
       priceCurrency: 'USD',
       price: effectivePrice.toFixed(2),
       availability: p.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
@@ -166,7 +142,7 @@ function productJsonLd(p, locale) {
           ? 'https://schema.org/RefurbishedCondition'
           : 'https://schema.org/UsedCondition',
       seller: { '@type': 'Organization', name: SITE_NAME },
-    },
+    } } : {}),
   }
   return product
 }
@@ -176,7 +152,7 @@ function productJsonLd(p, locale) {
 function seoHeadTags({ path, title, description, locale = 'en', extraJsonLd, breadcrumbs, ogType, ogImage, ogImageAlt }) {
   const fullTitle = title || `${SITE_NAME} — ${DEFAULT_DESC}`
   const fullDesc = description || DEFAULT_DESC
-  const url = path === `/${locale}` ? `${BASE_URL}/${locale}` : `${BASE_URL}${path}`
+  const url = `${BASE_URL}${path.replace(/\/+$/, '')}/`
 
   const jsonLdBlocks = [orgJsonLd()]
   if (breadcrumbs) jsonLdBlocks.push(breadcrumbJsonLd(breadcrumbs))
@@ -205,6 +181,7 @@ function seoHeadTags({ path, title, description, locale = 'en', extraJsonLd, bre
   const tags = [
     `<title>${esc(fullTitle)}</title>`,
     `<meta name="description" content="${esc(fullDesc)}" />`,
+    `<meta name="robots" content="${locale === 'en' ? 'index, follow, max-image-preview:large, max-snippet:-1' : 'noindex, follow'}" />`,
     `<link rel="canonical" href="${url}" />`,
     hreflangTags(path),
 
@@ -264,10 +241,19 @@ function injectIntoTemplate(template, path, routeData) {
     return `<html lang="${locale}" dir="${LOCALE_DIR_MAP[locale] || 'ltr'}">`
   })
 
+  // Remove all template SEO tags before injecting the page-specific set.
+  // The original template canonical/robots/meta keywords otherwise remain
+  // beside the page canonical and can point every prerendered page at home.
+  html = html.replace(/<link rel="canonical"[^>]*\/?>\s*/gi, '')
+  html = html.replace(/<link rel="alternate"[^>]*\/?>\s*/gi, '')
+  html = html.replace(/<meta name="robots"[^>]*\/?>\s*/gi, '')
+  html = html.replace(/<meta name="keywords"[^>]*\/?>\s*/gi, '')
+  // Preserve Google verification while removing conflicting template SEO.
   // Remove existing <title>
   html = html.replace(/<title>[^<]*<\/title>/, '')
   // Remove existing meta description
   html = html.replace(/<meta name="description"[^>]*\/?>/, '')
+  html = html.replace(/<meta name="robots"[^>]*\/?>\s*/gi, '')
   // Remove the template's hardcoded Open Graph / Twitter tags — seoHeadTags
   // emits page-specific ones. Keeping both produced duplicate og:image
   // (template logo AFTER the real product image) and og:type=website on
@@ -293,12 +279,11 @@ function injectIntoTemplate(template, path, routeData) {
 // ─── File Writer ────────────────────────────────────────────────
 
 function writeHtml(path, html) {
-  // English home serves BOTH the root URL (/) and the locale path (/en/), so
-  // deep links and static-only hosts (Hostinger serving frontend/dist without
-  // the Node fallback) can serve /en/ directly.
+  // English home is canonical at /en. Root is served as a server-side 301.
   if (path === '/' || path === '/en') {
-    const targets = [join(DIST, 'index.html')]
-    if (path === '/en') targets.push(join(DIST, 'en', 'index.html'))
+    const targets = path === '/en'
+      ? [join(DIST, 'en', 'index.html')]
+      : [join(DIST, 'index.html')]
     for (const filePath of targets) {
       const dir = dirname(filePath)
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -322,7 +307,7 @@ function writeHtml(path, html) {
 // ─── Main ───────────────────────────────────────────────────────
 
 async function main() {
-  console.log('\n🔍 Generating prerendered HTML shells (3 locales)...\n')
+  console.log('\n🔍 Generating prerendered HTML shells (English public pages)...\n')
 
   const indexPath = join(DIST, 'index.html')
   if (!existsSync(indexPath)) {
@@ -417,7 +402,11 @@ async function main() {
     const brand = p.brand && p.brand !== 'Unknown' ? p.brand : undefined
     const h1 = [brand, identity.model || identity.mpn, productType].filter(Boolean).join(' ') || p.name.slice(0, 80)
 
-    for (const locale of ['en', 'ar', 'es']) {
+    const canonicalSlug = p.slug || p.id
+
+    // Product descriptions and metadata currently have no verified per-locale
+    // translations. Publish only English product URLs until translations exist.
+    for (const locale of ['en']) {
       const parts = [brand ? `${brand} ${productType.toLowerCase()}` : `${productType.toLowerCase()} (${p.sku}) supplied by Alka Traders`]
       if (identity.impa) parts.push(`IMPA ${identity.impa.replace(/\s+/g, '')}`)
       if (identity.size) parts.push(identity.size)
@@ -425,11 +414,11 @@ async function main() {
       parts.push(p.inStock ? 'in stock for export dispatch' : 'check availability with our procurement team')
       const metaDesc = `${parts.join(', ').replace(/,\s*\./, '.')}.`.slice(0, 158)
 
-      const productPath = `/${locale}/product/${p.id}`
+      const productPath = `/${locale}/product/${canonicalSlug}/`
       const mainImage = p.images?.[0]?.url
       const html = injectIntoTemplate(template, productPath, {
-        title: buildProductTitleQuick(p),
-        description: metaDesc,
+        title: p.seoTitle || buildProductTitleQuick(p),
+        description: p.seoDescription || metaDesc,
         h1,
         ogType: 'product',
         ogImage: mainImage,
@@ -444,6 +433,11 @@ async function main() {
       })
       writeHtml(productPath, html)
       count++
+    }
+    // Keep legacy UUID URLs crawlable as direct redirects on static hosts.
+    if (p.id !== canonicalSlug) {
+      const redirectHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=/en/product/${esc(canonicalSlug)}/"><link rel="canonical" href="${BASE_URL}/en/product/${esc(canonicalSlug)}/"><meta name="robots" content="noindex,follow"></head><body><a href="/en/product/${esc(canonicalSlug)}/">Product moved</a></body></html>`
+      writeHtml(`/en/product/${p.id}`, redirectHtml)
     }
   }
 

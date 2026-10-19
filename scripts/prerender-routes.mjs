@@ -4,14 +4,14 @@
  * Route configurations for the prerender script.
  *
  * Exports getAllRoutes() which returns an array of route objects for every
- * page that should get a prerendered HTML shell. Each locale gets its own
- * set of routes so Googlebot sees static HTML for all three languages.
+ * page that should get a prerendered HTML shell. Only English is included
+ * until each localized page has verified translated content.
  *
  * Product routes (/:locale/product/:id) are intentionally omitted because
  * the product catalog is dynamic — the SPA shell handles those routes.
  */
 
-const LOCALES = ['en', 'ar', 'es']
+const LOCALES = ['en']
 
 const SITE_NAME = 'Alka Traders'
 
@@ -22,12 +22,6 @@ const STATIC_ROUTES = [
     title: `${SITE_NAME} — Marine & Industrial Equipment Supplier`,
     description:
       'Global supplier of marine spares, ship machinery, surplus equipment, hydraulics, pneumatics, electrical automation, and emergency procurement parts. Serving 50+ countries.',
-  },
-  {
-    slug: 'shop',
-    title: `Shop — Marine & Industrial Equipment | ${SITE_NAME}`,
-    description:
-      'Browse our catalog of marine equipment, hydraulic systems, electrical automation, spare parts, and tools. All items inspected, tested, and ready to ship.',
   },
   {
     slug: 'products',

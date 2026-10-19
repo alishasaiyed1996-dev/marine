@@ -264,11 +264,14 @@ export default function AdminProducts() {
     if (ids.length === 0) return
 
     try {
+      setBulkPublishErrors([])
       await admin.products.bulk(ids, action)
       const label = BULK_ACTION_LABELS[action] || action
       toast(`${ids.length} product${ids.length > 1 ? 's' : ''} ${label}`, 'success')
       fetchProducts()
     } catch (err: unknown) {
+      const details = (err as { details?: { field: string; message: string }[] })?.details
+      if (action === 'publish' && Array.isArray(details)) setBulkPublishErrors(details)
       toast(err instanceof Error ? err.message : 'Bulk action failed', 'error')
     }
     setSelectedIds(new Set())
@@ -309,6 +312,7 @@ export default function AdminProducts() {
   const [publishingId, setPublishingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [bulkPublishErrors, setBulkPublishErrors] = useState<{ field: string; message: string }[]>([])
   const [importResult, setImportResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null)
   const [offerProduct, setOfferProduct] = useState<ApiProduct | null>(null)
   const [offerOpen, setOfferOpen] = useState(false)
@@ -468,6 +472,15 @@ export default function AdminProducts() {
           </Link>
         </div>
       </div>
+
+      {bulkPublishErrors.length > 0 && (
+        <section className="rounded-xl border border-[var(--danger)]/30 bg-[var(--danger)]/5 p-4" role="alert">
+          <h2 className="font-bold text-[var(--danger)]">These products were not published</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[var(--text-secondary)]">
+            {bulkPublishErrors.map((item, index) => <li key={`${item.field}-${index}`}><strong>{item.field}</strong>: {item.message}</li>)}
+          </ul>
+        </section>
+      )}
 
       {/* ── Filters ── */}
       <AdminProductFilters

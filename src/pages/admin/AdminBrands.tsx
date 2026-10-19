@@ -21,6 +21,8 @@ interface BrandFormData {
   slug: string
   sectors: string[]
   description: string
+  seoTitle: string
+  seoDescription: string
   website: string
   country: string
   logo: string
@@ -31,7 +33,7 @@ const logoInputId = 'brand-logo-upload'
 const availableSectors = ['Marine', 'Industrial', 'Automation', 'Hydraulic', 'Pneumatic', 'Electrical', 'Power', 'Marine Pumps', 'Navigation', 'Safety']
 
 function getEmptyForm(): BrandFormData {
-  return { name: '', slug: '', sectors: [], description: '', website: '', country: '', logo: '' }
+  return { name: '', slug: '', sectors: [], description: '', seoTitle: '', seoDescription: '', website: '', country: '', logo: '' }
 }
 
 interface BrandItem { id: string; name: string; slug: string; sectors: string[]; logo: string; description: string; website: string; country: string; productCount?: number }
@@ -58,6 +60,7 @@ export default function AdminBrands() {
         sectors: b.sectors || [],
         logo: b.logoUrl || b.logo || '',
         description: b.description || '',
+        seoTitle: b.seoTitle || '', seoDescription: b.seoDescription || '',
         website: b.website || '',
         country: b.country || '',
         productCount: b._count?.products ?? b.productCount ?? 0,
@@ -92,7 +95,7 @@ export default function AdminBrands() {
     const brand = allBrands.find((b) => b.id === brandId)
     if (!brand) return
     setEditingBrand(brandId)
-    setForm({ name: brand.name, slug: brand.slug, sectors: [...brand.sectors], description: brand.description, website: brand.website, country: brand.country, logo: brand.logo || '' })
+    setForm({ name: brand.name, slug: brand.slug, sectors: [...brand.sectors], description: brand.description, seoTitle: (brand as any).seoTitle || '', seoDescription: (brand as any).seoDescription || '', website: brand.website, country: brand.country, logo: brand.logo || '' })
     setShowModal(true)
   }
 
@@ -103,6 +106,7 @@ export default function AdminBrands() {
         slug: form.slug || form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
         sectors: form.sectors,
         description: form.description,
+        seoTitle: form.seoTitle, seoDescription: form.seoDescription,
         website: form.website,
         country: form.country,
         logoUrl: form.logo,
@@ -242,6 +246,8 @@ export default function AdminBrands() {
                 </div>
               </div>
               <div><label className={labelClass}>Description</label><textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Brand description for the storefront..." rows={3} className={`${inputClass} resize-y`} /></div>
+              <div><label className={labelClass}>SEO Title</label><input value={form.seoTitle} onChange={(e) => setForm((prev) => ({ ...prev, seoTitle: e.target.value }))} maxLength={70} placeholder="e.g. Alfa Laval Marine Spare Parts" className={inputClass} /></div>
+              <div><label className={labelClass}>SEO Description</label><textarea value={form.seoDescription} onChange={(e) => setForm((prev) => ({ ...prev, seoDescription: e.target.value }))} maxLength={160} rows={2} placeholder="Search result description, up to 160 characters" className={`${inputClass} resize-y`} /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className={labelClass}>Website</label><input type="url" value={form.website} onChange={(e) => setForm((prev) => ({ ...prev, website: e.target.value }))} placeholder="https://..." className={inputClass} /></div>
                 <div><label className={labelClass}>Country</label><input type="text" value={form.country} onChange={(e) => setForm((prev) => ({ ...prev, country: e.target.value }))} placeholder="e.g. Switzerland" className={inputClass} /></div>

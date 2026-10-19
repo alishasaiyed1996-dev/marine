@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { asyncHandler, validateQuery, validateParams } from '../../middleware/validate.js'
 import * as productService from '../../services/productService.js'
+import { prisma } from '../../utils/prismaClient.js'
 import { sendSuccess, sendError } from '../../middleware/response.js'
 import { z } from 'zod'
 
@@ -89,10 +90,29 @@ router.get('/emergency', asyncHandler(async (_req, res) => {
 }))
 
 // ─── Get Single Product ────────────────────────────────────────
-router.get('/:id', validateParams(idParamsSchema), asyncHandler(async (req, res) => {
-  const id = req.params.id as string
-  const product = await productService.getStorefrontProduct(id)
+router.get('/by-slug/:slug', asyncHandler(async (req, res) => {
+  const slug = req.params.slug as string
+  const product = await productService.getStorefrontProduct(slug)
   if (!product) return sendError(res, 'Product not found', 404)
+  const info = await productService.getProductCategoryAndBrand(product.id)
+  const related = info ? await productService.getRelatedProducts(product.id, info.categoryId, info.brandId) : []
+  sendSuccess(res, { product, related })
+}))
+
+router.get('/slug-history/:slug', asyncHandler(async (req, res) => {
+  const old = await prisma.productSlugHistory.findUnique({
+    where: { slug: req.params.slug as string },
+    include: { product: { select: { slug: true, status: true } } },
+  })
+  if (!old || old.product.status !== 'published') return sendError(res, 'Product not found', 404)
+  res.redirect(301, `/en/product/${encodeURIComponent(old.product.slug)}/`)
+}))
+
+router.get('/:id', validateParams(idParamsSchema), asyncHandler(async (req, res) => {
+  const key = req.params.id as string
+  const product = await productService.getStorefrontProduct(key)
+  if (!product) return sendError(res, 'Product not found', 404)
+  if (key === product.id) return sendSuccess(res, { product, related: [] })
 
   // Get category/brand for related products query
   const info = await productService.getProductCategoryAndBrand(product.id)
