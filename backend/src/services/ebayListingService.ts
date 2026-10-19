@@ -14,7 +14,7 @@
  */
 import { prisma } from '../server.js'
 import logger from '../utils/logger.js'
-import { getClientToken, updateInventoryItemQuantity, updateOfferQuantity, isEbayConfigured } from './ebayClient.js'
+import { getUserAccessToken, updateInventoryItemQuantity, updateOfferQuantity, isEbayConfigured } from './ebayClient.js'
 
 const log = logger.child({ context: 'ebay-listings' })
 
@@ -47,7 +47,7 @@ function mapCondition(condition: string): string {
  */
 export async function createListingForProduct(input: CreateListingInput, actorId: string) {
   if (!isEbayConfigured()) {
-    throw Object.assign(new Error('eBay is not configured (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET missing)'), { status: 503 })
+    throw Object.assign(new Error('eBay is not configured (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET / EBAY_REFRESH_TOKEN missing)'), { status: 503 })
   }
 
   const product = await prisma.product.findUnique({
@@ -73,7 +73,7 @@ export async function createListingForProduct(input: CreateListingInput, actorId
     update: { productId: product.id }, // re-point if SKU moved products
   })
 
-  const token = await getClientToken()
+  const token = await getUserAccessToken()
 
   // ── Create or update the eBay offer. ──
   const offerPayload = {
