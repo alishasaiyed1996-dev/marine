@@ -9,7 +9,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractOrderId, extractEventId, extractTopic } from './ebayOrderEvents.js'
+import { extractOrderId, extractEventId, extractTopic, skuCandidates } from './ebayOrderEvents.js'
 import { isRetryableError } from './ebayClient.js'
 
 // ── extractOrderId across notification shapes ──────────────────
@@ -83,4 +83,17 @@ test('isRetryableError: network errors are temporary', () => {
 test('isRetryableError: 404 and validation errors are permanent', () => {
   assert.equal(isRetryableError(new Error('eBay getOrder failed (404): not found')), false)
   assert.equal(isRetryableError(new Error('eBay updateOffer failed (400): bad request')), false)
+})
+
+// ── skuCandidates: eBay SKU → website product matching ─────────
+
+test('skuCandidates normalizes Seller-Hub whitespace drift', () => {
+  assert.deepEqual(skuCandidates(' C 126 '), [' C 126 ', 'C 126'])
+  assert.deepEqual(skuCandidates('Z  40'), ['Z  40', 'Z 40'])
+})
+
+test('skuCandidates keeps exact SKUs intact and deduplicates', () => {
+  assert.deepEqual(skuCandidates('Z 40'), ['Z 40'])
+  assert.deepEqual(skuCandidates('IMP-A/2"'), ['IMP-A/2"'])
+  assert.deepEqual(skuCandidates(''), [])
 })

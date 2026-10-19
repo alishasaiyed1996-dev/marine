@@ -30,8 +30,8 @@ Two possibilities:
    `select count(*) from products;` (and orders).
 2. If data exists there: export/restore it (point-in-time branch, or CSV
    export), and we re-import through the admin importer or a script.
-3. If not: rebuild the catalog (option: seed from the live eBay store — 8,275
-   active listings / ~900+ SKUs are readable; see MT-5).
+3. If not: rebuild the catalog (the eBay store is not imported — old listings
+   are intentionally unmanaged; see MT-5).
 
 Group C (eBay stock sync) lights up the moment products with matching SKUs
 (e.g. `Z 35`, `C 126`, `E 206`) exist in the catalog.
@@ -139,18 +139,20 @@ The integration is live on production. What was done:
 
 4. Notification endpoint registered + challenge verified:
    `https://api.alkatraders.co/api/webhooks/ebay`.
-5. Legacy (Seller-Hub-era) listings proven readable/writable through the
-   Trading API with the same token — the bridge for the existing **8,275 live
-   listings** is shipped: admin **Import listings** (observe) + **Activate
-   sync** pushes central stock via `ReviseInventoryStatus`.
+5. Stock sync model (owner-confirmed 2026-10-19): the **product SKU is the
+   link** between the two channels. An eBay sale claims the website product's
+   central stock (the site flips to out-of-stock at 0); a website sale pushes
+   the new quantity to the matching eBay listing(s) within 10 minutes. The
+   legacy-listing import tooling was removed the same day at the owner's
+   request — old Seller-Hub listings are **not** managed by the app.
 
 Still to do:
 - **MT-14** — subscribe to the order notification topic(s) in the portal.
-- **MT-15** — warehouse address → merchant location key (only needed to
-  create brand-new listings from the app).
+- **MT-15** — warehouse address → merchant location key (needed to list
+  products to eBay from the app).
 
-Then in the admin panel → **eBay Inventory** → **Import listings**, and
-**Activate sync** when ready to push central stock to the live listings.
+When the catalog is back, list products to eBay from the admin panel
+(**eBay Inventory**) — that creates the mapping the sync runs on.
 
 ### MT-14 · eBay: subscribe to order notifications (portal)
 
@@ -178,8 +180,8 @@ Creating **new listings through the app** (Inventory API) needs a
 
 **Action:** send the dispatch address (warehouse name, street, city, state,
 postal code, country, phone). It gets created once via the Inventory API, then
-`EBAY_MERCHANT_LOCATION_KEY` is set on Railway. Stock sync for the existing
-legacy listings does **not** need this.
+`EBAY_MERCHANT_LOCATION_KEY` is set on Railway. Quantity sync for
+already-listed products does **not** need this.
 
 ### MT-6 · Sentry (or similar) account + DSN (E41)
 
@@ -307,8 +309,9 @@ supplier standards, and how to request a quote. Paste into the category
   `remove-test-products.ts --apply`; catalog verified clean.
 - **MT-5 (2026-10-19)** — eBay connected end-to-end on production: refresh
   token stored (valid to ~April 2028), EBAY_US business policies collected +
-  set, webhook endpoint verified, Trading API bridge proven live (8,275
-  legacy listings readable). Follow-ups tracked as MT-14 / MT-15.
+  set, webhook endpoint verified and receiving real eBay deliveries; stock
+  sync wired with the product SKU as the channel link (legacy-listing import
+  removed same day at owner request). Follow-ups: MT-14 / MT-15.
 
 ---
 

@@ -48,3 +48,20 @@ export function extractEventId(payload: Record<string, unknown>): string | undef
   if (typeof e === 'string' && e) return e
   return undefined
 }
+
+/**
+ * Candidate spellings of an eBay SKU when matching website products. eBay SKUs
+ * pick up stray whitespace (leading/trailing, doubled spaces) from Seller Hub,
+ * so the raw value, the trimmed value, and the whitespace-collapsed value are
+ * all tried — in that order, deduplicated.
+ */
+export function skuCandidates(rawSku: string): string[] {
+  const set = new Set<string>()
+  const raw = String(rawSku ?? '')
+  if (raw) set.add(raw)
+  const trimmed = raw.trim()
+  if (trimmed) set.add(trimmed)
+  const collapsed = trimmed.replace(/\s+/g, ' ')
+  if (collapsed) set.add(collapsed)
+  return [...set]
+}

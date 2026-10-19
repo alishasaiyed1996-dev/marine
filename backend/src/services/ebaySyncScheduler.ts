@@ -18,7 +18,6 @@
 import { prisma } from '../server.js'
 import logger from '../utils/logger.js'
 import { isEbayConfigured, updateOfferQuantity, isRetryableError } from './ebayClient.js'
-import { reviseInventoryStatus } from './ebayTradingClient.js'
 
 const log = logger.child({ context: 'ebay-sync' })
 
@@ -63,34 +62,27 @@ export async function syncPendingListings(): Promise<{ synced: number; failed: n
       continue
     }
 
-    // Inventory-API offers push through the REST offer API; legacy (Seller
-    // Hub era, cross-listed) listings push through the Trading API
-    // ReviseInventoryStatus, keyed by the stored ebayListingId.
+    // Listings sync through their Inventory-API offer id (the app lists
+    // products itself, so every managed row carries one).
     const centralQty = listing.product.stockCount
     const offerId = listing.ebayOfferId
-    const legacyItemId = listing.ebayListingId
-    const push: (() => Promise<void>) | null = offerId
-      ? () => updateOfferQuantity(offerId, centralQty)
-      : legacyItemId
-        ? () => reviseInventoryStatus(legacyItemId, centralQty, listing.marketplace)
-        : null
-    if (!push) {
+    if (!offerId) {
       await prisma.ebayListing.update({
         where: { id: listing.id },
-        data: { status: 'sync-failed', lastError: 'no eBay offer/listing id stored — cannot push quantity' },
+        data: { status: 'sync-failed', lastError: 'no eBay offer id stored — cannot push quantity' },
       })
       result.skipped++
       continue
     }
 
     try {
-      await push()
+      await updateOfferQuantity(offerId, centralQty)
       await prisma.ebayListing.update({
         where: { id: listing.id },
         data: { status: 'synced', lastSyncedQty: centralQty, lastSyncAt: new Date(), lastError: null },
       })
       result.synced++
-      log.info({ sku: listing.sku, offerId, itemId: legacyItemId, qty: centralQty }, 'eBay quantity synced')
+      log.info({ sku: listing.sku, offerId, qty: centralQty }, 'eBay quantity synced')
     } catch (err) {
       const retryable = isRetryableError(err)
       // NEVER roll back central stock because eBay failed (spec).

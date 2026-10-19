@@ -18,7 +18,7 @@ import { generateOrderNumber } from '../utils/helpers.js'
 import logger from '../utils/logger.js'
 import { decreaseStock } from './centralInventory.js'
 import { getOrder, listOrdersSince, isEbayConfigured, isRetryableError, type EbayApiOrder } from './ebayClient.js'
-import { extractOrderId, extractEventId } from './ebayOrderEvents.js'
+import { extractOrderId, extractEventId, skuCandidates } from './ebayOrderEvents.js'
 
 // Re-exported for webhook route convenience.
 export { extractOrderId, extractEventId } from './ebayOrderEvents.js'
@@ -90,28 +90,52 @@ export async function processEbayOrderEvent(
       return { status: 'ignored', note: 'order not paid' }
     }
 
-    // ── Map line items to internal products via the listing mapping. ──
+    // ── Map line items to internal products BY SKU. ──
+    // The product SKU is the link between the channels: a website product with
+    // the same SKU is the same physical stock. The ebay_listings mirror row is
+    // only a fast path — stock ownership never depends on it.
     const lineItems = ebayOrder.lineItems || []
     const mapped: Array<{ productId: string; sku: string; quantity: number; title: string; unitPrice: number }> = []
     const unmappedSkus: string[] = []
     for (const li of lineItems) {
       const sku = li.sku
       if (!sku) { unmappedSkus.push('(no sku)'); continue }
-      // Legacy listings live on many marketplaces (US/GB/DE/…); a SKU maps to
-      // the same central product everywhere, so resolve the mapping by SKU.
+      const candidates = skuCandidates(sku)
       const listing = await prisma.ebayListing.findFirst({
-        where: { sku },
+        where: { sku: { in: candidates } },
         select: { productId: true, product: { select: { regularPrice: true, salePrice: true, status: true } } },
       })
-      if (!listing || listing.product.status !== 'published') {
+      // No mirror row? The website product with the same SKU still claims.
+      let productFallback: { id: string; regularPrice: unknown; salePrice: unknown; status: string } | null = null
+      if (!listing) {
+        productFallback = await prisma.product.findFirst({
+          where: { sku: { in: candidates } },
+          select: { id: true, regularPrice: true, salePrice: true, status: true },
+        })
+        if (!productFallback) {
+          // Case-insensitive last resort — eBay SKUs differ in case now and then.
+          for (const candidate of candidates) {
+            productFallback = await prisma.product.findFirst({
+              where: { sku: { equals: candidate, mode: 'insensitive' } },
+              select: { id: true, regularPrice: true, salePrice: true, status: true },
+            })
+            if (productFallback) break
+          }
+        }
+        if (productFallback) {
+          log.info({ sku, productId: productFallback.id }, 'eBay sale matched a website product by SKU (no mirror row)')
+        }
+      }
+      const product = listing ? { id: listing.productId, ...listing.product } : productFallback
+      if (!product || product.status !== 'published') {
         unmappedSkus.push(sku)
         continue
       }
-      const regular = Number(listing.product.regularPrice) || 0
-      const sale = listing.product.salePrice != null ? Number(listing.product.salePrice) : null
+      const regular = Number(product.regularPrice) || 0
+      const sale = product.salePrice != null ? Number(product.salePrice) : null
       const unitPrice = sale != null && sale > 0 && sale < regular ? sale : regular
       mapped.push({
-        productId: listing.productId,
+        productId: product.id,
         sku,
         quantity: li.quantity || 1,
         title: li.title || sku,
@@ -120,9 +144,9 @@ export async function processEbayOrderEvent(
     }
 
     if (mapped.length === 0) {
-      // Unmapped SKU: record it, mark ignored — admin maps the listing, the
-      // next reconciliation/order sync picks it up. No stock guessed.
-      await upsertEbayOrder(orderId, 'failed', ebayOrder, 'no mapped line items — listing mapping missing?')
+      // No website product carries these SKUs (or it is not published): stay
+      // explicit — stock is never guessed.
+      await upsertEbayOrder(orderId, 'failed', ebayOrder, 'no mapped line items — no published website product matches these SKUs')
       await markEvent(eventId, 'failed', `unmapped SKUs: ${unmappedSkus.join(', ') || 'none'}`)
       log.warn({ orderId, unmappedSkus }, 'eBay order has no mapped internal products')
       return { status: 'failed', note: 'no mapped line items' }

@@ -61,11 +61,6 @@ export const admin = {
     syncNow: () => api.post<{ synced: number; failed: number; skipped: number; driftFound: number; ordersPolled: number }>('/admin/ebay/inventory/sync-now', undefined, { auth: 'admin' }),
     createListing: (data: { productId: string; categoryId: string; price?: number; marketplace?: string }) =>
       api.post<{ listing: { id: string; status: string; ebayOfferId?: string; ebayListingId?: string } }>('/admin/ebay/listings', data, { auth: 'admin' }),
-    importListings: (activate = false) =>
-      api.post<{
-        scanned: number; matchedPairs: number; imported: number; alreadyMapped: number
-        skippedNoSku: number; unmatchedSkuCount: number; unmatchedSamples: string[]; activated: number
-      }>('/admin/ebay/import-listings', { activate }, { auth: 'admin' }),
   },
 
   // Dashboard
