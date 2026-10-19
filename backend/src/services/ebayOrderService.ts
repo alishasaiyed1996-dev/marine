@@ -17,7 +17,7 @@ import { prisma } from '../server.js'
 import { generateOrderNumber } from '../utils/helpers.js'
 import logger from '../utils/logger.js'
 import { decreaseStock } from './centralInventory.js'
-import { getOrder, isRetryableError, type EbayApiOrder } from './ebayClient.js'
+import { getOrder, listOrdersSince, isEbayConfigured, isRetryableError, type EbayApiOrder } from './ebayClient.js'
 import { extractOrderId, extractEventId } from './ebayOrderEvents.js'
 
 // Re-exported for webhook route convenience.
@@ -97,8 +97,10 @@ export async function processEbayOrderEvent(
     for (const li of lineItems) {
       const sku = li.sku
       if (!sku) { unmappedSkus.push('(no sku)'); continue }
-      const listing = await prisma.ebayListing.findUnique({
-        where: { sku_marketplace: { sku, marketplace: 'EBAY_US' } },
+      // Legacy listings live on many marketplaces (US/GB/DE/…); a SKU maps to
+      // the same central product everywhere, so resolve the mapping by SKU.
+      const listing = await prisma.ebayListing.findFirst({
+        where: { sku },
         select: { productId: true, product: { select: { regularPrice: true, salePrice: true, status: true } } },
       })
       if (!listing || listing.product.status !== 'published') {
@@ -249,4 +251,31 @@ export async function retryPendingEvents(maxAgeMinutes = 24 * 60): Promise<numbe
     if (res.status !== 'deferred') retried++
   }
   return retried
+}
+
+/**
+ * Reliability net for webhook-delivery gaps: pull recent orders from the
+ * Fulfillment API and run them through the same idempotent processor.
+ *
+ * Order-level dedupe (ebay_orders + the 'processed' check) prevents double
+ * stock claims; a fresh hourly event-id bucket lets FAILED orders retry later
+ * (e.g. after the admin maps a missing SKU) without ever touching processed
+ * ones. The default window stays short on purpose — central stock already
+ * reflects sales that predate the mirror; backfilling old orders would
+ * double-count them.
+ */
+export async function pollEbayOrders(hoursBack = 72): Promise<number> {
+  if (!isEbayConfigured()) return 0
+  const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString()
+  const orders = await listOrdersSince(since)
+  const bucket = Math.floor(Date.now() / (60 * 60 * 1000))
+  let processed = 0
+  for (const o of orders) {
+    if (!o.orderId) continue
+    const existing = await prisma.ebayOrder.findUnique({ where: { ebayOrderId: o.orderId } })
+    if (existing?.status === 'processed') continue
+    const res = await processEbayOrderEvent(`poll:${o.orderId}:${bucket}`, 'POLL', { orderId: o.orderId })
+    if (res.status === 'processed') processed++
+  }
+  return processed
 }

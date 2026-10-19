@@ -1,10 +1,30 @@
 /**
  * Pure eBay notification helpers (no Prisma/server imports — unit-testable
  * per the project's pure-module test convention, like offerRules.ts).
+ *
+ * Real Event Notification Platform (EPN) deliveries nest everything:
+ *   { metadata: { topic }, notification: { notificationId, eventDate, data } }
+ * The flat shapes remain as fallbacks for synthetic deliveries and older
+ * topic payloads.
  */
+
+/** Extract the notification topic across real-EPN and flat shapes. */
+export function extractTopic(payload: Record<string, unknown>): string | undefined {
+  const meta = payload.metadata as { topic?: unknown } | undefined
+  if (meta && typeof meta.topic === 'string' && meta.topic) return meta.topic
+  const direct = payload.topic
+  if (typeof direct === 'string' && direct) return direct
+  const eventType = payload.eventType
+  if (typeof eventType === 'string' && eventType) return eventType
+  return undefined
+}
 
 /** Extract the eBay order id from a notification payload across topic shapes. */
 export function extractOrderId(payload: Record<string, unknown>): string | undefined {
+  const notification = payload.notification as { data?: { orderId?: unknown } } | undefined
+  if (notification?.data && typeof notification.data.orderId === 'string' && notification.data.orderId) {
+    return notification.data.orderId
+  }
   const direct = payload.orderId
   if (typeof direct === 'string' && direct) return direct
   const snake = payload.order_id
@@ -16,8 +36,12 @@ export function extractOrderId(payload: Record<string, unknown>): string | undef
   return undefined
 }
 
-/** Extract the notification/event id used for idempotency. */
+/** Extract the notification/event id used for idempotency (EPN + flat). */
 export function extractEventId(payload: Record<string, unknown>): string | undefined {
+  const notification = payload.notification as { notificationId?: unknown } | undefined
+  if (notification && typeof notification.notificationId === 'string' && notification.notificationId) {
+    return notification.notificationId
+  }
   const n = payload.notificationId
   if (typeof n === 'string' && n) return n
   const e = payload.eventId

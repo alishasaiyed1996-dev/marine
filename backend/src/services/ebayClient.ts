@@ -224,6 +224,23 @@ export async function getOrder(ebayOrderId: string): Promise<EbayApiOrder> {
   return res.data
 }
 
+/**
+ * List orders created after the given ISO timestamp (Fulfillment API). Used
+ * by the webhook-gap poll job — see pollEbayOrders in ebayOrderService.
+ */
+export async function listOrdersSince(sinceIso: string, limit = 100): Promise<EbayApiOrder[]> {
+  const params = new URLSearchParams({
+    filter: `creationdate:[${sinceIso}..]`,
+    limit: String(Math.min(200, Math.max(1, limit))),
+    sort: 'creationdate',
+  })
+  const res = await ebayFetch<{ orders?: EbayApiOrder[] }>(`/sell/fulfillment/v1/order?${params.toString()}`)
+  if (!res.ok) {
+    throw Object.assign(new Error(`eBay listOrders failed (${res.status}): ${res.raw.slice(0, 200)}`), { status: res.status })
+  }
+  return res.data?.orders || []
+}
+
 // ── Error classification (retry policy) ────────────────────────
 
 /** Retryable = temporary. Permanent validation errors must NOT retry forever. */

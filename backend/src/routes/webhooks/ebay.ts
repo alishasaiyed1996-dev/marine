@@ -12,6 +12,11 @@
  *     id = idempotency gate) and processed asynchronously; the HTTP response
  *     returns fast — eBay retries on non-2xx, so intake must not block.
  *
+ * Real EPN payloads nest the topic under metadata.topic and the id under
+ * notification.notificationId (order id under notification.data.orderId) —
+ * extraction handles both that envelope and flat synthetic shapes; see
+ * ebayOrderEvents.ts (unit tested).
+ *
  * Notifications are NEVER trusted directly: processEbayOrderEvent re-fetches
  * the order from the Fulfillment API before any stock moves.
  */
@@ -19,7 +24,9 @@ import { Router } from 'express'
 import { createHash } from 'crypto'
 import { prisma } from '../../server.js'
 import logger from '../../utils/logger.js'
+import { authenticateAdmin } from '../../middleware/auth.js'
 import { processEbayOrderEvent } from '../../services/ebayOrderService.js'
+import { extractTopic, extractEventId } from '../../services/ebayOrderEvents.js'
 
 const router = Router()
 const log = logger.child({ context: 'ebay-webhook' })
@@ -40,8 +47,8 @@ router.get('/', (req, res) => {
 
 router.post('/', (req, res) => {
   const payload = (req.body || {}) as Record<string, unknown>
-  const topic = (payload.topic || payload.eventType || 'unknown') as string
-  const eventId = (payload.notificationId || payload.eventId || `${topic}:${Date.now()}`) as string
+  const topic = extractTopic(payload) || 'unknown'
+  const eventId = extractEventId(payload) || `${topic}:${Date.now()}`
 
   log.info({ eventId, topic }, 'eBay notification received')
 
@@ -57,8 +64,8 @@ router.post('/', (req, res) => {
   return res.status(200).json({ received: true })
 })
 
-/** Debug/admin aid: recent events (no secrets in payload responses). */
-router.get('/events', async (_req, res) => {
+/** Admin-only debug view: payloads can embed buyer data — never public. */
+router.get('/events', authenticateAdmin, async (_req, res) => {
   const events = await prisma.ebayEventLog.findMany({
     orderBy: { createdAt: 'desc' },
     take: 50,

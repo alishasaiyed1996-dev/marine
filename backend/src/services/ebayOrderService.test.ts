@@ -9,7 +9,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractOrderId, extractEventId } from './ebayOrderEvents.js'
+import { extractOrderId, extractEventId, extractTopic } from './ebayOrderEvents.js'
 import { isRetryableError } from './ebayClient.js'
 
 // ── extractOrderId across notification shapes ──────────────────
@@ -36,6 +36,36 @@ test('extractOrderId returns undefined when absent', () => {
 
 test('extractEventId prefers notificationId', () => {
   assert.equal(extractEventId({ notificationId: 'abc-1', eventId: 'x' }), 'abc-1')
+})
+
+// ── Real EPN envelope (metadata + notification wrapper) ────────
+
+test('extractTopic reads metadata.topic from the real EPN envelope', () => {
+  assert.equal(extractTopic({ metadata: { topic: 'ORDER.CREATED' }, notification: {} }), 'ORDER.CREATED')
+  assert.equal(extractTopic({ topic: 'flat.topic' }), 'flat.topic')
+  assert.equal(extractTopic({ eventType: 'flat.event' }), 'flat.event')
+  assert.equal(extractTopic({}), undefined)
+})
+
+test('extractEventId reads notification.notificationId from the real EPN envelope', () => {
+  assert.equal(extractEventId({ notification: { notificationId: 'f4a7f0c8-4f71-4b52-9c2e' } }), 'f4a7f0c8-4f71-4b52-9c2e')
+})
+
+test('extractOrderId reads notification.data.orderId from the real EPN envelope', () => {
+  const payload = {
+    metadata: { topic: 'ORDER.CREATED' },
+    notification: { notificationId: 'evn-1', data: { orderId: '05-15306-81809' } },
+  }
+  assert.equal(extractOrderId(payload), '05-15306-81809')
+})
+
+test('envelope extraction ignores a compliance payload without an order', () => {
+  const payload = {
+    metadata: { topic: 'MARKETPLACE_ACCOUNT_DELETION' },
+    notification: { notificationId: 'evn-2', data: { username: 'u', userId: 'id' } },
+  }
+  assert.equal(extractOrderId(payload), undefined)
+  assert.equal(extractEventId(payload), 'evn-2')
 })
 
 // ── retry classification drives the defer-vs-fail split ────────
