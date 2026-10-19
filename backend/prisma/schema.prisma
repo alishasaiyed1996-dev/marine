@@ -655,7 +655,7 @@ model EbayOrder {
 
 model EbayEventLog {
   id           String    @id @default(uuid()) @db.Uuid
-  eventId      String    @unique @db.VarChar(100) // eBay notification id (idempotency)
+  eventId      String    @unique @map("event_id") @db.VarChar(100) // eBay notification id (idempotency)
   topic        String    @db.VarChar(100)
   payload      Json?     @db.JsonB
   status       String    @default("received") @db.VarChar(20) // received|processed|duplicate|failed
