@@ -89,9 +89,8 @@ These are **required** for the server to start in production. `env.ts` refuses t
 
 ### `api` service — email
 
-Pick **one** of these delivery methods.
+SMTP is the supported email transport (Hostinger / any SMTP provider).
 
-**Option A — SMTP** (what you likely use now via Hostinger):
 | Variable | Notes |
 |---|---|
 | `SMTP_HOST` | SMTP server host |
@@ -101,13 +100,6 @@ Pick **one** of these delivery methods.
 | `SMTP_SECURE` | `true` for port 465, `false` for STARTTLS on 587 |
 | `EMAIL_FROM` | From address for all outbound emails |
 | `SALES_EMAIL` | Default inbound routing for RFQ / emergency / contact form submissions |
-
-**Option B — Resend:**
-| Variable | Notes |
-|---|---|
-| `RESEND_API_KEY` | Resend API key |
-| `EMAIL_FROM` | From address |
-| `SALES_EMAIL` | Default inbound routing |
 
 ### `api` service — payments
 
@@ -344,5 +336,5 @@ If something goes wrong on Railway:
 
 - **Cold starts:** Railway PostgreSQL doesn't sleep like Neon's free tier, so the `/api/wake` endpoint is now a no-op health check (harmless). The cold-start retry logic in `prismaClient.ts` still works but is less likely to trigger.
 - **Brand logos:** Brand logos are now uploaded to Cloudinary (same as the rest of your media). No persistent volume needed. If you see a brand logo disappear after redeploy, check that `CLOUDINARY_URL` is set correctly and that the logo URL in the DB is a Cloudinary URL.
-- **Email:** If SMTP isn't configured, emails log as `[DRY RUN]` and mark as sent without actually sending. Check the logs after the first RFQ/order.
+- **Email:** SMTP credentials live in the Railway environment only. With SMTP unset, emails are recorded as `skipped` (never fake-`sent`); with SMTP configured, queue rows show the real delivery status.
 - **PayPal:** If `PAYPAL_WEBHOOK_ID` isn't set in production, webhook signature verification is skipped (dev mode). Set it before going live.

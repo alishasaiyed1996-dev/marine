@@ -2,6 +2,7 @@ import { Helmet } from 'react-helmet-async'
 import { useLocation } from 'react-router-dom'
 import { useStore } from '../../store/useStore'
 import { VALID_LOCALES, LOCALE_TO_OG } from '../../lib/locale'
+import { getCspNonce } from '../../lib/csp'
 import type { Language } from '../../types'
 
 interface SEOProps {
@@ -260,7 +261,7 @@ export function SEO({
         </>
       )}
 
-      <script type="application/ld+json">
+      <script type="application/ld+json" nonce={getCspNonce()}>
         {JSON.stringify(allJsonLd.length === 1 ? allJsonLd[0] : allJsonLd)}
       </script>
     </Helmet>

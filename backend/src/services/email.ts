@@ -100,8 +100,7 @@ async function sendEmail(queueId: string): Promise<void> {
   }
 
   try {
-    // nodemailer throws on delivery failure (unlike the Resend SDK's
-    // error-object convention) — the catch below handles retries.
+    // nodemailer throws on delivery failure — the catch below handles retries.
     await smtp.sendMail({
       from: FROM,
       to: record.toEmail,

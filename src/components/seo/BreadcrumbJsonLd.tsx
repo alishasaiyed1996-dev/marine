@@ -1,4 +1,5 @@
 import { useLocale } from '../../lib/locale'
+import { getCspNonce } from '../../lib/csp'
 
 interface BreadcrumbItem {
   name: string
@@ -34,7 +35,7 @@ export function BreadcrumbJsonLd({ items }: BreadcrumbJsonLdProps) {
   }
 
   return (
-    <script type="application/ld+json">
+    <script type="application/ld+json" nonce={getCspNonce()}>
       {JSON.stringify(jsonLd)}
     </script>
   )

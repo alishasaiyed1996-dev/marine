@@ -11,27 +11,39 @@ separately in the agent todo list; this file only holds manual actions.
 
 ## 🔴 Pending now
 
-### MT-13 · 🔴 URGENT — live storefront has no products (database question)
+### MT-13 · 🔴 URGENT — live storefront has no products (catalog data is gone)
 
-**Diagnosed 2026-10-19.** The live API/database contains **no products**
-(published, draft **and** archived are all zero) — also no orders, customers,
-or media. Only brands + categories exist, all created **2026-10-15**, and the
-audit log's first entries are from that date. The live site confirms it:
-sitemap has no `/product/` URLs and the homepage renders no products. So this
-is a **fresh, mostly-empty database** — not a catalog deleted from it.
+**Diagnosed 2026-10-19.** The live Railway API/database contains **no products
+in any status** (published, draft, archived = 0) — also no orders, customers,
+media, or eBay listing mappings. Only 22 brands + 19 categories exist (all
+created 2026-10-15).
 
-Two possibilities:
-1. The real catalog lives in the **previous database (Neon)** and was never
-   (fully) migrated to Railway Postgres, or
-2. the catalog was intentionally wiped and needs rebuilding.
+**Follow-up 2026-10-19 — the Neon database was checked too.** It is still
+reachable from `backend/.env` (note: Node on this Windows machine needs
+`NODE_OPTIONS=--dns-result-order=ipv4first`, otherwise it resolves only AAAA
+and times out), but the real catalog is **not there either**:
+
+| Table | Neon rows |
+|---|---|
+| `products` | 4 — all test/duplicate leftovers (`kjnjkhkjjkhjk`, `LIVE-TEST-PRODUCT`, `DUP-SOURCE`, `DUP-SOURCE (Copy)`) |
+| `customers` | 6 (stale; 0 orders) |
+| `categories` / `brands` | 19 / 23 |
+| `orders`, `ebay_listings`, `ebay_orders` | 0 |
+| `email_queue` | 16 (historic rows) |
+
+There are no backups/dumps in the repo and the Wayback Machine has **zero**
+snapshots of `alkatraders.co` (CDX query returns `[]` for the site and for
+`/product/*`). So the earlier 8-item catalog is not recoverable from Neon, the
+Railway copy, local files, or the web archive — it was deleted before/at the
+Railway migration.
 
 **Action (project owner):**
-1. Open the Neon dashboard (see MT-7) → SQL editor → check
-   `select count(*) from products;` (and orders).
-2. If data exists there: export/restore it (point-in-time branch, or CSV
-   export), and we re-import through the admin importer or a script.
-3. If not: rebuild the catalog (the eBay store is not imported — old listings
-   are intentionally unmanaged; see MT-5).
+1. Decide the catalog source: rebuild manually from supplier documents, or
+   authorise a one-off import of the current **eBay store's live listings**
+   into the website catalog (the seller token can read them; the old import
+   tooling was removed, so this would be new scripted work).
+2. Once products exist, MT-4 (identity fields) and the eBay stock sync become
+   exercisable again.
 
 Group C (eBay stock sync) lights up the moment products with matching SKUs
 (e.g. `Z 35`, `C 126`, `E 206`) exist in the catalog.
@@ -160,23 +172,31 @@ Still to do:
 When the catalog is back, list products to eBay from the admin panel
 (**eBay Inventory**) — that creates the mapping the sync runs on.
 
-### MT-14 · eBay: subscribe to order notifications (portal)
+### MT-14 · eBay: subscribe to order notifications (portal only — API refused)
 
-In the eBay developer portal → your app → **Notification subscriptions**,
-enable the **order-related topic(s)** (order created / order paid — pick the
-ones the portal lists). The backend verifies the endpoint and accepts any
-topic that carries an order id; deliveries are logged in `ebay_event_log`.
+**Re-diagnosed 2026-10-19.** The notification destination is already
+`ENABLED` (`https://api.alkatraders.co/api/webhooks/ebay`), but the only
+subscription on the app is the mandatory `MARKETPLACE_ACCOUNT_DELETION`. The
+topic that carries new orders is `ORDER_CONFIRMATION` ("buyer completes
+checkout"; scope USER; listed `authorizationScopes`: `sell.fulfillment` /
+`sell.fulfillment.readonly`). Creating the subscription via the API failed for
+every variant attempted:
 
-A **polling safety net** is live regardless: the scheduler pulls recent
+- application token → `403 / 195011 "Not authorized for this topic"`
+- seller token with `sell.fulfillment` (granted; `readonly` is not granted) →
+  `403 / 1100 "Access denied … Insufficient permissions"`
+- same with `X-EBAY-C-MARKETPLACE-ID: EBAY_US`, `schemaVersion 1.1`,
+  `status: DISABLED`, and an omitted payload → identical 403
+
+So for this app eBay only exposes the subscription through the
+**developer-portal Notification UI**. **Action:** portal → your app →
+Notification subscriptions → enable the order-confirmation/order-created
+topic(s). The backend verifies the endpoint and accepts any topic that carries
+an order id; deliveries are logged in `ebay_event_log`.
+
+The **polling safety net** remains live regardless: the scheduler pulls recent
 Fulfillment orders every 10 minutes, so a missed webhook still imports the
 order (order-level dedupe prevents double stock claims).
-
-**Observed 2026-10-19:** the endpoint is already receiving real eBay
-deliveries (`MARKETPLACE_ACCOUNT_DELETION`, several per minute — eBay fans
-these out to every registered app; the deploy that shipped real-envelope
-parsing labelled them correctly for the first time). They are logged and
-ignored. If the app should actively purge a deleted buyer's order data on
-receipt (eBay compliance), that is a small follow-up code task.
 
 ### MT-15 · eBay: warehouse address for the merchant location
 
@@ -188,6 +208,21 @@ Creating **new listings through the app** (Inventory API) needs a
 postal code, country, phone). It gets created once via the Inventory API, then
 `EBAY_MERCHANT_LOCATION_KEY` is set on Railway. Quantity sync for
 already-listed products does **not** need this.
+
+**Candidate found in code (needs owner confirmation):** the storefront's
+Organization JSON-LD already publishes the business address
+`PLOT - 7 ALANG HOUSE, MOTITALAV ROAD, KHUMBHARWADA`, Bhavnagar, Gujarat.
+If that is also the correct ship-from address, reply with the postal code,
+phone number, and preferred location key (suggested: `alka-bhavnagar`) — the
+location can then be created via the Inventory API and the Railway variable
+set without further code changes.
+
+**Observed 2026-10-19 (portal follow-up):** the endpoint is receiving real
+eBay deliveries (`MARKETPLACE_ACCOUNT_DELETION`, several per minute — eBay
+fans these out to every registered app; the deploy that shipped real-envelope
+parsing labelled them correctly for the first time). They are logged and
+ignored. If the app should actively purge a deleted buyer's order data on
+receipt (eBay compliance), that is a small follow-up code task.
 
 ### MT-6 · Sentry (or similar) account + DSN (E41)
 
@@ -233,46 +268,20 @@ Deleted 4 rows: `TEST-PRODUCT-HTTP-MODE` ×3 (drafts) + `TXTEST3` (archived),
 plus their images/specs. Zero offers/orders/eBay listings affected.
 `detect-duplicate-products` now reports a clean catalog.
 
-### MT-12 · Configure SMTP credentials so automated emails actually send (URGENT — sales@ receives nothing)
+### MT-12 · Automated email delivery — SMTP configured on Railway (verify)
 
-**Diagnosed 2026-10-01** (`backend/scripts/diag-email-queue.ts`, read-only):
-emails were **never delivered** —
+**Status 2026-10-19:** SMTP is the email transport (send; the mailbox also
+receives replies). `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_PORT`,
+`SMTP_SECURE`, `EMAIL_FROM`, and `SALES_EMAIL` are set on the Railway `api`
+service by the owner. The service sends through nodemailer and records honest
+queue states (`sent` / `retrying` / `failed` / `skipped`) — it never marks
+undelivered mail as sent.
 
-1. **Jul 31 – Aug 11:** SMTP was configured but credentials were wrong —
-   every send failed with `API key is invalid` (all rows `status=failed`,
-   attempts=3).
-2. **After that:** `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` went missing from
-   the environment — the email service silently switched to **dry-run**,
-   marking messages `sent` in the DB without transmitting anything. RFQ,
-   offer, contact, emergency, and registration notifications all vanished.
-   (Code fix shipped: dry-run now records an honest `skipped` state instead.)
-
-**Fix — set these in Railway (api service → Variables), then redeploy:**
-
-| Variable | Value |
-|---|---|
-| `SMTP_HOST` | `smtp.hostinger.com` |
-| `SMTP_PORT` | `465` |
-| `SMTP_SECURE` | `true` |
-| `SMTP_USER` | a real mailbox you created in Hostinger → Emails, e.g. `noreply@alkatraders.co` |
-| `SMTP_PASS` | that mailbox's password |
-| `EMAIL_FROM` | `sales@alkatraders.co` (or the mailbox above) |
-
-Notes:
-- Use a **real mailbox** created in the Hostinger email panel
-  (`noreply@alkatraders.co` is ideal) — arbitrary usernames fail auth.
-- Hostinger SMTP requires the mailbox to exist; "API key is invalid" errors
-  mean the user/pass pair was wrong, not the mailbox missing.
-- SPF already covers Hostinger (`v=spf1 include:_spf.mail.hostinger.com ~all`),
-  so correctly-authenticated mail will land in inboxes.
-
-**Verify after redeploy:**
-
+**Verify after the next deploy/restart:**
 1. Submit a test RFQ / contact message on the live site.
-2. `Railway → api → Logs` should show no `Email delivery failed` errors.
-3. Run `cd backend && npx tsx scripts/diag-email-queue.ts` — new rows must be
-   `sent` with `attempts ≥ 1`, and sales@ must show up in your actual inbox
-   (check spam once; if it's there, mark it not-spam).
+2. `Railway → api → Logs` should show no email delivery errors.
+3. The new `email_queue` row must be `sent` with `attempts ≥ 1`, and sales@
+   must receive the message (check spam once; mark not-spam if needed).
 
 ### MT-11 · Write real category & buying-guide content (B13/B14)
 

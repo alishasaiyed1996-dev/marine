@@ -87,7 +87,7 @@ function computeInlineHashes() {
 
 const inlineHashes = computeInlineHashes()
 
-function cspPolicy() {
+function cspPolicy(nonce) {
   // API origin comes from the environment so the same build works on
   // Hostinger, Railway, or any custom domain without rebuilding.
   // VITE_API_URL is inlined by Vite into the frontend bundle at build time,
@@ -99,6 +99,10 @@ function cspPolicy() {
 
   const scriptSrc = [
     "'self'",
+    // Per-response nonce covers the JSON-LD blocks that the prerender step and
+    // the React SEO components emit — their content changes per page, so
+    // startup-computed hashes cannot include them.
+    `'nonce-${nonce}'`,
     'https://www.paypal.com',
     'https://www.paypalobjects.com',
     ...inlineHashes.scripts,
@@ -125,7 +129,8 @@ function cspPolicy() {
 }
 
 app.use((_req, res, next) => {
-  res.setHeader('Content-Security-Policy', cspPolicy())
+  res.locals.cspNonce = crypto.randomBytes(16).toString('base64')
+  res.setHeader('Content-Security-Policy', cspPolicy(res.locals.cspNonce))
   next()
 })
 
@@ -150,6 +155,19 @@ app.get('/health/ready', (_req, res) => {
 
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+}
+
+/**
+ * Apply the response CSP nonce to a generated HTML document: every inline
+ * <script> gets the nonce attribute (so JSON-LD is allowed without
+ * 'unsafe-inline'), and the value is exposed via <meta name="csp-nonce"> so
+ * React can set the same nonce on JSON-LD it renders after hydration.
+ */
+function withCspNonce(html, nonce) {
+  if (!nonce) return html
+  let out = html.replace(/<head(\s[^>]*)?>/i, (tag) => `${tag}<meta name="csp-nonce" content="${nonce}">`)
+  out = out.replace(/<script(?![^>]*\bnonce=)([^>]*)>/gi, (_match, attrs) => `<script nonce="${nonce}"${attrs}>`)
+  return out
 }
 
 function productHtml(template, product, locale = 'en') {
@@ -258,12 +276,12 @@ app.get('/:locale/product/:key', async (req, res, next) => {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(key)
     const product = isUuid ? await fetchProductById(key) : await fetchPublishedProduct(key)
     if (product?.redirect) return res.redirect(301, product.redirect)
-    if (!product) return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Product not found | Alka Traders</title><meta name="robots" content="noindex,follow"></head><body><main><h1>Product not found</h1><p>This product is no longer available.</p><a href="/en/products">Browse products</a></main></body></html>')
+    if (!product) return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send(withCspNonce('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Product not found | Alka Traders</title><meta name="robots" content="noindex,follow"></head><body><main><h1>Product not found</h1><p>This product is no longer available.</p><a href="/en/products">Browse products</a></main></body></html>', res.locals.cspNonce))
     if (key !== product.slug) return res.redirect(301, `/en/product/${encodeURIComponent(product.slug)}/`)
     if (!req.path.endsWith('/')) return res.redirect(301, `${req.path}/${req.url.slice(req.path.length)}`)
     const template = fs.readFileSync(indexPath, 'utf8')
     res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800')
-    res.type('html').send(productHtml(template, product, locale))
+    res.type('html').send(withCspNonce(productHtml(template, product, locale), res.locals.cspNonce))
   } catch (error) {
     // Product API unreachable/erroring: serve the SPA shell so the app can
     // retry in-place instead of showing a bare "Error" page.
@@ -280,12 +298,12 @@ app.get('/:locale/:hubType/:slug', async (req, res, next) => {
   if (locale !== 'en') return next()
   try {
     const entity = await fetchHub(hubType, slug)
-    if (!entity) return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send('<!doctype html><html><head><meta name="robots" content="noindex,follow"><title>Page not found | Alka Traders</title></head><body><h1>Page not found</h1></body></html>')
+    if (!entity) return res.status(404).set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send(withCspNonce('<!doctype html><html><head><meta name="robots" content="noindex,follow"><title>Page not found | Alka Traders</title></head><body><h1>Page not found</h1></body></html>', res.locals.cspNonce))
     if (!req.path.endsWith('/')) return res.redirect(301, `${req.path}/${req.url.slice(req.path.length)}`)
     const template = fs.readFileSync(indexPath, 'utf8')
     const rendered = hubHtml(template, entity, hubType, locale)
     if (!rendered.indexable) res.set('X-Robots-Tag', 'noindex, follow')
-    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800').type('html').send(rendered.html)
+    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800').type('html').send(withCspNonce(rendered.html, res.locals.cspNonce))
   } catch (error) {
     log(`[hub] render failed for ${req.path}: ${error.message}`)
     next()
@@ -307,6 +325,16 @@ app.get('/sitemap.xml', async (_req, res, next) => {
   }
 })
 
+// Direct .html requests bypass the SPA fallback; still apply the CSP nonce so
+// prerendered JSON-LD keeps working when a crawler hits the file directly.
+app.use((req, res, next) => {
+  if (!/\.html?$/i.test(req.path)) return next()
+  const root = path.resolve(distPath)
+  const file = path.resolve(root, decodeURIComponent(req.path).replace(/^\/+/, ''))
+  if (!file.startsWith(root + path.sep) || !fs.existsSync(file)) return next()
+  res.type('html').send(withCspNonce(fs.readFileSync(file, 'utf8'), res.locals.cspNonce))
+})
+
 // Serve assets directly, but let route handlers own root, sitemap and dynamic
 // product URLs. Disable Express's directory redirect so canonical slash policy
 // is explicit and consistent with the prerendered directory index files.
@@ -323,9 +351,9 @@ app.get('/{*splat}', (req, res) => {
   }
   const localizedUntranslated = /^\/(ar|es)(\/|$)/.test(req.path)
   const target = fs.existsSync(prerendered) ? prerendered : indexPath
-  if (!localizedUntranslated) return res.sendFile(target)
-  const html = fs.readFileSync(target, 'utf8').replace(/<head>/i, '<head><meta name="robots" content="noindex,follow">')
-  res.status(200).type('html').send(html)
+  let html = fs.readFileSync(target, 'utf8')
+  if (localizedUntranslated) html = html.replace(/<head>/i, '<head><meta name="robots" content="noindex,follow">')
+  res.status(200).type('html').send(withCspNonce(html, res.locals.cspNonce))
 })
 
 const server = app.listen(PORT, '0.0.0.0', () => {
