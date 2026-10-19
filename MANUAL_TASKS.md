@@ -163,6 +163,13 @@ A **polling safety net** is live regardless: the scheduler pulls recent
 Fulfillment orders every 10 minutes, so a missed webhook still imports the
 order (order-level dedupe prevents double stock claims).
 
+**Observed 2026-10-19:** the endpoint is already receiving real eBay
+deliveries (`MARKETPLACE_ACCOUNT_DELETION`, several per minute — eBay fans
+these out to every registered app; the deploy that shipped real-envelope
+parsing labelled them correctly for the first time). They are logged and
+ignored. If the app should actively purge a deleted buyer's order data on
+receipt (eBay compliance), that is a small follow-up code task.
+
 ### MT-15 · eBay: warehouse address for the merchant location
 
 Creating **new listings through the app** (Inventory API) needs a
