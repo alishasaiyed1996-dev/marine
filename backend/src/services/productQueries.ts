@@ -136,8 +136,12 @@ export async function listStorefrontProducts(params: ProductFilters) {
 }
 
 export async function getStorefrontProduct(id: string) {
+  // `Product.id` is a PostgreSQL UUID. Passing an arbitrary slug into the
+  // same OR clause makes PostgreSQL reject the UUID comparison before it can
+  // match the slug (P2023). Only include the ID predicate for UUID-shaped keys.
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
   const product = await prisma.product.findFirst({
-    where: { OR: [{ id }, { slug: id }], status: 'published' },
+    where: { ...(isUuid ? { OR: [{ id }, { slug: id }] } : { slug: id }), status: 'published' },
     include: productInclude,
   })
   if (!product) return null
