@@ -33,7 +33,7 @@ const DIST = distArgIndex !== -1 && process.argv[distArgIndex + 1]
 const BASE_URL = 'https://alkatraders.co'
 const SITE_NAME = 'Alka Traders'
 const DEFAULT_DESC = 'Global supplier of marine spares, industrial equipment, surplus machinery, and emergency procurement parts. Based in Bhavnagar, Gujarat, India.'
-const LOGO_URL = 'https://res.cloudinary.com/y7up4zti/image/upload/v1/alka/static/alka-traders-logo'
+const LOGO_URL = `${BASE_URL}/images/alka-traders-logo.png`
 
 // ─── Helpers ────────────────────────────────────────────────────
 

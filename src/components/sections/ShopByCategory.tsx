@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useLocalizedPath } from '../../lib/locale'
+import { applyCloudinaryTransform } from '../../lib/utils'
 
 const categories = [
   { name: 'Electrical & Automation', slug: 'electrical', file: 'Electrical and automation.jpeg' },
@@ -56,13 +57,21 @@ export function ShopByCategory() {
               {/* Image */}
               <div className="relative aspect-[4/3] overflow-hidden">
                 <img
-                  src={encodePath(cat.file)}
+                  src={applyCloudinaryTransform(encodePath(cat.file), 800)}
                   alt={cat.name}
                   className="h-full w-full object-cover transition-all duration-700 group-hover:scale-110"
                   loading="lazy"
                   decoding="async"
                   onError={(e) => {
-                    const img = e.target as HTMLImageElement
+                    const img = e.currentTarget
+                    // Cloudinary can be slow/unreachable; every category tile
+                    // also ships as a local JPEG under /images/categories, so
+                    // fall back to that before hiding the image entirely.
+                    if (img.dataset.fallback !== 'local') {
+                      img.dataset.fallback = 'local'
+                      img.src = `/images/categories/${encodeURIComponent(cat.file)}`
+                      return
+                    }
                     img.style.display = 'none'
                     const parent = img.parentElement
                     if (parent) {

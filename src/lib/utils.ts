@@ -129,6 +129,21 @@ export function applyImageFallback(img: HTMLImageElement): void {
     img.src = getImageFallbackUrl(current)
     return
   }
+  // Cloudinary static assets → the same files ship in /public/images
+  if (current.includes('/alka/static/alka-traders-logo')) {
+    img.src = '/images/alka-traders-logo.png'
+    return
+  }
+  if (current.includes('/alka/static/placeholder')) {
+    img.src = '/images/placeholder.jpg'
+    return
+  }
+  // Any other Cloudinary image (brand logos, category tiles, remote uploads):
+  // use the local placeholder so a CDN hiccup never shows a broken-image icon.
+  if (current.includes('res.cloudinary.com')) {
+    img.src = '/images/placeholder.jpg'
+    return
+  }
   // Local copy failed → generic placeholder
   if (current.includes('/images/products/')) {
     img.src = '/images/placeholder.jpg'
