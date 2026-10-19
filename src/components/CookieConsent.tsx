@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Cookie, X } from 'lucide-react'
 
 const CONSENT_KEY = 'alka-cookie-consent'
 
 export function CookieConsent() {
+  const { i18n } = useTranslation()
+  const locale = ['en', 'ar', 'es'].includes(i18n.language) ? i18n.language : 'en'
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
@@ -37,7 +40,7 @@ export function CookieConsent() {
               <h3 className="text-sm font-bold text-[var(--text-primary)] mb-1">Cookie Notice</h3>
               <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                 We use essential cookies for authentication and session management. These cookies are strictly necessary for the website to function. We do not use third-party tracking cookies. By continuing to use this site, you consent to the use of essential cookies. Read our{' '}
-                <a href="/privacy-policy" className="text-[var(--accent-blue)] hover:underline">Privacy Policy</a> for more details.
+                <a href={`/${locale}/privacy-policy`} className="text-[var(--accent-blue)] hover:underline">Privacy Policy</a> for more details.
               </p>
             </div>
           </div>

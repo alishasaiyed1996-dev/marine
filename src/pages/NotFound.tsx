@@ -2,9 +2,11 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { SEO } from '../components/seo/SEO'
+import { useLocalizedPath } from '../lib/locale'
 
 export default function NotFound() {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
   return (
     <>
       <SEO title="Page Not Found — Alka Traders" description="The page you are looking for does not exist. Browse our marine and industrial equipment catalog or return home." />
@@ -18,7 +20,7 @@ export default function NotFound() {
           {t('notFound.sub')}
         </p>
         <Link
-          to="/"
+          to={lp('/')}
           className="inline-flex items-center gap-2 px-7 py-3.5 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] hover:border-[var(--accent-primary-hover)] transition-all no-underline rounded-xl"
         >
           <ArrowLeft size={16} />          {t('notFound.cta')}

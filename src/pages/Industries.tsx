@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import { ArrowRight, Ship, Anchor, Flame, Zap, Factory, FlaskConical } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useIndustries } from '../hooks/useApiQuery'
+import { useLocalizedPath } from '../lib/locale'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { Skeleton } from '../components/ui/Skeleton'
@@ -13,6 +15,7 @@ const iconMap: Record<string, LucideIcon> = {
 
 export default function Industries() {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
 
   // React Query with API→static fallback + shared cache (same key as the
   // homepage IndustriesTabs), and hover-prefetchable from the navbar.
@@ -104,12 +107,12 @@ export default function Industries() {
                     </li>
                   ))}
                 </ul>
-                <a
-                  href={`/products?industry=${current.id}`}
+                <Link
+                  to={lp(`/products?industry=${current.id}`)}
                   className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all no-underline rounded-xl"
                 >
                   {t('industries.viewProducts')} <ArrowRight size={14} />
-                </a>
+                </Link>
               </div>
             </div>
           </div>

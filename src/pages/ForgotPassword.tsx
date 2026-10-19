@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mail, ArrowLeft, CheckCircle } from 'lucide-react'
 import { customerAuth } from '../lib/api'
+import { useLocalizedPath } from '../lib/locale'
 import { useStore } from '../store/useStore'
 import { SEO } from '../components/seo/SEO'
 
 export default function ForgotPassword() {
+  const lp = useLocalizedPath()
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -55,7 +57,7 @@ export default function ForgotPassword() {
                 We've sent a password reset link to <strong className="text-[var(--text-primary)]">{email}</strong>. Please check your inbox and follow the instructions.
               </p>
               <Link
-                to="/"
+                to={lp('/')}
                 className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent-primary)] hover:underline"
               >
                 <ArrowLeft size={14} /> Back to Home

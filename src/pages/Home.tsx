@@ -4,6 +4,7 @@ import { Anchor, ArrowRight, Clock, Cog, Droplets, Package, Search, ShieldCheck,
 import { WhatsAppIcon } from '../components/ui/WhatsAppIcon'
 import { useTranslation } from 'react-i18next'
 import { useAddToCart } from '../hooks/useAddToCart'
+import { useLocalizedPath } from '../lib/locale'
 import { SEO } from '../components/seo/SEO'
 import { useStoreSettings } from '../hooks/useStoreSettings'
 import { useNewArrivals } from '../hooks/useApiQuery'
@@ -45,6 +46,7 @@ const highIntentSearches = [
 
 export default function Home() {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
   const { handleAddToCart, addedIds } = useAddToCart()
   const { whatsappNumber } = useStoreSettings()
 
@@ -134,10 +136,10 @@ export default function Home() {
                 Find marine spare parts online for vessel repair, shipyard maintenance, offshore procurement, and industrial MRO. Browse stock or send an RFQ for hard-to-find OEM and compatible replacement parts.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                <Link to="/products" className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent-primary)] px-5 py-3 text-sm font-black text-[var(--btn-blue-text)] no-underline hover:bg-[var(--accent-primary-hover)] hover:text-[var(--btn-blue-text)]">
+                <Link to={lp('/products')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent-primary)] px-5 py-3 text-sm font-black text-[var(--btn-blue-text)] no-underline hover:bg-[var(--accent-primary-hover)] hover:text-[var(--btn-blue-text)]">
                   <Search size={16} /> Search all products
                 </Link>
-                <Link to="/rfq" className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-sm font-black text-[var(--text-primary)] no-underline hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]">
+                <Link to={lp('/rfq')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-sm font-black text-[var(--text-primary)] no-underline hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]">
                   Request a quote <ArrowRight size={16} />
                 </Link>
               </div>
@@ -147,7 +149,7 @@ export default function Home() {
               {ecommerceCategories.map((cat) => {
                 const Icon = cat.icon
                 return (
-                  <Link key={cat.label} to={cat.href} className="group flex min-h-[132px] gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left no-underline shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-[var(--accent-primary)]">
+                  <Link key={cat.label} to={lp(cat.href)} className="group flex min-h-[132px] gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left no-underline shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-[var(--accent-primary)]">
                     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--teal-soft)] text-[var(--accent-primary)]">
                       <Icon size={21} />
                     </span>
@@ -165,7 +167,7 @@ export default function Home() {
             {highIntentSearches.map((term) => (
               <Link
                 key={term}
-                to={`/products?search=${encodeURIComponent(term)}`}
+                to={lp(`/products?search=${encodeURIComponent(term)}`)}
                 className="rounded-full border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-bold text-[var(--text-secondary)] no-underline transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
               >
                 {term}
@@ -217,7 +219,7 @@ export default function Home() {
               <div className="gold-accent-bar mt-4" />
             </div>
             <Link
-              to="/shop"
+              to={lp('/products')}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--accent-primary)] bg-[var(--accent-primary)] px-6 py-3 text-sm font-bold text-[var(--btn-blue-text)] no-underline shadow-[0_8px_24px_var(--focus-ring)] transition-all duration-300 hover:bg-[var(--accent-primary-hover)] hover:text-[var(--btn-blue-text)]"
             >
               {t('shop.cta')} <ArrowRight size={16} />

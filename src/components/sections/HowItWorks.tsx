@@ -4,9 +4,11 @@ import { Link } from 'react-router-dom'
 import { motion, useInView } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 import { SectionLabel } from '../ui/SectionLabel'
+import { useLocalizedPath } from '../../lib/locale'
 
 export function HowItWorks() {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
   const sectionRef = useRef<HTMLDivElement>(null!)
   const isInView = useInView(sectionRef, { once: true, amount: 0.15 })
 
@@ -32,7 +34,7 @@ export function HowItWorks() {
           </p>
           <div className="gold-accent-bar mt-5" />
           <Link
-            to="/rfq"
+            to={lp('/rfq')}
             className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-5 py-3 text-sm font-bold text-[var(--btn-blue-text)] no-underline hover:bg-[var(--accent-primary-hover)] hover:text-[var(--btn-blue-text)]"
           >
             {t('process.cta')} <ArrowRight size={16} />

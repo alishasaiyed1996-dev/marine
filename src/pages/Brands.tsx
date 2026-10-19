@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { brandImages } from '../data/brandImages'
 import { brands as staticBrands } from '../data/brands'
 import { useBrands } from '../hooks/useApiQuery'
+import { useLocalizedPath } from '../lib/locale'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { OptimizedImage } from '../components/ui/OptimizedImage'
@@ -13,6 +14,7 @@ const filters = ['All', 'Marine', 'Industrial', 'Automation', 'Pneumatic'] as co
 
 export default function Brands() {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
   const [activeFilter, setActiveFilter] = useState<string>('All')
 
   // React Query caches brands — no manual loading/state management needed
@@ -148,7 +150,7 @@ export default function Brands() {
             {filtered.map((brand) => (
               <Link
                 key={brand.id}
-                to={`/en/brands/${brand.slug}/`}
+                to={lp(`/brands/${brand.slug}/`)}
                 aria-label={`View ${brand.name} marine and industrial spare parts`}
                 className="bg-[var(--secondary-bg)] border border-[var(--border)] border-l-[3px] border-l-transparent p-6 cursor-pointer transition-all duration-300 hover:border-l-[var(--accent-primary)] hover:-translate-y-1 focus-visible:border-l-[var(--accent-primary)]"
               >

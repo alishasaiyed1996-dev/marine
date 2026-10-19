@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import { SectionLabel } from '../ui/SectionLabel'
 import { useIndustries } from '../../hooks/useApiQuery'
+import { useLocalizedPath } from '../../lib/locale'
 import { Ship, Anchor, Flame, Zap, Factory, FlaskConical, ArrowRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -13,6 +15,7 @@ interface IndustryItem { id: string; name: string; icon: string; description: st
 
 export function IndustriesTabs() {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
 
   // Shared react-query cache (same key as the /industries page): API data with
   // a built-in static fallback, so the section always renders real content.
@@ -78,12 +81,12 @@ export function IndustriesTabs() {
                 </span>
               ))}
             </div>
-            <a
-              href={`/products?industry=${current.id}`}
+            <Link
+              to={lp(`/products?industry=${current.id}`)}
               className="inline-flex items-center gap-2 text-xs font-bold border-2 border-[var(--accent-primary)] text-[var(--accent-primary)] px-5 py-2.5 rounded-xl hover:bg-[var(--accent-primary)] hover:text-[var(--btn-blue-text)] transition-all duration-300 no-underline"
             >
               {t('industries.viewProducts')} <ArrowRight size={14} />
-            </a>
+            </Link>
           </div>
         </div>
         </>

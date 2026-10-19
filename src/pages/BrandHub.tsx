@@ -26,7 +26,7 @@ export default function BrandHub() {
   const title = brand?.seoTitle || `${brand?.name || 'Marine parts'} spare parts | Alka Traders`
   const metaDescription = brand?.seoDescription || description.slice(0, 160)
 
-  if (isError) return <main className="mx-auto max-w-5xl px-4 py-20"><h1>Brand not found</h1><Link to="/brands/">Browse brands</Link></main>
+  if (isError) return <main className="mx-auto max-w-5xl px-4 py-20"><h1>Brand not found</h1><Link to={`/${language}/brands/`}>Browse brands</Link></main>
   return <main className="mx-auto max-w-[1280px] px-4 py-12 sm:px-6">
     {brand && <>
       <SEO title={title} description={metaDescription} canonical={`/brands/${brand.slug}/`} noindex={!indexable} />
@@ -40,7 +40,7 @@ export default function BrandHub() {
       <h2 className="mb-5 text-2xl font-bold">Available {brand.name} parts ({brand._count?.products || 0})</h2>
       {!products.length && !isLoading ? <p className="rounded-xl border border-[var(--border)] p-6">No published products are available in this brand yet.</p> : <ProductGrid products={products} addedIds={addedIds} onAddToCart={handleAddToCart} isLoading={isLoading} />}
       {brand.sectors?.length > 0 && <p className="mt-8 text-sm text-[var(--text-muted)]">Sectors: {brand.sectors.join(', ')}</p>}
-      <Link to="/brands/" className="mt-8 inline-block underline">All brands</Link>
+      <Link to={`/${language}/brands/`} className="mt-8 inline-block underline">All brands</Link>
     </>}
   </main>
 }

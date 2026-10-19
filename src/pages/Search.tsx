@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Search as SearchIcon } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { storefront } from '../lib/api'
+import { useLocalizedPath } from '../lib/locale'
 import { useCategories } from '../hooks/useApiQuery'
 import { SEO } from '../components/seo/SEO'
 import { SearchInput, SearchResultsList } from '../components/search'
@@ -30,6 +31,7 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null!)
   const navigate = useNavigate()
+  const lp = useLocalizedPath()
   const addRecentSearch = useStore((s) => s.addRecentSearch)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // React Query caches categories — replaces manual useEffect + state
@@ -112,7 +114,7 @@ export default function SearchPage() {
 
   const handleSelect = (result: { path: string; title: string }) => {
     if (query.trim()) addRecentSearch(query.trim())
-    navigate(result.path)
+    navigate(lp(result.path))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

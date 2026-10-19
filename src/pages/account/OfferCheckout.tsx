@@ -1,11 +1,14 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { PayPalButtons, usePayPalScriptReducer } from '@paypal/react-paypal-js'
+import { PayPalButtons } from '@paypal/react-paypal-js'
 import {
   ChevronLeft, HandCoins, Loader2, MapPin, Shield, Tag,
 } from 'lucide-react'
 import { storefront } from '../../lib/api'
+import { useLocalizedPath } from '../../lib/locale'
+import { usePayPalAvailability } from '../../components/PayPalProvider'
 import { useStore } from '../../store/useStore'
 import { OptimizedImage } from '../../components/ui/OptimizedImage'
 
@@ -31,10 +34,12 @@ const EMPTY_SHIPPING: Shipping = {
  * payment flow (capture-order + webhook), exactly like normal checkout.
  */
 export default function OfferCheckout() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const lp = useLocalizedPath()
   const user = useStore((s) => s.user)
-  const [{ isPending: paypalScriptLoading }] = usePayPalScriptReducer()
+  const { configured: paypalConfigured, loading: paypalScriptLoading } = usePayPalAvailability()
 
   const [shipping, setShipping] = useState<Shipping>(EMPTY_SHIPPING)
   const [errors, setErrors] = useState<Record<string, boolean>>({})
@@ -92,7 +97,7 @@ export default function OfferCheckout() {
         <div className="text-center">
           <h1 className="font-display text-xl font-bold text-[var(--text-primary)] mb-2">Offer unavailable</h1>
           <p className="text-sm text-[var(--text-secondary)] mb-6">This offer cannot be found or cannot be paid.</p>
-          <Link to="/account/offers" className="text-sm font-semibold text-[var(--accent-primary)] hover:underline">
+          <Link to={lp('/account/offers')} className="text-sm font-semibold text-[var(--accent-primary)] hover:underline">
             Back to My Offers
           </Link>
         </div>
@@ -189,13 +194,13 @@ export default function OfferCheckout() {
           {order && <p className="font-mono text-xs text-[var(--text-muted)] mb-6">Order {order.orderNumber}</p>}
           <div className="flex items-center justify-center gap-3">
             <Link
-              to="/account/orders"
+              to={lp('/account/orders')}
               className="px-5 py-2.5 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm rounded-xl hover:bg-[var(--accent-primary-hover)] transition-all"
             >
               View Orders
             </Link>
             <Link
-              to="/account/offers"
+              to={lp('/account/offers')}
               className="px-5 py-2.5 border border-[var(--border)] text-[var(--text-secondary)] font-semibold text-sm rounded-xl hover:border-[var(--accent-primary)] transition-all"
             >
               My Offers
@@ -260,7 +265,7 @@ export default function OfferCheckout() {
             </div>
 
             <button
-              onClick={() => navigate('/account/offers')}
+              onClick={() => navigate(lp('/account/offers'))}
               className="mt-6 inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors bg-transparent border-none cursor-pointer"
             >
               <ChevronLeft size={14} /> Back to My Offers
@@ -312,7 +317,11 @@ export default function OfferCheckout() {
             {payError && <p className="text-xs text-[var(--danger)]">{payError}</p>}
 
             <div className="pt-2">
-              {paypalScriptLoading || payLoading ? (
+              {!paypalConfigured && !paypalScriptLoading ? (
+                <div className="flex items-center justify-center h-[48px] px-4 rounded-xl border border-[var(--border)] text-center text-xs text-[var(--text-secondary)]">
+                  {t('checkout.paypalUnavailable')}
+                </div>
+              ) : paypalScriptLoading || payLoading ? (
                 <div className="flex items-center justify-center gap-2 h-[48px] rounded-full bg-[var(--accent-gold)]/90 text-[var(--btn-blue-text)] font-semibold text-sm">
                   <Loader2 size={16} className="animate-spin" /> {payLoading ? 'Starting...' : 'Loading PayPal...'}
                 </div>

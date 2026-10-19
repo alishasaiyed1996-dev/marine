@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { useLocalizedPath } from '../../lib/locale'
 import type { FieldErrors } from './AuthModal'
 
 const inputClass =
@@ -32,6 +33,7 @@ export function LoginForm({
   onClearError,
   onForgotPassword,
 }: LoginFormProps) {
+  const lp = useLocalizedPath()
   return (
     <motion.div
       key="signin-form"
@@ -104,7 +106,7 @@ export function LoginForm({
             Remember me
           </label>
           <a
-            href="/forgot-password"
+            href={lp('/forgot-password')}
             className="text-xs text-[var(--accent-primary)] hover:underline"
             onClick={(e) => { e.stopPropagation(); onForgotPassword?.() }}
           >

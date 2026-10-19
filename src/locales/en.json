@@ -386,6 +386,7 @@
     "reviewOrder": "Review Order →",
     "paymentCard": "Credit / Debit Card",
     "paymentPaypal": "PayPal",
+    "paypalUnavailable": "PayPal is unavailable right now. Please go back and choose bank transfer.",
     "paymentBank": "Bank Transfer",
     "cardNumber": "Card Number *",
     "cardExpiry": "Expiry Date *",

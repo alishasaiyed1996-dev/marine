@@ -182,7 +182,7 @@ export default function AdminBrands() {
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => openEditModal(brand.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-gold)] hover:bg-[var(--gold-muted)] transition-colors" title="Edit"><Pencil size={12} /></button>
-                  <a href={`/brands/${brand.slug}`} target="_blank" rel="noopener noreferrer" className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors" title="View on storefront"><Eye size={12} /></a>
+                  <a href={`/en/brands/${brand.slug}/`} target="_blank" rel="noopener noreferrer" className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors" title="View on storefront"><Eye size={12} /></a>
                   <button onClick={() => setDeleteTarget(brand.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-danger/5 transition-colors" title="Delete"><Trash2 size={12} /></button>
                 </div>
               </div>

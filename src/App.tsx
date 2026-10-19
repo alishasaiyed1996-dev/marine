@@ -92,9 +92,14 @@ function LocaleLayout() {
 
   const isValid = locale !== undefined && VALID_LOCALES.includes(locale as Language)
 
-  // Set language when locale changes
+  // Set language when locale changes. The URL locale is authoritative for
+  // language and text direction, including English (LTR), so every page has
+  // the correct <html lang> / <html dir> even on first load.
   useEffect(() => {
-    if (isValid && locale !== language) {
+    if (!isValid) return
+    document.documentElement.lang = locale as Language
+    document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr'
+    if (locale !== language) {
       setLanguage(locale as Language)
     }
   }, [locale, setLanguage, language, isValid])

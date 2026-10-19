@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react'
 import { customerAuth } from '../lib/api'
+import { useLocalizedPath } from '../lib/locale'
 import { useStore } from '../store/useStore'
 import { SEO } from '../components/seo/SEO'
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') || ''
+  const lp = useLocalizedPath()
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -46,7 +48,7 @@ export default function ResetPassword() {
           />
           <h2 className="font-display text-xl font-bold text-[var(--text-primary)] mb-2">Invalid Reset Link</h2>
           <p className="text-sm text-[var(--text-secondary)] mb-4">This password reset link is invalid or has expired.</p>
-          <Link to="/" className="text-sm font-semibold text-[var(--accent-primary)] hover:underline">← Back to Home</Link>
+          <Link to={lp('/')} className="text-sm font-semibold text-[var(--accent-primary)] hover:underline">← Back to Home</Link>
         </div>
       </div>
     )

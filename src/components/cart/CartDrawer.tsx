@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Trash2, ShoppingBag, Plus, Minus } from 'lucide-react'
 import { useStore } from '../../store/useStore'
+import { useLocalizedPath } from '../../lib/locale'
 import { OptimizedImage } from '../ui/OptimizedImage'
 
 
@@ -31,6 +32,7 @@ import { getProductImageUrl } from '../../lib/utils'
 export function CartDrawer() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const lp = useLocalizedPath()
   const cart = useStore((s) => s.cart)
   const showCartDrawer = useStore((s) => s.showCartDrawer)
   const setShowCartDrawer = useStore((s) => s.setShowCartDrawer)
@@ -76,7 +78,7 @@ export function CartDrawer() {
 
   const handleCheckout = () => {
     closeDrawer()
-    navigate('/checkout')
+    navigate(lp('/checkout'))
   }
 
   const subtotal = getCartTotal()
@@ -166,7 +168,7 @@ export function CartDrawer() {
                 <button
                   onClick={() => {
                     closeDrawer()
-                    navigate('/products')
+                    navigate(lp('/products'))
                   }}
                   className="rounded-full bg-[var(--brick-ember)] px-6 py-2.5 text-sm font-semibold text-[var(--honeydew)] transition-transform hover:scale-[1.03] active:scale-[0.97]"
                 >

@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { useLocalizedPath } from '../../lib/locale'
 
 interface Props {
   children: ReactNode
@@ -9,6 +10,19 @@ interface Props {
 interface State {
   hasError: boolean
   error: Error | null
+}
+
+/** Keeps the error fallback inside the active locale (en/ar/es). */
+function ErrorHomeLink() {
+  const lp = useLocalizedPath()
+  return (
+    <Link
+      to={lp('/')}
+      className="px-5 py-2.5 text-xs font-bold border border-[var(--border)] text-[var(--text-secondary)] rounded-lg hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)] transition-all no-underline"
+    >
+      Go Home
+    </Link>
+  )
 }
 
 export class PageErrorBoundary extends Component<Props, State> {
@@ -50,12 +64,7 @@ export class PageErrorBoundary extends Component<Props, State> {
             >
               Retry
             </button>
-            <Link
-              to="/"
-              className="px-5 py-2.5 text-xs font-bold border border-[var(--border)] text-[var(--text-secondary)] rounded-lg hover:border-[var(--accent-gold)] hover:text-[var(--accent-gold)] transition-all no-underline"
-            >
-              Go Home
-            </Link>
+            <ErrorHomeLink />
           </div>
         </div>
       )

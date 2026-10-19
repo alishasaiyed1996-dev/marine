@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { OptimizedImage } from '../ui/OptimizedImage'
 import { ProductCardSkeleton } from '../ui/Skeleton'
 import { isLightColor, getProductImageUrl } from '../../lib/utils'
+import { useLocalizedPath } from '../../lib/locale'
 import { buildImageAlt } from '../../lib/seo/productSeo'
 import type { Product } from '../../types'
 
@@ -16,12 +17,13 @@ interface ProductGridProps {
 
 function ProductCard({ product, addedIds, onAddToCart }: { product: Product; addedIds: Set<string>; onAddToCart: (product: Product) => void }) {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
   const effPrice = product.onSale && product.salePrice ? product.salePrice : product.price
   const isAdded = addedIds.has(product.id)
 
   return (
     <div className="card flex h-full flex-col overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:border-[var(--accent-primary)] group">
-      <Link to={`/product/${product.slug || product.id}`} className="block relative overflow-hidden bg-[var(--surface)] border-b border-[var(--border)]">
+      <Link to={lp(`/product/${product.slug || product.id}`)} className="block relative overflow-hidden bg-[var(--surface)] border-b border-[var(--border)]">
         {/* object-contain on a padded neutral stage: product photos keep their
             full shape (IMPA codes, nameplates and labels stay readable) instead
             of being cropped like object-cover did. transformWidth caps uploaded
@@ -66,7 +68,7 @@ function ProductCard({ product, addedIds, onAddToCart }: { product: Product; add
           </span>
         </div>
         <h4 className="text-label leading-tight hover:text-[var(--accent-primary)] transition-colors min-h-[40px]">
-          <Link to={`/product/${product.slug || product.id}`}>{product.name}</Link>
+          <Link to={lp(`/product/${product.slug || product.id}`)}>{product.name}</Link>
         </h4>
         <span className="font-mono text-xs text-[var(--text-muted)] block mt-1">
           {t('product.skuPrefix', { sku: product.sku })}

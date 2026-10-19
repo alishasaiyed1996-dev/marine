@@ -25,13 +25,14 @@ import { ProductImageGallery } from '../components/product/ProductImageGallery'
 import { OfferModal } from '../components/product/OfferModal'
 import { Skeleton } from '../components/ui/Skeleton'
 import { RelatedProducts } from '../components/product/RelatedProducts'
-import { useLocale } from '../lib/locale'
+import { useLocalizedPath, useLocale } from '../lib/locale'
 
 export default function ProductDetail() {
   const { t } = useTranslation()
   const { key } = useParams()
   const id = key
   const locale = useLocale()
+  const lp = useLocalizedPath()
   const navigate = useNavigate()
   const { addToCart } = useStore()
   const { whatsappNumber } = useStoreSettings()
@@ -119,7 +120,7 @@ export default function ProductDetail() {
       <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-24 text-center">
         <h2 className="text-2xl font-bold mb-2">{t('product.productNotFound')}</h2>
         <p className="text-body-sm text-[var(--text-secondary)] mb-6">{t('product.productNotFoundDesc')}</p>
-        <Link to="/products" className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold rounded-xl hover:bg-[var(--accent-primary-hover)] transition-all">
+        <Link to={lp('/products')} className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold rounded-xl hover:bg-[var(--accent-primary-hover)] transition-all">
           <ArrowLeft size={16} /> {t('product.backToProducts')}
         </Link>
       </div>
@@ -184,7 +185,7 @@ export default function ProductDetail() {
 
   const handleBuyNow = () => {
     for (let i = 0; i < quantity; i++) addToCart(product)
-    navigate('/checkout')
+    navigate(lp('/checkout'))
   }
 
   return (
@@ -228,7 +229,7 @@ export default function ProductDetail() {
           <div className="space-y-6 text-left">
             <div>
               <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] font-mono mb-2">
-                <Link to="/shop" className="hover:text-[var(--accent-primary)]">{t('nav.shop')}</Link>
+                <Link to={lp('/shop')} className="hover:text-[var(--accent-primary)]">{t('nav.shop')}</Link>
                 <span>/</span>
                 <span className="capitalize">{readableCategory}</span>
               </div>

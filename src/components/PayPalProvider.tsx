@@ -1,6 +1,35 @@
-import { PayPalScriptProvider } from '@paypal/react-paypal-js'
-import { type ReactNode, useState, useEffect } from 'react'
+import { PayPalScriptProvider, usePayPalScriptReducer } from '@paypal/react-paypal-js'
+import { createContext, useContext, type ReactNode, useState, useEffect } from 'react'
 import { storefront } from '../lib/api/storefront'
+
+interface PayPalAvailability {
+  /** True when the backend has a real client ID and the provider is mounted. */
+  configured: boolean
+  /** True while the client ID or the PayPal SDK script is still loading. */
+  loading: boolean
+}
+
+/**
+ * Safe alternative to `usePayPalScriptReducer()` for components that can
+ * render before the provider mounts (or when PayPal is not configured at all).
+ * Calling the PayPal hook without a provider throws and takes checkout down.
+ */
+const PayPalAvailabilityContext = createContext<PayPalAvailability>({
+  configured: false,
+  loading: true,
+})
+
+export const usePayPalAvailability = () => useContext(PayPalAvailabilityContext)
+
+/** Reads the SDK loading state from inside the provider and publishes it. */
+function PayPalScriptStatus({ children }: { children: ReactNode }) {
+  const [{ isPending }] = usePayPalScriptReducer()
+  return (
+    <PayPalAvailabilityContext.Provider value={{ configured: true, loading: Boolean(isPending) }}>
+      {children}
+    </PayPalAvailabilityContext.Provider>
+  )
+}
 
 /**
  * Wraps the app with PayPalScriptProvider.
@@ -13,6 +42,7 @@ import { storefront } from '../lib/api/storefront'
  */
 export function PayPalProvider({ children }: { children: ReactNode }) {
   const [clientId, setClientId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -33,20 +63,41 @@ export function PayPalProvider({ children }: { children: ReactNode }) {
         // Backend unreachable → no PayPal. Never fall back to a demo ID.
         if (!cancelled) setClientId(null)
       })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
     return () => {
       cancelled = true
     }
   }, [])
 
+  // While the client ID is being fetched, keep the app mounted but expose the
+  // loading state so checkout can wait instead of calling a provider-less hook.
+  if (loading) {
+    return (
+      <PayPalAvailabilityContext.Provider value={{ configured: false, loading: true }}>
+        {children}
+      </PayPalAvailabilityContext.Provider>
+    )
+  }
+
   // If PayPal isn't configured or errored, render children without the provider
   // so the rest of the app still works.
   if (!clientId) {
-    return <>{children}</>
+    return (
+      <PayPalAvailabilityContext.Provider value={{ configured: false, loading: false }}>
+        {children}
+      </PayPalAvailabilityContext.Provider>
+    )
   }
 
   // Prevent double-loading the SDK if another provider instance exists
   if (typeof window !== 'undefined' && (window as unknown as Record<string, boolean>).__paypal_sdk_loaded) {
-    return <>{children}</>
+    return (
+      <PayPalAvailabilityContext.Provider value={{ configured: false, loading: false }}>
+        {children}
+      </PayPalAvailabilityContext.Provider>
+    )
   }
 
   return (
@@ -59,7 +110,7 @@ export function PayPalProvider({ children }: { children: ReactNode }) {
         components: 'buttons',
       }}
     >
-      {children}
+      <PayPalScriptStatus>{children}</PayPalScriptStatus>
     </PayPalScriptProvider>
   )
 }

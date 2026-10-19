@@ -43,12 +43,15 @@ try {
   // during bootstrap.
 }
 
-// Detect initial language for RTL support
-const browserLang = navigator.language?.startsWith('ar') ? 'ar' : navigator.language?.startsWith('es') ? 'es' : 'en'
-if (browserLang !== 'en') {
-  document.documentElement.dir = browserLang === 'ar' ? 'rtl' : 'ltr'
-  document.documentElement.lang = browserLang
-}
+// Set lang/dir before React mounts, based on the URL locale (the storefront is
+// always served under /en, /ar, or /es). This avoids a flash of the wrong
+// direction on first paint, especially for Arabic.
+const pathLocale = window.location.pathname.split('/')[1]
+const initialLocale = pathLocale === 'ar' || pathLocale === 'es' || pathLocale === 'en'
+  ? pathLocale
+  : navigator.language?.startsWith('ar') ? 'ar' : navigator.language?.startsWith('es') ? 'es' : 'en'
+document.documentElement.dir = initialLocale === 'ar' ? 'rtl' : 'ltr'
+document.documentElement.lang = initialLocale
 
 i18n.use(initReactI18next).init({
   resources: {

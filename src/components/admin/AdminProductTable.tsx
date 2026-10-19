@@ -286,7 +286,7 @@ export function AdminProductTable({
                         </Link>
                         {product.status === 'published' ? (
                           <a
-                            href={`/product/${product.id}`}
+                            href={`/en/product/${product.id}/`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors"

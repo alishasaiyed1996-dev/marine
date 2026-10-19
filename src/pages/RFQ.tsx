@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import { Shield, Clock, Globe, Mail, ChevronDown, Phone, Calendar, Zap, TriangleAlert, Loader2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useStoreSettings } from '../hooks/useStoreSettings'
@@ -7,6 +8,7 @@ import { usePersistentState } from '../hooks/usePersistentState'
 import { faqItems } from '../data/testimonials'
 import { countries } from '../data/countries'
 import { storefront } from '../lib/api'
+import { useLocalizedPath } from '../lib/locale'
 import { SEO } from '../components/seo/SEO'
 import { WhatsAppIcon } from '../components/ui/WhatsAppIcon'
 import { ResponseCountdown } from '../components/ui/ResponseCountdown'
@@ -43,6 +45,7 @@ const INITIAL_RFQ_FORM: RFQFormData = {
 
 export default function RFQ() {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
   const { rfqStep, setRfqStep, rfqSubmitted, rfqId, setRfqSubmitted, generateRfqId, rfqDeadline, setRfqDeadline } = useStore()
   const { whatsappNumber, phoneNumber, rfqEmail } = useStoreSettings()
   // Draft persists across hard refresh — a multi-step inquiry is never lost.
@@ -142,12 +145,12 @@ export default function RFQ() {
             <ResponseCountdown deadline={rfqDeadline} />
           </div>
           <div className="flex gap-4 flex-wrap justify-center mt-8">
-            <a href="/rfq" className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all no-underline rounded-xl">
+            <Link to={lp('/rfq')} className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all no-underline rounded-xl">
               {t('rfq.submitAnother')}
-            </a>
-            <a href="/products" className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all no-underline rounded-xl">
+            </Link>
+            <Link to={lp('/products')} className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all no-underline rounded-xl">
               {t('rfq.browseProducts')}
-            </a>
+            </Link>
             <a href={`https://wa.me/${whatsappNumber}`} className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--success)] text-[var(--success)] px-[18px] py-[10px] hover:bg-[var(--success)]/10 transition-all no-underline rounded-xl">
               <WhatsAppIcon size={14} /> {t('rfq.whatsappUsNow')}
             </a>

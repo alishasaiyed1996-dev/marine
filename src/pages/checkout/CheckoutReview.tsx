@@ -28,6 +28,7 @@ interface CheckoutReviewProps {
   orderError: string
   orderLoading: boolean
   creatingOrder: boolean
+  paypalConfigured: boolean
   paypalScriptLoading: boolean
   goToStep: (step: number) => void
   handlePlaceOrder: () => void
@@ -48,6 +49,7 @@ export function CheckoutReview({
   orderError,
   orderLoading,
   creatingOrder,
+  paypalConfigured,
   paypalScriptLoading,
   goToStep,
   handlePlaceOrder,
@@ -165,6 +167,10 @@ export function CheckoutReview({
             {creatingOrder ? (
               <div className="flex items-center justify-center gap-2 px-7 py-3.5 bg-accent-gold text-[var(--btn-blue-text)] font-semibold text-sm rounded-full">
                 <Loader2 size={16} className="animate-spin" /> Creating order...
+              </div>
+            ) : !paypalConfigured && !paypalScriptLoading ? (
+              <div className="flex items-center justify-center px-4 py-3.5 border border-[var(--border)] text-xs text-[var(--text-secondary)] text-center rounded-xl">
+                {t('checkout.paypalUnavailable')}
               </div>
             ) : paypalScriptLoading ? (
               <div className="flex items-center justify-center gap-2 px-7 py-3.5 bg-accent-gold text-[var(--btn-blue-text)] font-semibold text-sm rounded-full">

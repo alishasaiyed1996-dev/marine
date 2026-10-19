@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { User, Mail, Phone, Building, Globe, ChevronRight, Check } from 'lucide-react'
 import { customerAuth } from '../../lib/api'
+import { useLocalizedPath } from '../../lib/locale'
 import { useStore } from '../../store/useStore'
 
 export default function ProfileEdit() {
   const navigate = useNavigate()
+  const lp = useLocalizedPath()
   const user = useStore((s) => s.user)
 
   const [name, setName] = useState('')
@@ -17,7 +19,7 @@ export default function ProfileEdit() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!user) { navigate('/'); return }
+    if (!user) { navigate(lp('/')); return }
     setName(user.name || '')
     setPhone('phone' in user ? (user as { phone?: string }).phone || '' : '')
     setCompany('company' in user ? (user as { company?: string }).company || '' : '')

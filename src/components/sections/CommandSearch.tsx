@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../../store/useStore'
 import { storefront } from '../../lib/api'
+import { useLocalizedPath } from '../../lib/locale'
 import { apiProductsToFrontend } from '../../lib/adapters'
 import { SearchInput, SearchResultsList } from '../search'
 import type { SearchResult } from '../search'
@@ -30,6 +31,7 @@ export function CommandSearch() {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null!)
   const navigate = useNavigate()
+  const lp = useLocalizedPath()
   const [apiProducts, setApiProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; count: number }[]>([])
 
@@ -119,7 +121,7 @@ export function CommandSearch() {
   const handleSelect = (result: SearchResult) => {
     if (q) addRecentSearch(q)
     setCommandOpen(false)
-    navigate(result.path)
+    navigate(lp(result.path))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

@@ -79,7 +79,7 @@ export function Hero() {
               className="hero-reveal mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start"
               style={{ animationDelay: '160ms' }}
             >
-              <Link to={localizedPath('/shop')} className="hero-btn-primary px-7 py-3.5 no-underline">
+              <Link to={localizedPath('/products')} className="hero-btn-primary px-7 py-3.5 no-underline">
                 <ShoppingCart size={18} strokeWidth={2} /> Shop Products
               </Link>
               <Link

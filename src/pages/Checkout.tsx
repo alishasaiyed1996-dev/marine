@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { usePayPalScriptReducer } from '@paypal/react-paypal-js'
 
 import { Truck, Shield } from 'lucide-react'
 import { useStore, type SkippedCartItem } from '../store/useStore'
@@ -9,6 +8,7 @@ import { storefront } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
 import { calcShippingCost } from '../lib/shipping'
 import { useLocalizedPath, useLocale } from '../lib/locale'
+import { usePayPalAvailability } from '../components/PayPalProvider'
 import { SEO } from '../components/seo/SEO'
 import { CheckoutSuccess } from './checkout/CheckoutSuccess'
 import { CheckoutShipping } from './checkout/CheckoutShipping'
@@ -47,7 +47,7 @@ export default function Checkout() {
   // Real PayPal states
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null)
   const [creatingOrder, setCreatingOrder] = useState(false)
-  const [{ isPending: paypalScriptLoading }] = usePayPalScriptReducer()
+  const { configured: paypalConfigured, loading: paypalScriptLoading } = usePayPalAvailability()
 
   // Idempotency key for this checkout session: lets the backend dedupe a
   // double-submitted order creation (see backend createOrder `[idem:...]`).
@@ -92,17 +92,22 @@ export default function Checkout() {
     const ids = new Set<string>()
     for (const pm of settings.paymentMethods) {
       if (pm.enabled === false) continue
-      if (pm.type === 'paypal') ids.add('paypal')
-      else if (pm.type === 'bank' || pm.type === 'lc') ids.add('bank-transfer')
+      // Hide PayPal once we know it isn't configured. While the client ID is
+      // still loading, keep it listed to avoid a visible flicker.
+      if (pm.type === 'paypal') {
+        if (paypalConfigured || paypalScriptLoading) ids.add('paypal')
+      } else if (pm.type === 'bank' || pm.type === 'lc') {
+        ids.add('bank-transfer')
+      }
     }
     // Never leave the customer with no way to pay: if no methods are configured
-    // or every one is disabled, fall back to the two built-in methods.
+    // or every one is disabled, fall back to the built-in methods.
     if (ids.size === 0) {
       ids.add('bank-transfer')
-      ids.add('paypal')
+      if (paypalConfigured) ids.add('paypal')
     }
     return ids
-  }, [settings.paymentMethods])
+  }, [settings.paymentMethods, paypalConfigured, paypalScriptLoading])
 
   // Keep the selection valid as settings load / change.
   useEffect(() => {
@@ -404,6 +409,7 @@ export default function Checkout() {
               orderError={orderError}
               orderLoading={orderLoading}
               creatingOrder={creatingOrder}
+              paypalConfigured={paypalConfigured}
               paypalScriptLoading={paypalScriptLoading}
               goToStep={goToStep}
               handlePlaceOrder={handlePlaceOrder}

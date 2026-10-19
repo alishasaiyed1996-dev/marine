@@ -1,3 +1,6 @@
+import { Link } from 'react-router-dom'
+import { useLocalizedPath } from '../../lib/locale'
+
 const categories = [
   { name: 'Electrical & Automation', slug: 'electrical', file: 'Electrical and automation.jpeg' },
   { name: 'Engine Parts', slug: 'engine-parts', file: 'Engine parts.jpeg' },
@@ -24,6 +27,7 @@ function encodePath(name: string) {
 }
 
 export function ShopByCategory() {
+  const lp = useLocalizedPath()
   return (
     <section className="section-y bg-[var(--secondary-bg)]" aria-label="Shop by category">
       <div className="site-container">
@@ -44,9 +48,9 @@ export function ShopByCategory() {
         {/* ── Category Grid ── */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-5">
           {categories.map((cat) => (
-            <a
+            <Link
               key={cat.name}
-              href={`/products?category=${cat.slug}`}
+              to={lp(`/products?category=${cat.slug}`)}
               className="group relative flex h-full flex-col overflow-hidden rounded-xl bg-[var(--surface)] border border-[var(--border)] shadow-[var(--shadow-card)] hover:border-[var(--accent-primary)] hover:shadow-lg transition-all duration-500 no-underline"
             >
               {/* Image */}
@@ -76,7 +80,7 @@ export function ShopByCategory() {
                   {cat.name}
                 </h3>
               </div>
-            </a>
+            </Link>
           ))}
         </div>
       </div>

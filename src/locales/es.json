@@ -383,6 +383,7 @@
     "reviewOrder": "Revisar Pedido →",
     "paymentCard": "Tarjeta de Crédito / Débito",
     "paymentPaypal": "PayPal",
+    "paypalUnavailable": "PayPal no está disponible en este momento. Vuelva atrás y elija transferencia bancaria.",
     "paymentBank": "Transferencia Bancaria",
     "cardNumber": "Número de Tarjeta *",
     "cardExpiry": "Fecha de Vencimiento *",

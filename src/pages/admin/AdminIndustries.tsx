@@ -261,7 +261,7 @@ export default function AdminIndustries() {
                       <Pencil size={12} />
                     </button>
                     <a
-                      href={`/industries#${ind.slug || ind.id}`}
+                      href={`/en/industries#${ind.slug || ind.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors"

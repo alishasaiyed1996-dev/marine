@@ -5,6 +5,7 @@ import {
   Package, HandCoins, Clock, CheckCircle, XCircle, Ban, CreditCard, ChevronRight, Loader2, Eye,
 } from 'lucide-react'
 import { storefront } from '../../lib/api'
+import { useLocalizedPath } from '../../lib/locale'
 import { useStore } from '../../store/useStore'
 import { Skeleton } from '../../components/ui/Skeleton'
 import type { ApiOffer } from '../../lib/api-types'
@@ -28,6 +29,7 @@ export function payableUnitPrice(offer: ApiOffer): number {
 
 export default function MyOffers() {
   const user = useStore((s) => s.user)
+  const lp = useLocalizedPath()
   const queryClient = useQueryClient()
   const [actingOn, setActingOn] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
@@ -83,7 +85,7 @@ export default function MyOffers() {
       <section className="bg-[var(--secondary-bg)] py-12">
         <div className="max-w-[1024px] mx-auto px-4 sm:px-6">
           <div className="flex items-center gap-2 mb-2 text-xs text-[var(--text-muted)]">
-            <Link to="/" className="hover:text-[var(--text-secondary)]">Home</Link>
+            <Link to={lp('/')} className="hover:text-[var(--text-secondary)]">Home</Link>
             <ChevronRight size={12} />
             <span className="text-[var(--text-secondary)]">My Offers</span>
           </div>
@@ -116,7 +118,7 @@ export default function MyOffers() {
               <h2 className="font-display text-xl font-bold text-[var(--text-primary)] mb-2">No offers yet</h2>
               <p className="text-sm text-[var(--text-secondary)] mb-6">When you make an offer on a product, it will show up here.</p>
               <Link
-                to="/products"
+                to={lp('/products')}
                 className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm rounded-xl hover:bg-[var(--accent-primary-hover)] transition-all"
               >
                 Browse Products
@@ -181,7 +183,7 @@ export default function MyOffers() {
 
                         {(offer.status === 'accepted' || offer.status === 'awaiting-payment') && (
                           <Link
-                            to={`/account/offers/${offer.id}/pay`}
+                            to={lp(`/account/offers/${offer.id}/pay`)}
                             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-[var(--success)] text-[var(--btn-success-text)] rounded-xl hover:bg-[var(--success)]/90 transition-all"
                           >
                             <CreditCard size={12} /> Pay Now
@@ -190,7 +192,7 @@ export default function MyOffers() {
 
                         {offer.status === 'paid' && offer.order && (
                           <Link
-                            to="/account/orders"
+                            to={lp('/account/orders')}
                             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border border-[var(--border)] text-[var(--accent-primary)] rounded-xl hover:bg-[var(--accent-primary)]/5 transition-all"
                           >
                             <Eye size={12} /> View Order
@@ -205,7 +207,7 @@ export default function MyOffers() {
           )}
 
           <div className="mt-8 text-center">
-            <Link to="/account/orders" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors">
+            <Link to={lp('/account/orders')} className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors">
               <Package size={12} /> View your orders
             </Link>
           </div>

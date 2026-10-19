@@ -383,6 +383,7 @@
     "reviewOrder": "مراجعة الطلب ←",
     "paymentCard": "بطاقة ائتمان / خصم",
     "paymentPaypal": "PayPal",
+    "paypalUnavailable": "PayPal غير متاح حاليًا. يرجى العودة واختيار التحويل البنكي.",
     "paymentBank": "تحويل بنكي",
     "cardNumber": "رقم البطاقة *",
     "cardExpiry": "تاريخ الانتهاء *",

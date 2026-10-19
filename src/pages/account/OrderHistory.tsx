@@ -35,7 +35,7 @@ export default function OrderHistory() {
       <section className="bg-[var(--secondary-bg)] py-12">
         <div className="max-w-[1024px] mx-auto px-4 sm:px-6">
           <div className="flex items-center gap-2 mb-2 text-xs text-[var(--text-muted)]">
-            <Link to="/" className="hover:text-[var(--text-secondary)]">Home</Link>
+            <Link to={lp('/')} className="hover:text-[var(--text-secondary)]">Home</Link>
             <ChevronRight size={12} />
             <span className="text-[var(--text-secondary)]">My Orders</span>
           </div>

@@ -26,7 +26,7 @@ export default function CategoryHub() {
   const title = category?.seoTitle || `${category?.name || 'Marine spare parts'} | Alka Traders`
   const metaDescription = category?.seoDescription || description.slice(0, 160)
 
-  if (isError) return <main className="mx-auto max-w-5xl px-4 py-20"><h1>Category not found</h1><Link to="/products/">Browse products</Link></main>
+  if (isError) return <main className="mx-auto max-w-5xl px-4 py-20"><h1>Category not found</h1><Link to={`/${language}/products/`}>Browse products</Link></main>
   return <main className="mx-auto max-w-[1280px] px-4 py-12 sm:px-6">
     {category && <>
       <SEO title={title} description={metaDescription} canonical={`/categories/${category.slug}/`} noindex={!indexable} />
