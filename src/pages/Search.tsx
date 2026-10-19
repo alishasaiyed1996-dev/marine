@@ -34,6 +34,7 @@ export default function SearchPage() {
   const lp = useLocalizedPath()
   const addRecentSearch = useStore((s) => s.addRecentSearch)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchIdRef = useRef(0)
   // React Query caches categories — replaces manual useEffect + state
   const { data: categoriesData } = useCategories()
 
@@ -51,8 +52,10 @@ export default function SearchPage() {
   }, [])
 
   const performSearch = useCallback(async (q: string, cats: typeof productCategories) => {
+    const searchId = ++searchIdRef.current
     if (!q.trim()) {
       setResults([])
+      setLoading(false)
       return
     }
 
@@ -66,10 +69,20 @@ export default function SearchPage() {
       .filter((c) => c.name.toLowerCase().includes(needle))
       .map((c) => ({ id: c.id, type: 'category' as const, title: c.name, description: `${c.count} products`, path: `/products?category=${c.id}` }))
 
+    // Show local matches immediately. The API call is additive and must not
+    // block search when it is slow or unreachable.
+    setResults([...pageResults, ...categoryResults])
+
     // Try API search for products and brands
     try {
       setLoading(true)
-      const res = await storefront.search(q)
+      const res = await Promise.race([
+        storefront.search(q),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Search API timed out')), 8000)
+        }),
+      ])
+      if (searchId !== searchIdRef.current) return
       const apiResults: SearchResult[] = []
 
       if (res.results) {
@@ -96,10 +109,10 @@ export default function SearchPage() {
 
       setResults([...apiResults.slice(0, 5), ...pageResults, ...categoryResults])
     } catch {
-      console.warn('[Search] API search unavailable — falling back to static results')
-      setResults([...pageResults, ...categoryResults])
+      if (searchId !== searchIdRef.current) return
+      console.warn('[Search] API search unavailable — using static results')
     } finally {
-      setLoading(false)
+      if (searchId === searchIdRef.current) setLoading(false)
     }
   }, [])
 
