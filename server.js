@@ -127,7 +127,9 @@ function isKnownStorefrontPath(pathname) {
   // translated hub URLs such as /es/brands/abb/ were rejected as unknown and
   // returned a 404 instead of the reachable noindex shell.
   if (first === 'product') return segments.length === 2
-  if (first === 'brands' || first === 'categories') return segments.length === 2
+  // `/brands/` is both a static directory and a dynamic hub prefix.
+  if (first === 'brands') return segments.length === 1 || segments.length === 2
+  if (first === 'categories') return segments.length === 2
   if (STATIC_STOREFRONT_ROUTES.has(first)) return segments.length === 1
   if (PRIVATE_STOREFRONT_ROUTES.has(first)) return segments.length === 1
   // Account child routes are private. Allowing the prefix keeps
