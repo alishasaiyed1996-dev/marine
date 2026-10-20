@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { brandImages } from '../data/brandImages'
-import { brands as staticBrands } from '../data/brands'
 import { useBrands } from '../hooks/useApiQuery'
 import { useLocalizedPath } from '../lib/locale'
 import { SEO } from '../components/seo/SEO'
@@ -20,19 +19,18 @@ export default function Brands() {
   // React Query caches brands — no manual loading/state management needed
   const { data: brandsData } = useBrands()
 
-  const brands: Brand[] = useMemo(() => {
-    if (brandsData?.brands?.length) {
-      return brandsData.brands.map((b: any) => ({
+  const brands: Brand[] = useMemo(
+    () =>
+      (brandsData?.brands ?? []).map((b: any) => ({
         id: b.id,
         name: b.name,
         slug: b.slug,
         sectors: b.sectors || [],
         productCount: b._count?.products ?? b.productCount ?? 0,
         logo: b.logoUrl || undefined,
-      }))
-    }
-    return staticBrands
-  }, [brandsData])
+      })),
+    [brandsData],
+  )
 
   const filtered = activeFilter === 'All'
     ? brands
@@ -146,26 +144,32 @@ export default function Brands() {
             ))}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-            {filtered.map((brand) => (
-              <Link
-                key={brand.id}
-                to={lp(`/brands/${brand.slug}/`)}
-                aria-label={`View ${brand.name} marine and industrial spare parts`}
-                className="bg-[var(--secondary-bg)] border border-[var(--border)] border-l-[3px] border-l-transparent p-6 cursor-pointer transition-all duration-300 hover:border-l-[var(--accent-primary)] hover:-translate-y-1 focus-visible:border-l-[var(--accent-primary)]"
-              >
-                <h3 className="heading-xl mb-2">{brand.name}</h3>
-                <div className="flex gap-1.5 flex-wrap mb-3">
-                  {brand.sectors.map((s) => (
-                    <span key={s} className="px-2 py-0.5 text-xs font-mono border border-[var(--border)] text-[var(--text-muted)] bg-[var(--surface)]">
-                      {s}
-                    </span>
-                  ))}
-                </div>
-                <span className="font-mono text-xs text-[var(--accent-gold)]">{t('brands.productCount', { count: brand.productCount })}</span>
-              </Link>
-            ))}
-          </div>
+          {filtered.length === 0 ? (
+            <p className="text-center py-12 text-sm text-[var(--text-muted)]">
+              No brands are listed yet. Send us the brand and part number you need and our sourcing team will check availability.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+              {filtered.map((brand) => (
+                <Link
+                  key={brand.id}
+                  to={lp(`/brands/${brand.slug}/`)}
+                  aria-label={`View ${brand.name} marine and industrial spare parts`}
+                  className="bg-[var(--secondary-bg)] border border-[var(--border)] border-l-[3px] border-l-transparent p-6 cursor-pointer transition-all duration-300 hover:border-l-[var(--accent-primary)] hover:-translate-y-1 focus-visible:border-l-[var(--accent-primary)]"
+                >
+                  <h3 className="heading-xl mb-2">{brand.name}</h3>
+                  <div className="flex gap-1.5 flex-wrap mb-3">
+                    {brand.sectors.map((s) => (
+                      <span key={s} className="px-2 py-0.5 text-xs font-mono border border-[var(--border)] text-[var(--text-muted)] bg-[var(--surface)]">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="font-mono text-xs text-[var(--accent-gold)]">{t('brands.productCount', { count: brand.productCount })}</span>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </div>
