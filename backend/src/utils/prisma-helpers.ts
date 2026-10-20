@@ -79,7 +79,9 @@ export const orderInclude = {
     select: { id: true, name: true, email: true, phone: true, company: true },
   },
   items: {
-    select: { id: true, productName: true, productSku: true, quantity: true, unitPrice: true, totalPrice: true },
+    // productId lets admin analytics join order lines back to catalog products
+    // (stock, margin and performance widgets) without guessing from SKUs.
+    select: { id: true, productId: true, productName: true, productSku: true, quantity: true, unitPrice: true, totalPrice: true },
   },
   timeline: {
     orderBy: { createdAt: 'desc' as const },

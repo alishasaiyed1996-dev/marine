@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Calendar, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -15,8 +16,8 @@ export function DailySnapshot({ orders, rfqs }: Props) {
     const todayStr = today.toISOString().split('T')[0]
     const yesterdayStr = yesterday.toISOString().split('T')[0]
 
-    const todayOrders = orders.filter(o => o.createdAt?.startsWith(todayStr) && o.status !== 'cancelled')
-    const yesterdayOrders = orders.filter(o => o.createdAt?.startsWith(yesterdayStr) && o.status !== 'cancelled')
+    const todayOrders = orders.filter(o => o.createdAt?.startsWith(todayStr) && !isCancelledOrRefunded(o))
+    const yesterdayOrders = orders.filter(o => o.createdAt?.startsWith(yesterdayStr) && !isCancelledOrRefunded(o))
 
     const todayRevenue = todayOrders.reduce((s, o) => s + (o.total || 0), 0)
     const yesterdayRevenue = yesterdayOrders.reduce((s, o) => s + (o.total || 0), 0)

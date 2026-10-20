@@ -2,7 +2,7 @@ import { prisma } from '../server.js'
 import { generateOfferNumber, generateOrderNumber, isProductInStock } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { sendOfferReceived } from './email.js'
-import { calcShippingCost, parseShippingZones } from '../utils/shipping.js'
+import { computeOrderTotals } from './orderPricing.js'
 import {
   checkOfferEligibility,
   eligibilityMessage,
@@ -129,6 +129,24 @@ export type CustomerOfferView = Prisma.OfferGetPayload<{
 
 /** All offers belonging to one customer, newest first. */
 export async function listCustomerOffers(customerId: string): Promise<{ offers: CustomerOfferView[] }> {
+  // Mark lapsed payment windows before returning the list, otherwise My Offers
+  // keeps showing a "Pay Now" button for an offer the pay endpoint will reject.
+  const now = new Date()
+  await prisma.offer.updateMany({
+    where: {
+      customerId,
+      status: { in: ['accepted', 'awaiting-payment'] },
+      OR: [
+        { expiresAt: { lt: now } },
+        {
+          expiresAt: null,
+          acceptedAt: { lt: new Date(now.getTime() - OFFER_PAYMENT_WINDOW_MS) },
+        },
+      ],
+    },
+    data: { status: 'expired' },
+  })
+
   const offers = await prisma.offer.findMany({
     where: { customerId },
     orderBy: { createdAt: 'desc' },
@@ -253,24 +271,7 @@ export async function createOfferOrder(offerId: string, customerId: string, ship
   const listedUnit = Number(product.regularPrice)
   const subtotal = Math.round(negotiatedUnit * offer.quantity * 100) / 100
 
-  const [shippingCostSetting, taxRateSetting, freeShippingThresholdSetting, shippingZonesSetting] = await Promise.all([
-    prisma.storeSetting.findUnique({ where: { key: 'checkout.shippingCost' } }),
-    prisma.storeSetting.findUnique({ where: { key: 'checkout.taxRate' } }),
-    prisma.storeSetting.findUnique({ where: { key: 'checkout.freeShippingThreshold' } }),
-    prisma.storeSetting.findUnique({ where: { key: 'store.shippingZones' } }),
-  ])
-  const baseShippingCost = Number(shippingCostSetting?.value) || Number(process.env.DEFAULT_SHIPPING_COST) || 25
-  const freeShippingThreshold = Number(freeShippingThresholdSetting?.value) || 100
-  const shippingCost = calcShippingCost({
-    subtotal,
-    country: shipping.country,
-    zones: parseShippingZones(shippingZonesSetting?.value),
-    baseShippingCost,
-    freeShippingThreshold,
-  })
-  const taxRate = Number(taxRateSetting?.value) || Number(process.env.DEFAULT_TAX_RATE) || 0.08
-  const tax = Math.round(subtotal * taxRate * 100) / 100
-  const total = subtotal + shippingCost + tax
+  const { shippingCost, tax, total } = await computeOrderTotals(subtotal, shipping.country)
 
   // Guarded flip to awaiting-payment makes concurrent double-clicks safe:
   // only the first request proceeds to order creation.

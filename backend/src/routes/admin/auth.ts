@@ -18,7 +18,7 @@ router.post('/login', validateBody(loginSchema), asyncHandler(async (req, res) =
     const result = await authService.loginAdmin(
       req.body.email, req.body.password, req.ip || '', req.headers['user-agent'] as string | undefined
     )
-    res.cookie('refreshToken', result.refreshToken, result.cookieOptions)
+    res.cookie(authService.ADMIN_REFRESH_COOKIE, result.refreshToken, result.cookieOptions)
     sendSuccess(res, { accessToken: result.accessToken, user: result.user })
   } catch (err: any) {
     sendError(res, err.message, err.status || 500)
@@ -28,8 +28,10 @@ router.post('/login', validateBody(loginSchema), asyncHandler(async (req, res) =
 // ─── Refresh Token ─────────────────────────────────────────────
 router.post('/refresh', asyncHandler(async (req, res) => {
   try {
-    const result = await authService.refreshAdminToken(req.cookies?.refreshToken)
-    res.cookie('refreshToken', result.refreshToken, result.cookieOptions)
+    const token = req.cookies?.[authService.ADMIN_REFRESH_COOKIE]
+      || req.cookies?.[authService.LEGACY_REFRESH_COOKIE]
+    const result = await authService.refreshAdminToken(token)
+    res.cookie(authService.ADMIN_REFRESH_COOKIE, result.refreshToken, result.cookieOptions)
     sendSuccess(res, { accessToken: result.accessToken })
   } catch (err: any) {
     sendError(res, err.message, err.status || 500)
@@ -38,7 +40,8 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 
 // ─── Logout ────────────────────────────────────────────────────
 router.post('/logout', authenticateAdmin, asyncHandler(async (req: AuthRequest, res) => {
-  res.clearCookie('refreshToken')
+  res.clearCookie(authService.ADMIN_REFRESH_COOKIE)
+  res.clearCookie(authService.LEGACY_REFRESH_COOKIE)
   await authService.logoutAdmin(req.user, req.ip || '')
   sendSuccess(res, { message: 'Logged out successfully' })
 }))

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Globe } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -21,7 +22,8 @@ export function RegionalHeatmap({ orders }: Props) {
     const map: { [key: string]: { revenue: number; count: number } } = {}
 
     for (const order of orders) {
-      const country = order.shipping?.country || order.country || 'Unknown'
+      if (isCancelledOrRefunded(order)) continue
+      const country = order.shippingCountry || order.shipping?.country || order.country || order.customerCountry || 'Unknown'
       if (!map[country]) map[country] = { revenue: 0, count: 0 }
       map[country].revenue += order.total || 0
       map[country].count++

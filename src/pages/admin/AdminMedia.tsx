@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Search,
   Upload,
@@ -83,6 +83,7 @@ export default function AdminMedia() {
   const [page, setPage] = useState(1)
   const [serverTotal, setServerTotal] = useState(0)
   const [serverTotalSize, setServerTotalSize] = useState(0)
+  const [availableLabels, setAvailableLabels] = useState<string[]>([])
   const [fileInputEl, setFileInputEl] = useState<HTMLInputElement | null>(null)
   const [usageMap, setUsageMap] = useState<Map<string, { productId: string; productName: string; productSku: string }[]>>(new Map())
 
@@ -92,55 +93,34 @@ export default function AdminMedia() {
     try {
       const params: Record<string, string> = {}
       if (search.trim()) params.search = search.trim()
+      if (filterLabel) params.label = filterLabel
+      params.sort = sortBy
       params.page = String(page)
       params.limit = String(ITEMS_PER_PAGE)
       const res = await admin.media.list(params)
       setMediaList((res.assets || []).map(mapApiAsset))
       setServerTotal(res.pagination?.total ?? 0)
       setServerTotalSize(res.totalSize ?? 0)
+      setAvailableLabels(res.labels || [])
     } catch (err: unknown) {
       console.error('Failed to load media:', err)
       toast('Failed to load media assets', 'error')
     } finally {
       setLoading(false)
     }
-  }, [search, page, toast])
+  }, [search, filterLabel, sortBy, page, toast])
 
   useEffect(() => {
     const timer = setTimeout(() => fetchMedia(), 300)
     return () => clearTimeout(timer)
   }, [fetchMedia])
 
-  // Client-side filtering and sorting
-  const filteredMedia = useMemo(() => {
-    let result = [...mediaList]
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      result = result.filter((m) =>
-        m.alt.toLowerCase().includes(q) ||
-        m.originalName.toLowerCase().includes(q) ||
-        m.filename.toLowerCase().includes(q) ||
-        m.label.toLowerCase().includes(q)
-      )
-    }
-    if (filterLabel) result = result.filter((m) => m.label === filterLabel)
-    result.sort((a, b) => {
-      switch (sortBy) {
-        case 'name': return a.alt.localeCompare(b.alt)
-        case 'label': return a.label.localeCompare(b.label)
-        case 'size': return b.fileSize - a.fileSize
-        case 'date':
-        default: return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      }
-    })
-    return result
-  }, [mediaList, search, filterLabel, sortBy])
-
-  // Server paginates/filters; the client pass only refines within the page.
+  // The server applies search/label filters and sorting across the entire
+  // library, then returns one page. Do not re-filter or re-sort it here.
   const totalPages = Math.max(1, Math.ceil(serverTotal / ITEMS_PER_PAGE))
-  const paginatedMedia = filteredMedia.slice(0, ITEMS_PER_PAGE)
+  const paginatedMedia = mediaList
 
-  const uniqueLabels = useMemo(() => Array.from(new Set(mediaList.map((m) => m.label))).sort(), [mediaList])
+  const uniqueLabels = availableLabels
   // Total bytes across the whole library (server aggregate), not just this page.
   const totalSize = serverTotalSize
 
@@ -298,7 +278,7 @@ export default function AdminMedia() {
             </div>
             <div className="flex items-center gap-2">
               <ArrowUpDown size={14} className="text-[var(--text-muted)]" />
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2.5 text-xs font-semibold text-[var(--text-primary)] focus:border-[var(--accent-gold)]">
+              <select value={sortBy} onChange={(e) => { setSortBy(e.target.value as SortBy); setPage(1) }} className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2.5 text-xs font-semibold text-[var(--text-primary)] focus:border-[var(--accent-gold)]">
                 <option value="date">Newest First</option><option value="name">By Name</option><option value="label">By Label</option><option value="size">By Size</option>
               </select>
             </div>
@@ -310,8 +290,8 @@ export default function AdminMedia() {
           {(filterLabel || search) && (
             <div className="mt-3 flex items-center gap-2 flex-wrap">
               <span className="text-[0.625rem] font-bold text-[var(--text-muted)]">Active:</span>
-              {filterLabel && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-blue)]/10 px-2 py-1 text-[0.625rem] font-bold text-[var(--accent-blue)]">{filterLabel}<button onClick={() => setFilterLabel('')}><X size={10} /></button></span>}
-              {search && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-teal)]/10 px-2 py-1 text-[0.625rem] font-bold text-[var(--accent-teal)]">"{search}"<button onClick={() => setSearch('')}><X size={10} /></button></span>}
+              {filterLabel && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-blue)]/10 px-2 py-1 text-[0.625rem] font-bold text-[var(--accent-blue)]">{filterLabel}<button onClick={() => { setFilterLabel(''); setPage(1) }}><X size={10} /></button></span>}
+              {search && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-teal)]/10 px-2 py-1 text-[0.625rem] font-bold text-[var(--accent-teal)]">"{search}"<button onClick={() => { setSearch(''); setPage(1) }}><X size={10} /></button></span>}
             </div>
           )}
         </div>

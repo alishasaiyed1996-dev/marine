@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useToast } from '../../components/admin/toast-context'
 import { AdminPagination } from '../../components/admin/AdminPagination'
 import { admin } from '../../lib/api'
@@ -181,6 +181,7 @@ export default function AdminMessages() {
   const [destroyTarget, setDestroyTarget] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [serverTotal, setServerTotal] = useState(0)
+  const [folderCounts, setFolderCounts] = useState({ inbox: 0, sent: 0, trash: 0, starred: 0, unread: 0 })
 
   const fetchMessages = useCallback(async () => {
     setLoading(true)
@@ -193,7 +194,14 @@ export default function AdminMessages() {
       params.folder = folder
       const res = await admin.messages.list(params)
       setMessages((res.messages || []).map(mapApiMessage))
-      setServerTotal(res.pagination?.total ?? 0)
+      const nextTotal = res.pagination?.total ?? 0
+      setServerTotal(nextTotal)
+      if (res.counts) setFolderCounts(res.counts)
+      // Deleting the last row of the last page can leave us past the end.
+      const lastPage = Math.max(1, Math.ceil(nextTotal / ITEMS_PER_PAGE))
+      if (page > lastPage) {
+        setPage(lastPage)
+      }
     } catch (err: unknown) {
       console.error('Failed to load messages:', err)
       toast('Failed to load messages', 'error')
@@ -207,23 +215,12 @@ export default function AdminMessages() {
     return () => clearTimeout(timer)
   }, [fetchMessages])
 
-  const filtered = useMemo(() => {
-    let result = [...messages]
-    if (folder === 'starred') result = result.filter((m) => m.starred)
-    else result = result.filter((m) => m.folder === folder)
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      result = result.filter((m) => m.subject.toLowerCase().includes(q) || m.from.toLowerCase().includes(q) || m.fromCompany.toLowerCase().includes(q))
-    }
-    return result
-  }, [messages, search, folder])
-
-  // Server paginates/filters; the client pass only refines within the page.
+  // The server applies the folder and search filters and returns one page.
   const totalPages = Math.max(1, Math.ceil(serverTotal / ITEMS_PER_PAGE))
-  const paginated = filtered.slice(0, ITEMS_PER_PAGE)
+  const paginated = messages
 
-  const unreadCount = messages.filter((m) => m.folder === 'inbox' && !m.read).length
-  const starredCount = messages.filter((m) => m.starred).length
+  const unreadCount = folderCounts.unread
+  const starredCount = folderCounts.starred
 
   const formatTime = (d: string) => {
     const date = new Date(d)
@@ -241,6 +238,7 @@ export default function AdminMessages() {
       try {
         await admin.messages.markRead(msg.id)
         setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, read: true } : m))
+        setFolderCounts((prev) => ({ ...prev, unread: Math.max(0, prev.unread - 1) }))
       } catch (err) {
         console.warn('[AdminMessages] Mark read failed (optimistic update applied):', err)
       }
@@ -254,6 +252,7 @@ export default function AdminMessages() {
       toast('Message archived', 'success')
       setMessages((prev) => prev.filter((m) => m.id !== id))
       if (selectedMessage?.id === id) setSelectedMessage(null)
+      void fetchMessages()
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Archive failed', 'error')
     }
@@ -266,6 +265,7 @@ export default function AdminMessages() {
       toast('Message moved to Trash', 'info')
       setMessages((prev) => prev.filter((m) => m.id !== id))
       if (selectedMessage?.id === id) setSelectedMessage(null)
+      void fetchMessages()
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Delete failed', 'error')
     }
@@ -278,6 +278,7 @@ export default function AdminMessages() {
       toast('Message restored to inbox', 'success')
       setMessages((prev) => prev.filter((m) => m.id !== id))
       if (selectedMessage?.id === id) setSelectedMessage(null)
+      void fetchMessages()
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Restore failed', 'error')
     }
@@ -289,6 +290,7 @@ export default function AdminMessages() {
       toast('Message permanently deleted', 'success')
       setMessages((prev) => prev.filter((m) => m.id !== id))
       if (selectedMessage?.id === id) setSelectedMessage(null)
+      void fetchMessages()
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Delete failed', 'error')
     }
@@ -304,6 +306,7 @@ export default function AdminMessages() {
     apply(next)
     try {
       await admin.messages.star(id, next)
+      setFolderCounts((prev) => ({ ...prev, starred: Math.max(0, prev.starred + (next ? 1 : -1)) }))
       // Unstarring inside the Starred folder should drop it from the list.
       if (folder === 'starred' && !next) setMessages((prev) => prev.filter((m) => m.id !== id))
     } catch (err: unknown) {
@@ -313,10 +316,10 @@ export default function AdminMessages() {
   }
 
   const folders: { id: MessageFolder; label: string; icon: typeof Inbox; count: number }[] = [
-    { id: 'inbox', label: 'Inbox', icon: Inbox, count: messages.filter((m) => m.folder === 'inbox').length },
-    { id: 'sent', label: 'Sent', icon: Send, count: messages.filter((m) => m.folder === 'sent').length },
+    { id: 'inbox', label: 'Inbox', icon: Inbox, count: folderCounts.inbox },
+    { id: 'sent', label: 'Sent', icon: Send, count: folderCounts.sent },
     { id: 'starred', label: 'Starred', icon: Star, count: starredCount },
-    { id: 'trash', label: 'Trash', icon: Trash2, count: messages.filter((m) => m.folder === 'trash').length },
+    { id: 'trash', label: 'Trash', icon: Trash2, count: folderCounts.trash },
   ]
 
   return (

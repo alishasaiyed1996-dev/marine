@@ -75,6 +75,32 @@ export async function updateCategory(id: string, data: Record<string, unknown>, 
   const existing = await prisma.category.findUnique({ where: { id } })
   if (!existing) throw Object.assign(new Error('Category not found'), { status: 404 })
 
+  // A category may not become its own ancestor: that creates a cycle and
+  // detaches the whole branch from every root-based query.
+  if (data.parentId !== undefined && data.parentId !== null) {
+    if (data.parentId === id) {
+      throw Object.assign(new Error('A category cannot be its own parent'), { status: 400 })
+    }
+    let cursor = await prisma.category.findUnique({
+      where: { id: data.parentId as string },
+      select: { id: true, parentId: true },
+    })
+    if (!cursor) throw Object.assign(new Error('Parent category not found'), { status: 400 })
+
+    const visited = new Set<string>()
+    while (cursor) {
+      if (cursor.id === id) {
+        throw Object.assign(new Error('Cannot move a category under one of its descendants'), { status: 400 })
+      }
+      if (visited.has(cursor.id) || !cursor.parentId) break
+      visited.add(cursor.id)
+      cursor = await prisma.category.findUnique({
+        where: { id: cursor.parentId },
+        select: { id: true, parentId: true },
+      })
+    }
+  }
+
   let slug = existing.slug
   if (data.name && data.name !== existing.name) {
     slug = generateSlug(data.name as string)

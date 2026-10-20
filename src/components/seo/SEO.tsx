@@ -179,8 +179,12 @@ export function SEO({
     ],
   }
 
-  // Build product JSON-LD if on product page
-  const productJsonLd = ogType === 'product' && productPrice
+  // Build product JSON-LD if on product page. Callers that already supply a
+  // richer Product schema (e.g. productSeo) must not get a second one.
+  const hasSuppliedProductJsonLd = (jsonLd || []).some(
+    (entry) => entry?.['@type'] === 'Product',
+  )
+  const productJsonLd = ogType === 'product' && productPrice && !hasSuppliedProductJsonLd
     ? {
         '@context': 'https://schema.org',
         '@type': 'Product',

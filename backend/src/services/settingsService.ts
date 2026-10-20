@@ -1,5 +1,6 @@
 import { prisma } from '../server.js'
 import { logAudit } from '../utils/audit.js'
+import { numberOrDefault } from '../utils/helpers.js'
 import { invalidateCachePath } from '../middleware/cacheGet.js'
 import type { Prisma } from '@prisma/client'
 import type { AuthUser } from '../middleware/auth.js'
@@ -40,9 +41,15 @@ export async function getPublicSettings() {
   // Add defaults from env vars
   result['site.companyName'] = result['site.companyName'] || process.env.COMPANY_NAME || 'Alka Traders'
   result['site.whatsappNumber'] = result['site.whatsappNumber'] || process.env.WHATSAPP_NUMBER || '918799095041'
-  result['checkout.shippingCost'] = result['checkout.shippingCost'] || Number(process.env.DEFAULT_SHIPPING_COST) || 25
-  result['checkout.taxRate'] = result['checkout.taxRate'] || Number(process.env.DEFAULT_TAX_RATE) || 0.08
-  result['checkout.freeShippingThreshold'] = result['checkout.freeShippingThreshold'] || 100
+  result['checkout.shippingCost'] = numberOrDefault(
+    result['checkout.shippingCost'],
+    numberOrDefault(process.env.DEFAULT_SHIPPING_COST, 25),
+  )
+  result['checkout.taxRate'] = numberOrDefault(
+    result['checkout.taxRate'],
+    numberOrDefault(process.env.DEFAULT_TAX_RATE, 0.08),
+  )
+  result['checkout.freeShippingThreshold'] = numberOrDefault(result['checkout.freeShippingThreshold'], 100)
 
   return { settings: result }
 }

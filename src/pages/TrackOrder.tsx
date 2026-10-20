@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Package, Truck, CheckCircle, Clock, XCircle, Search, LogIn } from 'lucide-react'
+import { Package, Truck, CheckCircle, Clock, XCircle, Search, Mail, LogIn } from 'lucide-react'
 import { storefront } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
 import { useStore } from '../store/useStore'
@@ -26,31 +26,38 @@ export default function TrackOrder() {
   const setShowAuthModal = useStore((s) => s.setShowAuthModal)
   const [searchParams] = useSearchParams()
   const initialId = searchParams.get('id') || ''
+  const initialEmail = searchParams.get('email') || ''
 
   const [orderNumber, setOrderNumber] = useState(initialId)
+  const [email, setEmail] = useState(initialEmail)
   const [order, setOrder] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const handleTrack = async (num?: string) => {
-    // The orders API is customer-authenticated. Guests (who can check out)
-    // cannot look an order up, so ask them to sign in instead of firing a 401.
-    if (!user) {
-      setShowAuthModal(true)
+    const search = (num || orderNumber).trim()
+    if (!search) { setError('Please enter an order number'); return }
+    // Guests verify ownership with the email used at checkout; signed-in
+    // customers are matched by their account instead.
+    if (!user && !email.trim()) {
+      setError('Please enter the email address used at checkout')
       return
     }
-    const search = num || orderNumber
-    if (!search.trim()) { setError('Please enter an order number'); return }
     setLoading(true)
     setError('')
     setOrder(null)
     try {
+      if (!user) {
+        const res = await storefront.orders.track(search, email.trim())
+        setOrder(res.order)
+        return
+      }
       // The endpoint returns the signed-in customer's orders; look the number
       // up across the first page of results (50 is the server-side maximum).
-      const res = await storefront.orders.list({ search: search.trim(), limit: '50' })
+      const res = await storefront.orders.list({ search, limit: '50' })
       const found = res.orders?.find((o: any) =>
-        o.orderNumber?.toLowerCase() === search.trim().toLowerCase() ||
-        o.id?.toLowerCase() === search.trim().toLowerCase()
+        o.orderNumber?.toLowerCase() === search.toLowerCase() ||
+        o.id?.toLowerCase() === search.toLowerCase()
       )
       if (found) {
         setOrder(found)
@@ -65,7 +72,9 @@ export default function TrackOrder() {
   }
 
   useEffect(() => {
-    if (initialId && user) handleTrack(initialId)
+    // Auto-lookup from the confirmation-page link. Guests need the email query
+    // param; signed-in customers just need their restored session.
+    if (initialId && (user || initialEmail)) handleTrack(initialId)
   }, [initialId, user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentStep = order ? (statusIndex[order.status] ?? -1) : -1
@@ -95,7 +104,7 @@ export default function TrackOrder() {
       <section className="py-10">
         <div className="max-w-[720px] mx-auto px-4 sm:px-6">
           {/* Search bar */}
-          <div className="flex gap-3 mb-8">
+          <div className="flex flex-col sm:flex-row gap-3 mb-8">
             <div className="relative flex-1">
               <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
               <input
@@ -107,6 +116,19 @@ export default function TrackOrder() {
                 className="w-full pl-10 pr-4 py-3.5 bg-[var(--input-bg)] border border-[var(--input-border)] text-sm text-[var(--input-text)] rounded-xl outline-none focus:border-[var(--accent-primary)] transition-all placeholder:text-[var(--input-placeholder)]"
               />
             </div>
+            {!user && (
+              <div className="relative flex-1">
+                <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleTrack()}
+                  placeholder="Email used at checkout"
+                  className="w-full pl-10 pr-4 py-3.5 bg-[var(--input-bg)] border border-[var(--input-border)] text-sm text-[var(--input-text)] rounded-xl outline-none focus:border-[var(--accent-primary)] transition-all placeholder:text-[var(--input-placeholder)]"
+                />
+              </div>
+            )}
             <button
               onClick={() => handleTrack()}
               disabled={loading}
@@ -119,7 +141,7 @@ export default function TrackOrder() {
           {!user && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--surface)] border border-[var(--border)] rounded-xl px-4 py-3 mb-6">
               <p className="text-xs text-[var(--text-secondary)]">
-                Sign in to view your orders — order tracking is private to your account.
+                Guest orders can be tracked with the order number and checkout email. Sign in to see all your orders.
               </p>
               <button
                 onClick={() => setShowAuthModal(true)}
@@ -164,7 +186,7 @@ export default function TrackOrder() {
                 </div>
                 <div className="flex gap-6 mt-4 text-xs text-[var(--text-muted)]">
                   <span>Placed: {new Date(order.createdAt).toLocaleDateString()}</span>
-                  <span>Total: <strong className="text-[var(--text-primary)]">${Number(order.grandTotal || 0).toFixed(2)}</strong></span>
+                  <span>Total: <strong className="text-[var(--text-primary)]">${Number(order.total ?? order.grandTotal ?? 0).toFixed(2)}</strong></span>
                 </div>
               </div>
 

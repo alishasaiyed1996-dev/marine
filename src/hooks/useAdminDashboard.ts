@@ -25,6 +25,8 @@ export interface DashboardStats {
   totalOffers: number
   newOffers: number
   newMessages: number
+  lowStockCount: number
+  missingImageCount: number
   lowStockProducts: ProductAlert[]
   missingImageProducts: ProductAlert[]
   categoryBreakdown: CategoryBreakdown[]
@@ -39,6 +41,7 @@ const EMPTY_STATS: DashboardStats = {
   totalStockUnits: 0,
   totalOrders: 0, pendingOrders: 0, totalRevenue: 0, totalCustomers: 0,
   totalRfqs: 0, newRfqs: 0, totalOffers: 0, newOffers: 0, newMessages: 0,
+  lowStockCount: 0, missingImageCount: 0,
   lowStockProducts: [], missingImageProducts: [],
   categoryBreakdown: [], brandBreakdown: [], conditionBreakdown: [],
 }
@@ -129,6 +132,8 @@ export function useAdminDashboard() {
           totalOffers: s.totalOffers || 0,
           newOffers: s.newOffers || 0,
           newMessages: s.newMessages || 0,
+          lowStockCount: s.lowStockCount ?? (s.lowStockProducts || []).length,
+          missingImageCount: s.missingImageCount ?? (s.missingImageProducts || []).length,
           lowStockProducts: (s.lowStockProducts || []).map((p) => {
             return {
               id: p.id,
@@ -185,8 +190,8 @@ export function useAdminDashboard() {
       if (alertsRes.status === 'fulfilled') {
         const a = alertsRes.value as DashboardAlertsResponse
         const result: DashboardAlert[] = []
-        if (a.lowStockProducts?.length) {
-          result.push({ type: 'warning', message: `${a.lowStockProducts.length} products are low on stock`, entityType: 'product' })
+        if ((a.lowStockCount ?? a.lowStockProducts?.length ?? 0) > 0) {
+          result.push({ type: 'warning', message: `${a.lowStockCount ?? a.lowStockProducts.length} products are low on stock`, entityType: 'product' })
         }
         if (a.overdueRfqs?.length) {
           result.push({ type: 'danger', message: `${a.overdueRfqs.length} RFQs have exceeded response SLA`, entityType: 'rfq' })

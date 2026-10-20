@@ -257,6 +257,7 @@ export default function AdminOffers() {
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null)
   const [page, setPage] = useState(1)
   const [serverTotal, setServerTotal] = useState(0)
+  const [serverStatusCounts, setServerStatusCounts] = useState<Record<string, number>>({})
   const [rejectTarget, setRejectTarget] = useState<string | null>(null)
   const [convertingOffer, setConvertingOffer] = useState<string | null>(null)
   const [counterTarget, setCounterTarget] = useState<Offer | null>(null)
@@ -274,6 +275,7 @@ export default function AdminOffers() {
       const res = await admin.offers.list(params)
       setOffers((res.offers || []).map(mapApiOffer))
       setServerTotal(res.pagination?.total ?? 0)
+      setServerStatusCounts(res.statusCounts || {})
     } catch (err: unknown) {
       console.error('Failed to load offers:', err)
       toast('Failed to load offers', 'error')
@@ -293,33 +295,15 @@ export default function AdminOffers() {
     })
   }, [offers])
 
-  const filtered = useMemo(() => {
-    let result = [...offers]
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      result = result.filter((o) =>
-        o.number.toLowerCase().includes(q) ||
-        o.customerName.toLowerCase().includes(q) ||
-        o.customerEmail.toLowerCase().includes(q) ||
-        o.customerCompany.toLowerCase().includes(q) ||
-        o.productName.toLowerCase().includes(q) ||
-        o.productSku.toLowerCase().includes(q) ||
-        o.rfqNumber.toLowerCase().includes(q)
-      )
-    }
-    if (statusFilter) result = result.filter((o) => o.status === statusFilter)
-    return result
-  }, [offers, search, statusFilter])
-
-  // Server paginates/filters; the client pass only refines within the page.
+  // The server applies the search/status filters and returns one page.
+  // Re-filtering client-side would drop valid server matches.
   const totalPages = Math.max(1, Math.ceil(serverTotal / ITEMS_PER_PAGE))
-  const paginated = filtered.slice(0, ITEMS_PER_PAGE)
+  const paginated = offers
 
-  const statusCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    offers.forEach((o) => counts.set(o.status, (counts.get(o.status) || 0) + 1))
-    return counts
-  }, [offers])
+  const statusCounts = new Map(Object.entries(serverStatusCounts))
+  // The tab badges ignore the status filter (but honor search), so "All" must
+  // not display `serverTotal` while a status tab is active.
+  const allOffersCount = Object.values(serverStatusCounts).reduce((sum, n) => sum + n, 0)
 
   const formatDate = (d: string) => (d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
 
@@ -421,7 +405,7 @@ export default function AdminOffers() {
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         <button onClick={() => { setStatusFilter(''); setPage(1) }} className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${statusFilter === '' ? 'bg-[var(--accent-gold)] text-[var(--btn-blue-text)] shadow-[0_4px_12px_rgba(232,170,36,0.2)]' : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-gold)]'}`}>
-          All ({serverTotal})
+          All ({allOffersCount})
         </button>
         {OFFER_STATUSES.map((s) => (
           <button key={s} onClick={() => { setStatusFilter(s === statusFilter ? '' : s); setPage(1) }} className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${statusFilter === s ? `${statusConfig[s].bg} ${statusConfig[s].color} border border-current/20` : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-gold)]'}`}>

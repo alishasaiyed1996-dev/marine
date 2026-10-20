@@ -15,6 +15,12 @@ import { downloadCsv } from '../../lib/utils'
 import type { ApiBrand, ApiCategory, ApiProduct, Pagination } from '../../lib/api-types'
 
 const ITEMS_PER_PAGE = 20
+const STOCK_FILTERS = ['low-stock', 'out-of-stock', 'missing-images'] as const
+const STOCK_FILTER_LABELS: Record<string, string> = {
+  'low-stock': 'low-stock',
+  'out-of-stock': 'out-of-stock',
+  'missing-images': 'products missing images',
+}
 
 interface AdminProduct {
   id: string
@@ -68,6 +74,12 @@ export default function AdminProducts() {
   const [filterStatus, setFilterStatus] = useState(searchParams.get('status') || '')
   const [filterOnSale, setFilterOnSale] = useState(searchParams.get('sale') === 'true')
   const [filterNewArrival, setFilterNewArrival] = useState(searchParams.get('new') === 'true')
+  // Deep-link filter from dashboard alerts (low-stock / out-of-stock /
+  // missing-images).
+  const [stockFilter, setStockFilter] = useState(() => {
+    const requested = searchParams.get('filter') || ''
+    return STOCK_FILTERS.includes(requested as typeof STOCK_FILTERS[number]) ? requested : ''
+  })
   const [showFilters, setShowFilters] = useState(false)
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -115,6 +127,7 @@ export default function AdminProducts() {
       if (filterStatus) params.status = filterStatus
       if (filterOnSale) params.onSale = 'true'
       if (filterNewArrival) params.isNewArrival = 'true'
+      if (stockFilter) params.filter = stockFilter
       params.sort = sortKey
       params.order = sortDir
       params.page = String(page)
@@ -153,7 +166,7 @@ export default function AdminProducts() {
     } finally {
       setLoading(false)
     }
-  }, [search, filterCategory, filterBrand, categoryIdMap, brandIdMap, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, sortKey, sortDir, page, toast])
+  }, [search, filterCategory, filterBrand, categoryIdMap, brandIdMap, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, stockFilter, sortKey, sortDir, page, toast])
 
   useEffect(() => {
     const timer = setTimeout(() => fetchProducts(), 300)
@@ -211,13 +224,14 @@ export default function AdminProducts() {
     if (filterStatus) params.status = filterStatus
     if (filterOnSale) params.sale = 'true'
     if (filterNewArrival) params.new = 'true'
+    if (stockFilter) params.filter = stockFilter
     if (page > 1) params.page = String(page)
     setSearchParams(params, { replace: true })
-  }, [search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, page, setSearchParams])
+  }, [search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, stockFilter, page, setSearchParams])
 
   useEffect(() => {
     setSelectedIds(new Set())
-  }, [search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, page])
+  }, [search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, stockFilter, page])
 
   const toggleSelectAll = () => {
     if (selectedIds.size === paginatedProducts.length) {
@@ -241,11 +255,12 @@ export default function AdminProducts() {
     else { setSortKey(key); setSortDir('asc') }
   }
 
-  const activeFilterCount = [filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival].filter(Boolean).length
+  const activeFilterCount = [filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, stockFilter].filter(Boolean).length
 
   const clearFilters = () => {
     setFilterCategory(''); setFilterBrand(''); setFilterCondition('')
     setFilterAvailability(''); setFilterStatus(''); setFilterOnSale(false); setFilterNewArrival(false)
+    setStockFilter('')
     setSearch(''); setPage(1); setSearchParams({})
   }
 
@@ -510,6 +525,20 @@ export default function AdminProducts() {
         uniqueCategories={uniqueCategories}
         onClearFilters={clearFilters}
       />
+
+      {stockFilter && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--accent-gold)]/30 bg-[var(--gold-muted)] px-4 py-2.5 text-xs font-bold text-[var(--accent-gold)]">
+          <span>
+            Showing {STOCK_FILTER_LABELS[stockFilter] || stockFilter} products
+          </span>
+          <button
+            onClick={() => { setStockFilter(''); setPage(1) }}
+            className="rounded-full border border-current px-2.5 py-0.5 hover:bg-[var(--accent-gold)] hover:text-[var(--btn-blue-text)]"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* ── Table (with bulk actions, pagination) ── */}
       <AdminProductTable

@@ -76,7 +76,7 @@ export const emailTemplates = {
     shippingAddress: string
   }): QueueEmail {
     const itemRows = data.items.map(i =>
-      `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;color:#1e293b;">${i.name}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:center;color:#64748b;">${i.quantity}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;color:#1e293b;">$${i.price.toFixed(2)}</td></tr>`
+      `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;color:#1e293b;">${escapeHtml(i.name)}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:center;color:#64748b;">${i.quantity}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;color:#1e293b;">$${i.price.toFixed(2)}</td></tr>`
     ).join('')
 
     const html = baseLayout(`
@@ -146,16 +146,18 @@ export const emailTemplates = {
   },
 
   emergencyAlert(data: { rfqNumber: string; customerName: string; phone: string; partDescription: string; vesselName?: string }): QueueEmail {
+    const safePhone = String(data.phone || '').replace(/[^+0-9]/g, '')
+    const waPhone = String(data.phone || '').replace(/[^0-9]/g, '')
     const html = baseLayout(`
       <div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:20px;margin-bottom:24px;">
         <h2 style="margin:0 0 8px;color:#dc2626;font-size:22px;">🚨 EMERGENCY RFQ — RESPOND WITHIN 2 HOURS</h2>
         <p style="color:#991b1b;font-size:14px;margin:0;">This requires immediate attention.</p>
       </div>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:16px;margin-bottom:24px;">
-        <tr><td>${infoRow('RFQ Number', `<span style="color:#dc2626;font-weight:700;">${data.rfqNumber}</span>`)}${infoRow('Customer', data.customerName)}${infoRow('Phone', `<a href="tel:${data.phone}" style="color:#0ea5e9;">${data.phone}</a>`)}${infoRow('Part Needed', data.partDescription)}${data.vesselName ? infoRow('Vessel', data.vesselName) : ''}</td></tr>
+        <tr><td>${infoRow('RFQ Number', `<span style="color:#dc2626;font-weight:700;">${escapeHtml(data.rfqNumber)}</span>`)}${infoRow('Customer', escapeHtml(data.customerName))}${infoRow('Phone', `<a href="tel:${escapeHtml(safePhone)}" style="color:#0ea5e9;">${escapeHtml(data.phone)}</a>`)}${infoRow('Part Needed', escapeHtml(data.partDescription))}${data.vesselName ? infoRow('Vessel', escapeHtml(data.vesselName)) : ''}</td></tr>
       </table>
-      ${btn(`tel:${data.phone}`, '📞 Call Customer Now', '#dc2626')}
-      ${btn(`https://wa.me/${data.phone.replace(/[^0-9]/g, '')}`, '💬 WhatsApp Now', '#25d366')}
+      ${btn(`tel:${safePhone}`, '📞 Call Customer Now', '#dc2626')}
+      ${btn(`https://wa.me/${waPhone}`, '💬 WhatsApp Now', '#25d366')}
     `)
     return { to: SALES_EMAIL, subject: `🚨 EMERGENCY RFQ ${data.rfqNumber} — ${data.customerName} — ${data.vesselName || 'Vessel Unknown'}`, html, template: 'emergency-rfq', templateData: data as Record<string, unknown> }
   },
@@ -191,7 +193,7 @@ export const emailTemplates = {
       ${infoRow('From', `${escapeHtml(data.name)} &lt;${escapeHtml(data.email)}&gt;`)}
       ${infoRow('Subject', escapeHtml(data.subject) || '(no subject)')}
       <div style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:24px;color:#1e293b;font-size:14px;line-height:1.6;">${escapeHtml(data.message)}</div>
-      ${btn(`mailto:${data.email}?subject=Re: ${data.subject || 'Your Message'}`, 'Reply via Email', '#0ea5e9')}
+      ${btn(`mailto:${encodeURIComponent(data.email)}?subject=${encodeURIComponent(`Re: ${data.subject || 'Your Message'}`)}`, 'Reply via Email', '#0ea5e9')}
     `)
     return { to: SALES_EMAIL, subject: `[CONTACT] ${data.subject || 'New message from ' + data.name}`, html, template: 'contact-notification', templateData: data as Record<string, unknown> }
   },

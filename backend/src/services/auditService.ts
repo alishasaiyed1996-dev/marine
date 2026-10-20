@@ -12,7 +12,6 @@ export const KNOWN_ENTITY_TYPES = [
 
 export async function listAuditLogs(params: { page?: number; limit?: number; entityType?: string; actorEmail?: string; action?: string; search?: string }) {
   const { page, limit, skip } = paginationParams(params.page, params.limit)
-
   const where: Record<string, unknown> = {}
   if (params.entityType) {
     // The admin UI groups several raw entity types under one tab, so it sends
@@ -41,5 +40,18 @@ export async function listAuditLogs(params: { page?: number; limit?: number; ent
     prisma.auditLog.count({ where }),
   ])
 
-  return { logs, pagination: paginationResponse(total, page, limit) }
+  // The admin contract expects `oldValue`; legacy rows stored JSON strings in
+  // the Json columns, so decode those as well as returning new object-shaped
+  // writes unchanged.
+  const decode = (value: unknown) => {
+    if (typeof value !== 'string') return value
+    try { return JSON.parse(value) } catch { return value }
+  }
+  const normalised = logs.map((log) => ({
+    ...log,
+    oldValue: decode(log.previousValue),
+    newValue: decode(log.newValue),
+  }))
+
+  return { logs: normalised, pagination: paginationResponse(total, page, limit) }
 }

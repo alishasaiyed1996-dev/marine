@@ -1,4 +1,6 @@
 import { useMemo } from 'react'
+import { orderItemLineTotal } from '../../../lib/orderMetrics'
+import { isCancelledOrRefunded } from './orderStatus'
 import { ClipboardList, ShoppingCart, FileText, AlertTriangle, ArrowRight, Phone, Mail } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -11,7 +13,7 @@ interface Props {
 export function CEOBrief({ orders, rfqs, alerts }: Props) {
   const brief = useMemo(() => {
     const today = new Date().toISOString().split('T')[0]
-    const todayOrders = orders.filter(o => o.createdAt?.startsWith(today) && o.status !== 'cancelled')
+    const todayOrders = orders.filter(o => o.createdAt?.startsWith(today) && !isCancelledOrRefunded(o))
     const todayRevenue = todayOrders.reduce((sum, o) => sum + (o.total || 0), 0)
     // Open RFQs — 'in-progress' is not a real backend status; anything not
     // won/lost/closed is still being worked.
@@ -31,7 +33,7 @@ export function CEOBrief({ orders, rfqs, alerts }: Props) {
             qty: 0,
           }
         }
-        productRevenue[key].revenue += (item.price || 0) * (item.quantity || 1)
+        productRevenue[key].revenue += orderItemLineTotal(item)
         productRevenue[key].qty += item.quantity || 1
       }
     }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Users, Filter } from 'lucide-react'
 import { orderCustomerEmail, orderCustomerName } from './orderFields'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -27,6 +28,7 @@ export function CustomerSegmentation({ orders }: Props) {
     const now = Date.now()
     const map = new Map<string, { name: string; spend: number; orderCount: number; lastOrder: string }>()
     for (const order of orders) {
+      if (isCancelledOrRefunded(order)) continue
       const email = orderCustomerEmail(order)
       if (!email) continue
       if (!map.has(email)) {

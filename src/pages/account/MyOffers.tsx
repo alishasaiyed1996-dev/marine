@@ -21,7 +21,7 @@ const statusConfig: Record<string, { color: string; icon: typeof Clock; label: s
 }
 
 /** Price the customer would pay if they paid right now (counter supersedes original). */
-export function payableUnitPrice(offer: ApiOffer): number {
+function payableUnitPrice(offer: ApiOffer): number {
   const counter = offer.counterPrice != null ? Number(offer.counterPrice) : null
   if (counter && counter > 0 && offer.status === 'countered') return counter
   return Number(offer.acceptedPrice ?? offer.counterPrice ?? offer.offeredPrice)
@@ -35,7 +35,7 @@ export default function MyOffers() {
   const [actionError, setActionError] = useState('')
 
   const { data: offers, isLoading, isError, error } = useQuery({
-    queryKey: ['offers', 'mine'],
+    queryKey: ['offers', 'mine', user?.id],
     queryFn: async () => {
       const res = await storefront.offers.mine()
       return (res.offers || []) as ApiOffer[]

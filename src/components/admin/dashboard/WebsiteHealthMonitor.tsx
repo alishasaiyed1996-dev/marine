@@ -23,7 +23,8 @@ const DEFAULT_ENDPOINTS: Endpoint[] = [
   { id: 'products', name: 'Products API', url: '/api/storefront/products', method: 'GET' },
   { id: 'brands', name: 'Brands API', url: '/api/storefront/brands', method: 'GET' },
   { id: 'categories', name: 'Categories API', url: '/api/storefront/categories', method: 'GET' },
-  { id: 'rfq', name: 'RFQ Endpoint', url: '/api/storefront/rfq', method: 'GET' },
+  // RFQ is POST-only; OPTIONS checks the mounted route without submitting.
+  { id: 'rfq', name: 'RFQ Endpoint', url: '/api/storefront/rfq', method: 'OPTIONS' },
   { id: 'search', name: 'Search API', url: '/api/storefront/products?search=test', method: 'GET' },
 ]
 

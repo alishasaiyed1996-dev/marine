@@ -54,6 +54,18 @@ export function paginationResponse(total: number, page: number, limit: number) {
   }
 }
 
+// ─── Setting Helpers ──────────────────────────────────────────
+/**
+ * Parse a numeric setting/env value while preserving a legitimate 0 (free
+ * shipping, 0% tax, free-shipping threshold of 0). Missing, empty, or
+ * non-numeric values fall back to the supplied default.
+ */
+export function numberOrDefault(value: unknown, fallback: number): number {
+  if (value === undefined || value === null || value === '') return fallback
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 // ─── Price Helpers ─────────────────────────────────────────────
 export function getEffectivePrice(product: {
   regularPrice: any

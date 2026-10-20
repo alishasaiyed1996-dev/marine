@@ -13,6 +13,7 @@ import {
   storefront,
 } from '../lib/api'
 import { apiProductToFrontend, apiProductsToFrontend } from '../lib/adapters'
+import { queryClient } from '../lib/queryClient'
 import { resolveInitialTheme, syncThemeColor } from '../lib/theme'
 
 
@@ -31,6 +32,8 @@ export interface OrderSummary {
   tax: number
   total: number
   currency: string
+  /** Guest email stored with the order (also restored after PayPal redirects). */
+  shippingEmail?: string | null
 }
 
 /** A cart line the server dropped because its product is no longer in the catalog. */
@@ -363,7 +366,24 @@ export const useStore = create<AppState>((set, get) => ({
   logout: async () => {
     try { await customerAuth.logout() } catch { console.warn('[store] Customer logout API call failed') }
     setCustomerToken(null)
-    set({ isLoggedIn: false, user: null, cart: [], showCartDrawer: false, cartTotal: 0, cartCount: 0 })
+    set({
+      isLoggedIn: false,
+      user: null,
+      cart: [],
+      showCartDrawer: false,
+      cartTotal: 0,
+      cartCount: 0,
+      // Never let the next customer see the previous checkout confirmation.
+      orderPlaced: false,
+      orderId: '',
+      orderSummary: null,
+      orderSkippedItems: [],
+      checkoutStep: 1,
+      cancelRequested: false,
+      cancelReason: '',
+    })
+    // Customer-scoped caches (orders, offers) must not survive the session.
+    queryClient.clear()
     saveState('auth', false)
     saveState('cart', [])
   },
@@ -409,11 +429,19 @@ export const useStore = create<AppState>((set, get) => ({
   setShowCartDrawer: (showCartDrawer) => set({ showCartDrawer }),
   addToCart: (product) =>
     set((state) => {
+      // Never let the cart hold more units than the catalog can fulfil — the
+      // server would reject the whole order at checkout. A missing/zero stock
+      // count means the product is not buyable.
+      const maxQty = Math.max(0, Math.floor(Number(product.stockCount) || 0))
+      if (!product.inStock || maxQty === 0) return state
+
       const existing = state.cart.find((item) => item.product.id === product.id)
+      if (existing && existing.quantity >= maxQty) return state
+
       const newCart = existing
         ? state.cart.map((item) =>
             item.product.id === product.id
-              ? { ...item, quantity: item.quantity + 1 }
+              ? { ...item, quantity: Math.min(item.quantity + 1, maxQty) }
               : item
           )
         : [...state.cart, { product, quantity: 1 }]
@@ -430,9 +458,14 @@ export const useStore = create<AppState>((set, get) => ({
     set((state) => {
       const newCart = qty <= 0
         ? state.cart.filter((item) => item.product.id !== productId)
-        : state.cart.map((item) =>
-            item.product.id === productId ? { ...item, quantity: qty } : item
-          )
+        : state.cart.flatMap((item) => {
+            if (item.product.id !== productId) return [item]
+            // An unavailable line can't be kept at a minimum quantity — the
+            // server would reject the entire checkout. Drop it instead.
+            const maxQty = Math.floor(Number(item.product.stockCount) || 0)
+            if (!item.product.inStock || maxQty <= 0) return []
+            return [{ ...item, quantity: Math.min(qty, maxQty) }]
+          })
       saveState('cart', newCart)
       return { cart: newCart, ...computeCartTotals(newCart) }
     }),
@@ -471,11 +504,16 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       // Replace each persisted snapshot with the fresh product, dropping items
-      // whose product no longer exists. Quantities are preserved.
+      // whose product no longer exists or is out of stock, and clamping
+      // quantities to the current stock so checkout isn't rejected for an
+      // impossible quantity.
       const newCart = cart
         .map((item) => {
           const fresh = live.get(item.product.id)
-          return fresh ? { ...item, product: fresh } : null
+          if (!fresh || !fresh.inStock) return null
+          const maxQty = Math.floor(Number(fresh.stockCount) || 0)
+          if (maxQty <= 0) return null
+          return { ...item, product: fresh, quantity: Math.min(item.quantity, maxQty) }
         })
         .filter((x): x is CartItem => x !== null)
 
@@ -487,8 +525,6 @@ export const useStore = create<AppState>((set, get) => ({
       console.warn('[store] Cart price refresh failed — keeping cached prices')
     }
   },
-  cartTotal: 0,
-  cartCount: 0,
   getCartTotal: () => get().cartTotal,
   getCartCount: () => get().cartCount,
 

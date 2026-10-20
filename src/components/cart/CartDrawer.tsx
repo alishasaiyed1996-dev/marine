@@ -252,8 +252,10 @@ export function CartDrawer() {
                                   onClick={() =>
                                     updateQuantity(product.id, quantity + 1)
                                   }
-                                  className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-[var(--border)]"
+                                  disabled={quantity >= Math.max(1, product.stockCount)}
+                                  className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-[var(--border)] disabled:opacity-40 disabled:cursor-not-allowed"
                                   aria-label="Increase quantity"
+                                  title={quantity >= Math.max(1, product.stockCount) ? `Only ${Math.max(1, product.stockCount)} available` : undefined}
                                 >
                                   <Plus size={14} className="text-[var(--text-secondary)]" />
                                 </button>

@@ -13,7 +13,9 @@ export function ResponseCountdown({ deadline }: { deadline: string | null }) {
 
   if (!countdown || countdown.expired) return null
 
-  const hh = String(countdown.hours).padStart(2, '0')
+  // Include whole days in the hour field: the 24-hour urgent SLA would
+  // otherwise render as "00:00:00" the moment it starts (hours = diff % 1 day).
+  const hh = String(countdown.days * 24 + countdown.hours).padStart(2, '0')
   const mm = String(countdown.minutes).padStart(2, '0')
   const ss = String(countdown.seconds).padStart(2, '0')
 

@@ -4,6 +4,7 @@ import { rfqInclude } from '../utils/prisma-helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { sendRfqReceived, sendRfqResponse } from './email.js'
 import { shouldNotify } from './settingsService.js'
+import { computeOrderTotals } from './orderPricing.js'
 import logger from '../utils/logger.js'
 import type { AuthUser } from '../middleware/auth.js'
 
@@ -92,7 +93,10 @@ export async function listRfqs(params: RfqFilters) {
     ]
   }
 
-  const [rfqs, total] = await Promise.all([
+  const statusWhere = { ...where }
+  delete statusWhere.status
+
+  const [rfqs, total, grouped] = await Promise.all([
     prisma.rfq.findMany({
       where,
       include: rfqInclude,
@@ -100,9 +104,14 @@ export async function listRfqs(params: RfqFilters) {
       skip, take: limit,
     }),
     prisma.rfq.count({ where }),
+    // Tab badges must count every matching RFQ, not only the current page.
+    prisma.rfq.groupBy({ by: ['status'], where: statusWhere, _count: { _all: true } }),
   ])
 
-  return { rfqs, pagination: paginationResponse(total, page, limit) }
+  const statusCounts: Record<string, number> = {}
+  for (const group of grouped) statusCounts[group.status] = group._count._all
+
+  return { rfqs, statusCounts, pagination: paginationResponse(total, page, limit) }
 }
 
 export async function listAssignableAdmins() {
@@ -219,16 +228,48 @@ export async function respondToRfq(id: string, message: string, actor: AuthUser,
 export async function convertRfqToOffer(id: string, offeredPrice: number, message: string | undefined, actor: AuthUser, ipAddress = '') {
   const rfq = await prisma.rfq.findUnique({ where: { id } })
   if (!rfq) throw Object.assign(new Error('RFQ not found'), { status: 404 })
+  if (['won', 'lost', 'closed'].includes(rfq.status)) {
+    throw Object.assign(new Error('This RFQ is already closed'), { status: 409 })
+  }
+
+  // One conversion per RFQ: a double-click or a second admin must not create
+  // duplicate offers for the same request. Further negotiation uses the
+  // counter-offer action on the existing offer.
+  const existingOffer = await prisma.offer.findFirst({
+    where: { rfqId: rfq.id, status: { in: ['pending', 'countered', 'accepted', 'awaiting-payment', 'paid', 'converted-to-order'] } },
+    select: { id: true, offerNumber: true },
+  })
+  if (existingOffer) {
+    throw Object.assign(
+      new Error(`RFQ already has offer ${existingOffer.offerNumber}`),
+      { status: 409 },
+    )
+  }
+
+  // Preserve product identity when the RFQ's part number matches a catalogue
+  // SKU, so offers/orders created from it link back to the real product.
+  const product = rfq.partNumber
+    ? await prisma.product.findFirst({
+        where: { sku: { equals: rfq.partNumber, mode: 'insensitive' } },
+        select: { id: true },
+      })
+    : null
+  const customer = await prisma.customer.findFirst({
+    where: { email: { equals: rfq.email, mode: 'insensitive' } },
+    select: { id: true },
+  })
 
   const offer = await prisma.offer.create({
     data: {
       offerNumber: await generateOfferNumber(),
+      productId: product?.id || null,
+      rfqId: rfq.id,
+      customerId: rfq.customerId || customer?.id || null,
       customerEmail: rfq.email,
       offeredPrice,
       quantity: rfq.quantity,
       message: message || `Converted from RFQ ${rfq.rfqNumber}`,
       status: 'pending',
-      rfqId: rfq.id,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     },
   })
@@ -245,58 +286,100 @@ export async function convertRfqToOffer(id: string, offeredPrice: number, messag
   return offer
 }
 
-export async function convertRfqToOrder(id: string, total: number, unitPrice: number, actor: AuthUser, ipAddress = '') {
+export async function convertRfqToOrder(id: string, unitPrice: number, actor: AuthUser, ipAddress = '') {
   const rfq = await prisma.rfq.findUnique({ where: { id } })
   if (!rfq) throw Object.assign(new Error('RFQ not found'), { status: 404 })
 
-  const order = await prisma.order.create({
-    data: {
-      orderNumber: await generateOrderNumber(),
-      status: 'pending',
-      paymentMethod: 'bank-transfer',
-      paymentStatus: 'pending',
-      subtotal: total || 0,
-      shippingCost: 25,
-      tax: 0,
-      total: (total || 0) + 25,
-      currency: 'USD',
-      shippingFullName: rfq.fullName,
-      shippingCity: rfq.deliveryLocation || '',
-      shippingCountry: rfq.country || '',
-      customerNotes: `Converted from RFQ ${rfq.rfqNumber}`,
-    },
-  })
+  const product = rfq.partNumber
+    ? await prisma.product.findFirst({
+        where: { sku: { equals: rfq.partNumber, mode: 'insensitive' } },
+        select: { id: true, name: true, sku: true, regularPrice: true },
+      })
+    : null
+  const customer = rfq.customerId
+    ? await prisma.customer.findUnique({ where: { id: rfq.customerId }, select: { id: true } })
+    : await prisma.customer.findFirst({
+        where: { email: { equals: rfq.email, mode: 'insensitive' } },
+        select: { id: true },
+      })
 
+  const quantity = Math.max(1, rfq.quantity)
+  // Totals are always derived server-side from the negotiated unit price —
+  // never from a client-supplied order total. Shipping/tax use the same
+  // pricing helper as storefront checkout and accepted-offer checkout.
+  const { subtotal, shippingCost, tax, total } = await computeOrderTotals(
+    unitPrice * quantity,
+    rfq.country,
+  )
+
+  // Claim the RFQ before creating anything so concurrent conversions cannot
+  // both produce an order.
+  const claimed = await prisma.rfq.updateMany({
+    where: { id: rfq.id, status: { notIn: ['won', 'lost', 'closed'] } },
+    data: { status: 'won' },
+  })
+  if (claimed.count === 0) {
+    throw Object.assign(new Error('This RFQ has already been converted or closed'), { status: 409 })
+  }
+
+  let orderId: string | null = null
   try {
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: await generateOrderNumber(),
+        customerId: customer?.id || null,
+        status: 'pending',
+        paymentMethod: 'bank-transfer',
+        paymentStatus: 'pending',
+        subtotal, shippingCost, tax, total,
+        currency: 'USD',
+        originalListedPrice: product ? Number(product.regularPrice) : null,
+        negotiatedPrice: unitPrice,
+        shippingFullName: rfq.fullName,
+        shippingEmail: rfq.email,
+        shippingCity: rfq.deliveryLocation || '',
+        shippingCountry: rfq.country || '',
+        customerNotes: `Converted from RFQ ${rfq.rfqNumber}`,
+      },
+    })
+    orderId = order.id
+
     await prisma.orderItem.create({
       data: {
         orderId: order.id,
-        productName: rfq.productDescription.slice(0, 500),
-        productSku: rfq.partNumber || '',
-        quantity: rfq.quantity,
-        unitPrice: unitPrice || 0,
-        totalPrice: (unitPrice || 0) * rfq.quantity,
+        productId: product?.id || null,
+        productName: product?.name || rfq.productDescription.slice(0, 500),
+        productSku: product?.sku || rfq.partNumber || '',
+        quantity,
+        unitPrice,
+        totalPrice: subtotal,
       },
     })
     await prisma.orderTimeline.create({
-      data: { orderId: order.id, status: 'pending', note: `Converted from RFQ ${rfq.rfqNumber}` },
+      data: {
+        orderId: order.id,
+        status: 'pending',
+        note: `Converted from RFQ ${rfq.rfqNumber}`,
+        createdBy: actor.id,
+      },
     })
   } catch (error) {
-    await prisma.order.delete({ where: { id: order.id } }).catch(() => {})
+    // Remove any half-created order, then release the claim so the RFQ can be
+    // retried after a failed conversion.
+    if (orderId) await prisma.order.delete({ where: { id: orderId } }).catch(() => {})
+    await prisma.rfq.update({ where: { id: rfq.id }, data: { status: rfq.status } }).catch(() => {})
     throw error
   }
 
   const fullOrder = await prisma.order.findUnique({
-    where: { id: order.id },
+    where: { id: orderId },
     include: { items: true },
   })
-
-  await prisma.rfq.update({ where: { id: rfq.id }, data: { status: 'won' } })
 
   await logAudit({
     actor, action: 'rfq.convert-to-order',
     entityType: 'rfq', entityId: rfq.id, entityName: rfq.rfqNumber,
-    newValue: { orderId: order.id, orderNumber: order.orderNumber },
+    newValue: { orderId, orderNumber: fullOrder?.orderNumber },
     ipAddress,
   })
 

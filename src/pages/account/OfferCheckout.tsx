@@ -1,14 +1,14 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PayPalButtons } from '@paypal/react-paypal-js'
 import {
   ChevronLeft, HandCoins, Loader2, MapPin, Shield, Tag,
 } from 'lucide-react'
 import { storefront } from '../../lib/api'
 import { useLocalizedPath } from '../../lib/locale'
-import { usePayPalAvailability } from '../../components/PayPalProvider'
+import { usePayPalAvailability } from '../../hooks/usePayPalAvailability'
 import { useStore } from '../../store/useStore'
 import { OptimizedImage } from '../../components/ui/OptimizedImage'
 
@@ -39,12 +39,16 @@ export default function OfferCheckout() {
   const navigate = useNavigate()
   const lp = useLocalizedPath()
   const user = useStore((s) => s.user)
+  const queryClient = useQueryClient()
   const { configured: paypalConfigured, loading: paypalScriptLoading } = usePayPalAvailability()
 
   const [shipping, setShipping] = useState<Shipping>(EMPTY_SHIPPING)
   const [errors, setErrors] = useState<Record<string, boolean>>({})
   const [order, setOrder] = useState<{ id: string; orderNumber: string } | null>(null)
-  const [payLoading, setPayLoading] = useState(false)
+  // PayPal callbacks are created when the buttons mount; state read inside
+  // them can be stale. The ref always holds the order created for this approval
+  // attempt without forcing the buttons to remount.
+  const orderRef = useRef<{ id: string; orderNumber: string } | null>(null)
   const [payError, setPayError] = useState('')
   const [paid, setPaid] = useState(false)
 
@@ -106,6 +110,24 @@ export default function OfferCheckout() {
   }
 
   const offer = offerData
+  // A stale/bookmarked link can outlive the payment window. Stop before the
+  // shipping form so the customer gets a clear message instead of a PayPal
+  // failure after filling everything in.
+  if (offer.status !== 'accepted' && offer.status !== 'awaiting-payment') {
+    return (
+      <div className="min-h-screen bg-[var(--primary-bg)] flex items-center justify-center px-4">
+        <div className="text-center">
+          <h1 className="font-display text-xl font-bold text-[var(--text-primary)] mb-2">Offer not payable</h1>
+          <p className="text-sm text-[var(--text-secondary)] mb-6">
+            This offer is {String(offer.status || 'unavailable').replace(/-/g, ' ')} and can no longer be paid online.
+          </p>
+          <Link to={lp('/account/offers')} className="text-sm font-semibold text-[var(--accent-primary)] hover:underline">
+            Back to My Offers
+          </Link>
+        </div>
+      </div>
+    )
+  }
   const qty = offer.quantity ?? 1
   const listed = offer.product?.regularPrice != null ? Number(offer.product.regularPrice) : 0
   // Display-only. The chargeable amount is always recomputed server-side.
@@ -124,7 +146,6 @@ export default function OfferCheckout() {
 
   const startPayment = async (): Promise<string | null> => {
     if (!validateShipping()) return null
-    setPayLoading(true)
     setPayError('')
     try {
       // Server prices the order from the stored offer; idempotent per offer.
@@ -139,6 +160,7 @@ export default function OfferCheckout() {
       })
       const created = res.order
       if (!created?.id) throw new Error('Failed to create payment order')
+      orderRef.current = { id: created.id, orderNumber: created.orderNumber }
       setOrder({ id: created.id, orderNumber: created.orderNumber })
       // Server-computed totals drive PayPal — the client's estimate is never sent.
       const paypalRes = await storefront.payments.createPaypalOrder({ orderId: created.id })
@@ -146,26 +168,26 @@ export default function OfferCheckout() {
     } catch (err) {
       setPayError(err instanceof Error ? err.message : 'Failed to start payment')
       return null
-    } finally {
-      setPayLoading(false)
     }
   }
 
   const handleApprove = async (data: unknown) => {
-    if (!order) return
-    setPayLoading(true)
+    const currentOrder = orderRef.current
+    if (!currentOrder) {
+      setPayError('Payment session expired. Please try again.')
+      return
+    }
     setPayError('')
     try {
       const paypalData = data as { orderID?: string }
       if (!paypalData.orderID) throw new Error('PayPal order ID missing')
       // Existing hardened capture path: verifies PayPal order ↔ store order,
       // captured amount/currency, and marks the offer paid atomically.
-      await storefront.payments.capturePaypalOrder({ paypalOrderId: paypalData.orderID, orderId: order.id })
+      await storefront.payments.capturePaypalOrder({ paypalOrderId: paypalData.orderID, orderId: currentOrder.id })
+      await queryClient.invalidateQueries({ queryKey: ['offers', 'mine'] })
       setPaid(true)
     } catch (err) {
       setPayError(err instanceof Error ? err.message : 'Payment failed. Please try again.')
-    } finally {
-      setPayLoading(false)
     }
   }
 
@@ -321,13 +343,12 @@ export default function OfferCheckout() {
                 <div className="flex items-center justify-center h-[48px] px-4 rounded-xl border border-[var(--border)] text-center text-xs text-[var(--text-secondary)]">
                   {t('checkout.paypalUnavailable')}
                 </div>
-              ) : paypalScriptLoading || payLoading ? (
+              ) : paypalScriptLoading ? (
                 <div className="flex items-center justify-center gap-2 h-[48px] rounded-full bg-[var(--accent-gold)]/90 text-[var(--btn-blue-text)] font-semibold text-sm">
-                  <Loader2 size={16} className="animate-spin" /> {payLoading ? 'Starting...' : 'Loading PayPal...'}
+                  <Loader2 size={16} className="animate-spin" /> Loading PayPal...
                 </div>
               ) : (
                 <PayPalButtons
-                  key={order?.id || 'pre'}
                   style={{ layout: 'vertical', shape: 'pill', color: 'gold', label: 'pay', height: 48 }}
                   createOrder={async () => {
                     const paypalOrderId = await startPayment()

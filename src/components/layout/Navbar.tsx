@@ -69,7 +69,7 @@ function BrandLockup() {
 
 export function Navbar() {
   const { t } = useTranslation()
-  const { pathname } = useLocation()
+  const { pathname, search, hash } = useLocation()
   const navigate = useNavigate()
   const locale = useLocale()
   const localizedPath = useLocalizedPath()
@@ -79,13 +79,12 @@ export function Navbar() {
   const [langOpen, setLangOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const setShowCartDrawer = useStore((s) => s.setShowCartDrawer)
-  const getCartCount = useStore((s) => s.getCartCount)
+  const cartCount = useStore((s) => s.cartCount)
   const language = useStore((s) => s.language)
   const isLoggedIn = useStore((s) => s.isLoggedIn)
   const user = useStore((s) => s.user)
   const logout = useStore((s) => s.logout)
   const setShowAuthModal = useStore((s) => s.setShowAuthModal)
-  const cartCount = getCartCount()
   const settings = useStoreSettings()
 
   // ── Scroll tracking: shadow + mobile top-bar hide ──────────────
@@ -306,7 +305,7 @@ export function Navbar() {
                     <button
                       key={lang.code}
                       onClick={() => {
-                        navigate(switchLocalePath(pathname, lang.code))
+                        navigate(switchLocalePath(pathname, lang.code, search, hash))
                         setLangOpen(false)
                       }}
                       className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-bold transition-colors hover:bg-[var(--surface-soft)] ${
@@ -490,7 +489,7 @@ export function Navbar() {
                 {LANGUAGES.map((lang) => (
                   <button
                     key={lang.code}
-                    onClick={() => navigate(switchLocalePath(pathname, lang.code))}
+                    onClick={() => navigate(switchLocalePath(pathname, lang.code, search, hash))}
                     className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${
                       language === lang.code
                         ? 'border-[var(--accent-primary)]/50 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]'

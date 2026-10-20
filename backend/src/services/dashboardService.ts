@@ -67,20 +67,27 @@ export async function getDashboardStats() {
   // so this one is a single precise raw query.
   const saleRow = await prisma.$queryRaw<Array<{ count: bigint }>>`
     SELECT count(*)::bigint AS count FROM products
-    WHERE status = 'published' AND sale_price IS NOT NULL AND sale_price < regular_price`
+    WHERE status = 'published' AND sale_price IS NOT NULL AND sale_price < regular_price
+      AND (sale_starts_at IS NULL OR sale_starts_at <= NOW())
+      AND (sale_ends_at IS NULL OR sale_ends_at >= NOW())`
   const saleProducts = Number(saleRow[0]?.count || 0)
 
   // "Low stock" is per-product: stock_count > 0 and <= that product's own
   // low_stock_threshold (default 10). Prisma cannot compare two columns in a
   // filter, so the ids come from a raw query and the rows are then loaded.
-  const lowStockIds = (await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM products
+  // `count(*) OVER ()` gives the total matching rows before LIMIT, so the
+  // dashboard can report the true low-stock count while only loading the 20
+  // most urgent products for display.
+  const lowStockRows = await prisma.$queryRaw<Array<{ id: string; total_count: bigint }>>`
+    SELECT id, count(*) OVER () AS total_count FROM products
     WHERE stock_count > 0 AND stock_count <= low_stock_threshold
       AND status = 'published' AND availability <> 'out-of-stock'
     ORDER BY stock_count ASC
-    LIMIT 20`).map((r) => r.id)
+    LIMIT 20`
+  const lowStockIds = lowStockRows.map((r) => r.id)
+  const lowStockCount = Number(lowStockRows[0]?.total_count || 0)
 
-  const [lowStockProducts, missingImageProducts] = await Promise.all([
+  const [lowStockProducts, missingImageProducts, missingImageCount] = await Promise.all([
     prisma.product.findMany({
       where: { id: { in: lowStockIds } },
       select: {
@@ -99,6 +106,7 @@ export async function getDashboardStats() {
       },
       take: 20,
     }),
+    prisma.product.count({ where: { status: 'published', images: { none: {} } } }),
   ])
 
   const [categoryBreakdown, brandBreakdown, conditionBreakdown] = await Promise.all([
@@ -139,6 +147,8 @@ export async function getDashboardStats() {
     totalCategories,
     totalIndustries,
     totalStockUnits: totalStockUnits._sum.stockCount || 0,
+    lowStockCount,
+    missingImageCount,
     lowStockProducts: lowStockProducts.map((p) => ({
       id: p.id,
       name: p.name,
@@ -173,12 +183,14 @@ export async function getDashboardStats() {
 
 export async function getDashboardAlerts() {
   // Same per-product threshold rule as the stats above.
-  const lowStockIds = (await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM products
+  const lowStockRows = await prisma.$queryRaw<Array<{ id: string; total_count: bigint }>>`
+    SELECT id, count(*) OVER () AS total_count FROM products
     WHERE stock_count > 0 AND stock_count <= low_stock_threshold
       AND status = 'published' AND availability <> 'out-of-stock'
     ORDER BY stock_count ASC
-    LIMIT 20`).map((r) => r.id)
+    LIMIT 20`
+  const lowStockIds = lowStockRows.map((r) => r.id)
+  const lowStockCount = Number(lowStockRows[0]?.total_count || 0)
 
   const [lowStock, overdueRfqs, outOfStockCount] = await Promise.all([
     prisma.product.findMany({
@@ -188,13 +200,16 @@ export async function getDashboardAlerts() {
       take: 20,
     }),
     prisma.rfq.findMany({
-      where: { urgency: 'emergency', status: { in: ['new', 'reviewing'] } },
+      where: {
+        status: { in: ['new', 'reviewing'] },
+        responseDeadline: { lt: new Date() },
+      },
       select: { id: true, rfqNumber: true, fullName: true, urgency: true, createdAt: true },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { responseDeadline: 'asc' },
     }),
     prisma.product.count({ where: { OR: [{ availability: 'out-of-stock' }, { stockCount: { lte: 0 } }] } }),
   ])
-  return { lowStockProducts: lowStock, overdueRfqs, outOfStockCount }
+  return { lowStockProducts: lowStock, lowStockCount, overdueRfqs, outOfStockCount }
 }
 
 export async function getRecentActivity(limit = 20) {

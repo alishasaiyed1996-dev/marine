@@ -7,6 +7,7 @@ export interface SiteConfig {
   tagline: string
   email: string
   phone: string
+  whatsappNumber: string
   address: string
   city: string
   country: string
@@ -62,6 +63,7 @@ export const defaultSite: SiteConfig = {
   tagline: 'Leading Supplier & Exporter of Used & Unbranded Marine Equipment',
   email: 'sales@alkatraders.co',
   phone: '+971 4 XXX XXXX',
+  whatsappNumber: '918799095041',
   address: 'PLOT - 7 ALANG HOUSE, MOTITALAV ROAD, KHUMBHARWADA',
   city: 'BHAVNAGAR',
   country: 'India',

@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, useCallback, useContext } from 'react'
 import type { Language } from '../types'
 
 /** Supported locales */
@@ -31,19 +31,24 @@ export const useLocale = () => useContext(LocaleContext)
  */
 export function useLocalizedPath() {
   const locale = useLocale()
-  return (path: string): string => {
+  return useCallback((path: string): string => {
     if (path.startsWith('/admin')) return path
     if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('mailto:') || path.startsWith('tel:')) return path
     if (path.startsWith('#')) return path
     // Always prefix with locale
     return `/${locale}${path === '/' ? '' : path}`
-  }
+  }, [locale])
 }
 
 /**
  * Navigate to the same page in a different locale.
  */
-export function switchLocalePath(currentPathname: string, newLocale: Language): string {
+export function switchLocalePath(
+  currentPathname: string,
+  newLocale: Language,
+  search = '',
+  hash = '',
+): string {
   const segments = currentPathname.split('/').filter(Boolean)
   // If first segment is a valid locale, replace it
   if (segments.length > 0 && VALID_LOCALES.includes(segments[0] as Language)) {
@@ -52,5 +57,6 @@ export function switchLocalePath(currentPathname: string, newLocale: Language): 
     // No locale prefix — prepend one
     segments.unshift(newLocale)
   }
-  return '/' + segments.join('/')
+  // Keep filters, pagination, and anchors when switching language.
+  return '/' + segments.join('/') + search + hash
 }

@@ -265,9 +265,22 @@ export default function AdminCustomers() {
           customer={selectedCustomer}
           onClose={() => setSelectedCustomer(null)}
           onStatusChange={async (id, status) => {
+            const previousStatus = customers.find((c) => c.id === id)?.status
+            const previousSelectedStatus = selectedCustomer.status
             setCustomers((prev) => prev.map((c) => c.id === id ? { ...c, status } : c))
-            setSelectedCustomer({ ...selectedCustomer, status })
-            await admin.customers.updateStatus(id, status)
+            setSelectedCustomer((prev) => (prev && prev.id === id ? { ...prev, status } : prev))
+            try {
+              await admin.customers.updateStatus(id, status)
+            } catch (err) {
+              // Roll back the optimistic badge if the API rejected the change.
+              if (previousStatus) {
+                setCustomers((prev) => prev.map((c) => c.id === id ? { ...c, status: previousStatus } : c))
+              }
+              setSelectedCustomer((prev) => (
+                prev && prev.id === id ? { ...prev, status: previousSelectedStatus } : prev
+              ))
+              throw err
+            }
           }}
           onSaveNotes={async (id, notes) => {
             await admin.customers.addNote(id, notes)

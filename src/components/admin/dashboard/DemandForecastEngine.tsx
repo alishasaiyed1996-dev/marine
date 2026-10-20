@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   products: any[]
@@ -16,7 +17,7 @@ export function DemandForecastEngine({ products, orders }: Props) {
     // Build per-product daily sales
     const productDailySales = new Map<string, Map<string, number>>()
     for (const order of orders) {
-      if (order.status === 'cancelled') continue
+      if (isCancelledOrRefunded(order)) continue
       const orderDate = order.createdAt?.slice(0, 10)
       if (!orderDate) continue
       for (const item of order.items || []) {

@@ -14,6 +14,8 @@ interface CheckoutSuccessProps {
   setCancelReason: (reason: string) => void
   setCancelSubmitted: (submitted: boolean) => void
   handleContinueShopping: () => void
+  /** Checkout email for guest orders — required to track/cancel without an account. */
+  guestEmail?: string
 }
 
 export function CheckoutSuccess({
@@ -23,6 +25,7 @@ export function CheckoutSuccess({
   setCancelReason,
   setCancelSubmitted,
   handleContinueShopping,
+  guestEmail,
 }: CheckoutSuccessProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -41,6 +44,9 @@ export function CheckoutSuccess({
     ? orderSummary.tax
     : Math.round(subtotal * settings.taxRate * 100) / 100
   const total = orderSummary ? orderSummary.total : subtotal + shippingCost + tax
+  // After a PayPal redirect the checkout form state is gone; the captured order
+  // response restores the guest email required to cancel/track the order.
+  const effectiveGuestEmail = guestEmail || orderSummary?.shippingEmail || undefined
 
   const handleCancelRequest = async () => {
     const reason = cancelReason.trim()
@@ -52,7 +58,7 @@ export function CheckoutSuccess({
     setCancelLoading(true)
     setCancelError('')
     try {
-      await storefront.orders.cancel(orderId, reason)
+      await storefront.orders.cancel(orderId, reason, effectiveGuestEmail)
       setCancelSubmitted(true)
       setCancelRequested(true)
     } catch (err: unknown) {
@@ -160,7 +166,11 @@ export function CheckoutSuccess({
             {t('checkout.continueShopping')}
           </button>
           <button
-            onClick={() => navigate(lp(orderId ? `/track-order?id=${encodeURIComponent(orderId)}` : '/track-order'))}
+            onClick={() => {
+              const query = orderId ? `?id=${encodeURIComponent(orderId)}` : ''
+              const emailQuery = effectiveGuestEmail ? `${query ? '&' : '?'}email=${encodeURIComponent(effectiveGuestEmail)}` : ''
+              navigate(lp(`/track-order${query}${emailQuery}`))
+            }}
             className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all cursor-pointer rounded-xl"
           >
             <Truck size={14} /> {t('checkout.trackOrder')}

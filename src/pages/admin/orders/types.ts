@@ -35,17 +35,17 @@ const STATUS_FLOW: OrderStatus[] = ['pending', 'confirmed', 'paid', 'processing'
 export function mapApiOrder(o: ApiOrder): Order {
   const oAny = o as unknown as Record<string, unknown>
   const items = (o.items || o.orderItems || []).map((item: ApiOrderItem) => ({
-    productName: item.product?.name || item.productName || 'Unknown Product',
-    sku: item.product?.sku || item.sku || '',
+    productName: item.productName || item.product?.name || 'Unknown Product',
+    sku: item.productSku || item.product?.sku || item.sku || '',
     quantity: item.quantity || 1,
-    price: Number(item.price || item.unitPrice || 0),
+    price: Number(item.unitPrice ?? item.price ?? 0),
   }))
   return {
     id: o.id,
     orderNumber: o.orderNumber || o.id,
-    customerName: o.customer?.name || (oAny.customerName as string) || o.customer?.email || '',
-    customerEmail: o.customer?.email || (oAny.customerEmail as string) || '',
-    company: (oAny.company as string) || '',
+    customerName: o.customer?.name || o.shippingFullName || (oAny.customerName as string) || o.customer?.email || '',
+    customerEmail: o.customer?.email || o.shippingEmail || (oAny.customerEmail as string) || '',
+    company: o.customer?.company || (oAny.company as string) || '',
     country: o.shippingCountry || (oAny.country as string) || '',
     items,
     subtotal: Number(o.subtotal ?? 0),

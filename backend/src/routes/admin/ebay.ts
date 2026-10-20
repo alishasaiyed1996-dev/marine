@@ -20,7 +20,7 @@ router.use(authenticateAdmin)
 // ─── Inventory sync view ───────────────────────────────────────
 router.get('/inventory', asyncHandler(async (req: AuthRequest, res) => {
   const page = Math.max(1, Number(req.query.page) || 1)
-  const limit = Math.min(100, Number(req.query.limit) || 50)
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50))
 
   const products = await prisma.product.findMany({
     where: { status: { not: 'archived' } },

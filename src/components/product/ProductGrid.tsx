@@ -19,6 +19,7 @@ function ProductCard({ product, addedIds, onAddToCart }: { product: Product; add
   const { t } = useTranslation()
   const lp = useLocalizedPath()
   const effPrice = product.onSale && product.salePrice ? product.salePrice : product.price
+  const regularPrice = product.regularPrice ?? product.price
   const isAdded = addedIds.has(product.id)
 
   return (
@@ -82,7 +83,7 @@ function ProductCard({ product, addedIds, onAddToCart }: { product: Product; add
                     ${product.salePrice.toFixed(2)}
                   </span>
                   <span className="font-display font-bold text-sm text-[var(--text-muted)] line-through">
-                    ${product.price.toFixed(2)}
+                    ${regularPrice.toFixed(2)}
                   </span>
                 </div>
               ) : (

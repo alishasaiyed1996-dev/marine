@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { LayoutGrid } from 'lucide-react'
+import { orderItemLineTotal } from '../../../lib/orderMetrics'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   products: any[]
@@ -13,7 +15,7 @@ export function ProductPerformance({ products, orders }: Props) {
     // Calculate per-product metrics
     const productMetrics = products.map((p: any) => {
       const productOrders = orders.filter(o =>
-        o.status !== 'cancelled' && (o.items || []).some((i: any) => i.productId === p.id)
+        !isCancelledOrRefunded(o) && (o.items || []).some((i: any) => i.productId === p.id)
       )
       const totalSold = productOrders.reduce((s: number, o: any) => {
         const item = (o.items || []).find((i: any) => i.productId === p.id)
@@ -21,7 +23,7 @@ export function ProductPerformance({ products, orders }: Props) {
       }, 0)
       const revenue = productOrders.reduce((s: number, o: any) => {
         const item = (o.items || []).find((i: any) => i.productId === p.id)
-        return s + (item?.price || 0) * (item?.quantity || 0)
+        return s + orderItemLineTotal(item)
       }, 0)
       const daysSinceAdded = Math.max(1, (Date.now() - new Date(p.createdAt || Date.now()).getTime()) / 86400000)
       const velocityPerDay = totalSold / daysSinceAdded

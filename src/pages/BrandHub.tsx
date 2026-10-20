@@ -39,6 +39,11 @@ export default function BrandHub() {
       </header>
       <h2 className="mb-5 text-2xl font-bold">Available {brand.name} parts ({brand._count?.products || 0})</h2>
       {!products.length && !isLoading ? <p className="rounded-xl border border-[var(--border)] p-6">No published products are available in this brand yet.</p> : <ProductGrid products={products} addedIds={addedIds} onAddToCart={handleAddToCart} isLoading={isLoading} />}
+      {products.length < (brand._count?.products || 0) && (
+        <Link to={`/${language}/products?brand=${encodeURIComponent(brand.slug)}`} className="mt-6 inline-block font-semibold underline">
+          View all {brand._count.products} {brand.name} products
+        </Link>
+      )}
       {brand.sectors?.length > 0 && <p className="mt-8 text-sm text-[var(--text-muted)]">Sectors: {brand.sectors.join(', ')}</p>}
       <Link to={`/${language}/brands/`} className="mt-8 inline-block underline">All brands</Link>
     </>}

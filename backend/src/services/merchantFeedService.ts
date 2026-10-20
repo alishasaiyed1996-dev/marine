@@ -1,4 +1,5 @@
 import { prisma } from '../server.js'
+import { getEffectivePrice, isOnSale } from '../utils/helpers.js'
 
 /**
  * Google Merchant Center product feed (XML, g: namespace).
@@ -95,6 +96,7 @@ async function buildFeed(): Promise<string> {
       condition: true,
       regularPrice: true,
       salePrice: true,
+      saleStartsAt: true,
       saleEndsAt: true,
       currency: true,
       stockCount: true,
@@ -111,8 +113,11 @@ async function buildFeed(): Promise<string> {
     const stored = extractIdentity(p.description)
     const mpn = p.mpn || stored.mpn
     const impa = p.impaCode || stored.impa
-    const onSale = p.salePrice != null && Number(p.salePrice) < Number(p.regularPrice)
-    const price = onSale ? Number(p.salePrice) : Number(p.regularPrice)
+    const onSale = isOnSale(p)
+    // Google requires g:price to be the regular price; the active sale amount
+    // is expressed separately via g:sale_price.
+    const price = Number(p.regularPrice)
+    const salePrice = getEffectivePrice(p)
     const brand = p.brand?.name && p.brand.name !== 'Unknown' ? p.brand.name : null
 
     const lines: string[] = []
@@ -131,9 +136,13 @@ async function buildFeed(): Promise<string> {
     lines.push(`      <g:availability>${p.availability !== 'out-of-stock' && p.stockCount > 0 ? 'in_stock' : 'out_of_stock'}</g:availability>`)
     lines.push(`      <g:price>${price.toFixed(2)} ${escapeXml(p.currency || 'USD')}</g:price>`)
     if (onSale) {
-      const saleEnds = p.saleEndsAt ? p.saleEndsAt.toISOString() : null
-      lines.push(`      <g:sale_price>${Number(p.salePrice).toFixed(2)} ${escapeXml(p.currency || 'USD')}</g:sale_price>`)
-      if (saleEnds) lines.push(`      <g:sale_price_effective_date>${escapeXml(saleEnds)}</g:sale_price_effective_date>`)
+      lines.push(`      <g:sale_price>${salePrice.toFixed(2)} ${escapeXml(p.currency || 'USD')}</g:sale_price>`)
+      // The feed contract is an explicit start/end pair. If either bound is
+      // missing, omit the window rather than sending an invalid single date.
+      if (p.saleStartsAt && p.saleEndsAt) {
+        const window = `${p.saleStartsAt.toISOString()}/${p.saleEndsAt.toISOString()}`
+        lines.push(`      <g:sale_price_effective_date>${escapeXml(window)}</g:sale_price_effective_date>`)
+      }
     }
     if (brand) lines.push(`      <g:brand>${escapeXml(brand)}</g:brand>`)
     // GTIN only when a verified manufacturer GTIN is stored — never a guessed

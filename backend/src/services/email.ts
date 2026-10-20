@@ -60,7 +60,7 @@ interface QueueEmail {
 /**
  * Queue an email for async delivery.
  */
-export async function queueEmail(email: QueueEmail): Promise<void> {
+export async function queueEmail(email: QueueEmail): Promise<boolean> {
   try {
     const record = await prisma.emailQueue.create({
       data: {
@@ -74,10 +74,13 @@ export async function queueEmail(email: QueueEmail): Promise<void> {
         status: 'pending',
       },
     })
-    // Attempt to send immediately
+    // Attempt to send immediately. Delivery failures are retried by the queue
+    // processor; the row itself is the durable record that the job was queued.
     await sendEmail(record.id)
+    return true
   } catch (error) {
     emailLog.error({ err: error, to: email.to, subject: email.subject }, 'Failed to queue email')
+    return false
   }
 }
 

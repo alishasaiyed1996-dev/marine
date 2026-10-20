@@ -1,5 +1,5 @@
 import { prisma } from '../server.js'
-import { generateSlug, paginationParams } from '../utils/helpers.js'
+import { generateSlug } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
 import type { AuthUser } from '../middleware/auth.js'
 
@@ -58,20 +58,18 @@ export async function importProducts(rows: any[], actor: AuthUser, ipAddress = '
 
 // ─── Export to CSV ─────────────────────────────────────────────
 
-export async function exportProductsCsv(params: { status?: string; page?: number; limit?: number }) {
-  const { limit, skip } = paginationParams(params.page, params.limit)
-
+export async function exportProductsCsv(params: { status?: string }) {
   const where: any = {}
   if (params.status) where.status = params.status
 
-  const [products, total] = await Promise.all([
-    prisma.product.findMany({
-      where,
-      include: { brand: { select: { name: true } }, category: { select: { name: true } }, images: { where: { isMain: true }, take: 1, select: { url: true } } },
-      orderBy: { createdAt: 'desc' }, skip, take: limit,
-    }),
-    prisma.product.count({ where }),
-  ])
+  // Export is a full snapshot, not a page: paginating here silently truncated
+  // the CSV to the first page (e.g. 24 rows).
+  const products = await prisma.product.findMany({
+    where,
+    include: { brand: { select: { name: true } }, category: { select: { name: true } }, images: { where: { isMain: true }, take: 1, select: { url: true } } },
+    orderBy: { createdAt: 'desc' },
+  })
+  const total = products.length
 
   const headers = ['SKU', 'Name', 'Brand', 'Category', 'Status', 'Condition', 'Availability',
     'Regular Price', 'Sale Price', 'Stock Count', 'New Arrival', 'Featured', 'Make Offer', 'Created At']

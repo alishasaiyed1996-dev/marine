@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Crown } from 'lucide-react'
 import { orderCustomerEmail, orderCustomerName } from './orderFields'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -24,6 +25,9 @@ export function CustomerLifetimeValue({ orders }: Props) {
     const map = new Map<string, CustomerData>()
 
     for (const order of orders) {
+      // Cancelled/refunded orders are not realized customer spend and would
+      // otherwise inflate lifetime value and recency.
+      if (isCancelledOrRefunded(order)) continue
       const email = orderCustomerEmail(order)
       if (!email) continue
       if (!map.has(email)) {

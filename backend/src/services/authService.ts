@@ -14,6 +14,13 @@ import type { AuthUser } from '../middleware/auth.js'
 // secret) before any module that reads it is loaded.
 const JWT_SECRET = process.env.JWT_SECRET as string
 
+// Separate refresh cookies so a customer session and an admin session in the
+// same browser cannot overwrite each other. The old shared 'refreshToken'
+// cookie is still read once for a smooth transition and cleared on logout.
+export const CUSTOMER_REFRESH_COOKIE = 'customerRefreshToken'
+export const ADMIN_REFRESH_COOKIE = 'adminRefreshToken'
+export const LEGACY_REFRESH_COOKIE = 'refreshToken'
+
 // ─── Token Generation ─────────────────────────────────────────
 
 function generateAccessToken(payload: { id: string; email: string; role: string; type?: string }) {
@@ -82,6 +89,9 @@ export async function loginCustomer(email: string, password: string) {
 
   const valid = await bcrypt.compare(password, customer.passwordHash)
   if (!valid) throw Object.assign(new Error('Invalid email or password'), { status: 401 })
+  if (customer.status === 'inactive') {
+    throw Object.assign(new Error('Account is deactivated'), { status: 403 })
+  }
 
   await prisma.customer.update({ where: { id: customer.id }, data: { lastLoginAt: new Date() } })
 
@@ -125,7 +135,9 @@ export async function refreshCustomerToken(refreshToken: string | undefined) {
     }
 
     const customer = await prisma.customer.findUnique({ where: { id: decoded.id } })
-    if (!customer || customer.status !== 'active') {
+    // `vip` and `new` are normal account states; only an explicit deactivation
+    // blocks refreshing a session.
+    if (!customer || customer.status === 'inactive') {
       throw Object.assign(new Error('Account not found or inactive'), { status: 401 })
     }
 

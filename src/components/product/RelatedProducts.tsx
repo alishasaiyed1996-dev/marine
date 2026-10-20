@@ -22,6 +22,9 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
         {products.map((item) => {
           const itemPrice = item.onSale && item.salePrice ? item.salePrice : item.price
+          // `price` is already the effective sale price; the pre-sale amount is
+          // carried separately in `regularPrice`.
+          const regularPrice = item.regularPrice ?? item.price
           return (
             <div
               key={item.id}
@@ -63,10 +66,10 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
                 </div>
                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border)]/40">
                   <div className="flex items-center gap-2">
-                    {item.onSale && item.salePrice ? (
+                    {item.onSale && item.salePrice && regularPrice > item.salePrice ? (
                       <>
                         <span className="font-display font-bold text-sm text-[var(--danger)]">${item.salePrice.toFixed(2)}</span>
-                        <span className="font-display font-bold text-xs text-[var(--text-muted)] line-through">${item.price.toFixed(2)}</span>
+                        <span className="font-display font-bold text-xs text-[var(--text-muted)] line-through">${regularPrice.toFixed(2)}</span>
                       </>
                     ) : (
                       <span className="font-display font-bold text-sm text-[var(--accent-primary)]">${itemPrice.toFixed(2)}</span>

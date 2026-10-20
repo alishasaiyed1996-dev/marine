@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Wifi, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react'
+import { getAdminToken } from '../../../lib/api'
 
 interface Endpoint {
   id: string
@@ -25,7 +26,9 @@ const ENDPOINTS: Endpoint[] = [
   { id: 'brands', name: 'Brands API', path: '/api/storefront/brands', method: 'GET' },
   { id: 'categories', name: 'Categories API', path: '/api/storefront/categories', method: 'GET' },
   { id: 'industries', name: 'Industries API', path: '/api/storefront/industries', method: 'GET' },
-  { id: 'rfq', name: 'RFQ Submit', path: '/api/storefront/rfq', method: 'GET' },
+  // RFQ has no GET route; OPTIONS exercises the mounted router without
+  // creating an RFQ. The admin stats endpoint requires the admin bearer token.
+  { id: 'rfq', name: 'RFQ Endpoint', path: '/api/storefront/rfq', method: 'OPTIONS' },
   { id: 'search', name: 'Search API', path: '/api/storefront/products?search=test', method: 'GET' },
   { id: 'admin', name: 'Admin Auth', path: '/api/admin/dashboard/stats', method: 'GET' },
 ]
@@ -43,6 +46,7 @@ export function ApiStatusMonitor() {
   const checkEndpoints = useCallback(async () => {
     setChecking(true)
     const baseUrl = window.location.origin
+    const token = getAdminToken()
 
     const newResults = await Promise.all(
       ENDPOINTS.map(async (ep) => {
@@ -50,6 +54,8 @@ export function ApiStatusMonitor() {
         try {
           const response = await fetch(baseUrl + ep.path, {
             method: ep.method,
+            credentials: 'include',
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
             signal: AbortSignal.timeout(10000),
           })
           const responseTime = Math.round(performance.now() - start)

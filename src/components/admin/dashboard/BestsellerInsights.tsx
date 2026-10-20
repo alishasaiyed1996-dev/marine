@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Trophy } from 'lucide-react'
+import { orderItemLineTotal, orderItemSku } from '../../../lib/orderMetrics'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   products: any[]
@@ -13,14 +15,14 @@ export function BestsellerInsights({ products, orders }: Props) {
     const map = new Map<string, { name: string; sku: string; brand: string; revenue: number; quantity: number; image: string }>()
 
     for (const order of orders) {
-      if (order.status === 'cancelled') continue
+      if (isCancelledOrRefunded(order)) continue
       for (const item of order.items || []) {
-        const key = item.productId || item.sku || item.productName
+        const key = item.productId || orderItemSku(item) || item.productName
         if (!key) continue
         if (!map.has(key)) {
           map.set(key, {
             name: item.productName || item.name || 'Product',
-            sku: item.sku || '',
+            sku: orderItemSku(item),
             brand: '',
             revenue: 0,
             quantity: 0,
@@ -28,13 +30,17 @@ export function BestsellerInsights({ products, orders }: Props) {
           })
         }
         const entry = map.get(key)!
-        entry.revenue += (item.price || 0) * (item.quantity || 1)
+        entry.revenue += orderItemLineTotal(item)
         entry.quantity += item.quantity || 1
       }
     }
 
-    // Enrich with product data
-    const productMap = new Map(products.map(p => [p.id, p]))
+    // Enrich with product data (match either id or SKU).
+    const productMap = new Map<string, any>()
+    for (const product of products) {
+      productMap.set(product.id, product)
+      if (product.sku) productMap.set(product.sku, product)
+    }
     for (const [key, entry] of map) {
       const product = productMap.get(key)
       if (product) {

@@ -32,7 +32,9 @@ const convertToOfferSchema = z.object({
 })
 
 const convertToOrderSchema = z.object({
-  total: z.number().min(0),
+  // Deprecated: totals are derived server-side from unitPrice × quantity.
+  // Still accepted so older clients don't break.
+  total: z.number().min(0).optional(),
   unitPrice: z.number().min(0),
 })
 
@@ -127,7 +129,7 @@ router.post('/:id/convert-to-offer', requireRole('store-manager'), validateBody(
 router.post('/:id/convert-to-order', requireRole('store-manager'), validateBody(convertToOrderSchema), asyncHandler(async (req: AuthRequest, res) => {
   try {
     const order = await rfqService.convertRfqToOrder(
-      req.params.id as string, req.body.total, req.body.unitPrice, req.user!, req.ip
+      req.params.id as string, req.body.unitPrice, req.user!, req.ip
     )
     sendSuccess(res, { order }, 201)
   } catch (err: any) {

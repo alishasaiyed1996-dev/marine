@@ -5,7 +5,7 @@ import logger from '../utils/logger.js'
 import { getPaypalAccessToken, PAYPAL_BASE, PAYPAL_WEBHOOK_ID } from '../utils/paypal.js'
 import { paypalReturnUrl, paypalCancelUrl } from '../utils/paypalUrls.js'
 import { markOfferPaid } from './offerService.js'
-import { decreaseStock } from './centralInventory.js'
+import { decreaseStock, increaseStock } from './centralInventory.js'
 import type { Prisma } from '@prisma/client'
 
 const hookLog = logger.child({ context: 'paypal-service' })
@@ -86,13 +86,40 @@ export async function handleCaptureCompleted(resource: Record<string, unknown>) 
   try {
     const supplementaryData = resource?.supplementary_data as Record<string, unknown> | undefined
     const relatedIds = supplementaryData?.related_ids as Record<string, unknown> | undefined
+    const purchaseUnit = (resource?.purchase_units as Array<Record<string, unknown>> | undefined)?.[0]
+    const customId = (resource?.custom_id || purchaseUnit?.custom_id) as string | undefined
+    const invoiceId = (resource?.invoice_id || purchaseUnit?.invoice_id) as string | undefined
     const referenceId = (relatedIds?.order_id || resource?.custom_id) as string | undefined
-    if (!referenceId) return
+    if (!referenceId && !customId && !invoiceId) return
 
-    // Find order by paymentIntentId (paypalOrderId) first, then by orderNumber
-    let order = await prisma.order.findFirst({ where: { paymentIntentId: referenceId }, include: { items: true } })
-    if (!order) order = await prisma.order.findFirst({ where: { orderNumber: referenceId }, include: { items: true } })
+    // Reconcile in priority order. custom_id / invoice_id are values WE set on
+    // the PayPal order, so they still identify the store order after a retry
+    // replaced paymentIntentId with a newer PayPal order id.
+    let order = customId
+      ? await prisma.order.findFirst({
+          where: {
+            OR: [
+              { id: customId },
+              { orderNumber: customId },
+              { paymentIntentId: customId },
+            ],
+          },
+          include: { items: true },
+        })
+      : null
+    if (!order && invoiceId) order = await prisma.order.findFirst({ where: { orderNumber: invoiceId }, include: { items: true } })
+    if (!order && referenceId) order = await prisma.order.findFirst({ where: { paymentIntentId: referenceId }, include: { items: true } })
+    if (!order && referenceId) order = await prisma.order.findFirst({ where: { orderNumber: referenceId }, include: { items: true } })
     if (!order || order.paymentStatus === 'paid') return
+    // A late/duplicate capture notification must never resurrect a cancelled
+    // or refunded order.
+    if (order.status === 'cancelled' || order.paymentStatus === 'refunded') {
+      await prisma.orderTimeline.create({
+        data: { orderId: order.id, status: order.status, note: 'PayPal payment received for a cancelled/refunded order — manual review required.' },
+      })
+      hookLog.error({ orderId: order.id, referenceId }, 'PayPal capture completed for cancelled/refunded order')
+      return
+    }
 
     // Pre-flight: never confirm an order whose items are no longer available.
     for (const item of order.items) {
@@ -110,7 +137,11 @@ export async function handleCaptureCompleted(resource: Record<string, unknown>) 
 
     // Atomic guard: only transition to paid if not already paid
     const updated = await prisma.order.updateMany({
-      where: { id: order.id, paymentStatus: { not: 'paid' } },
+      where: {
+        id: order.id,
+        status: { not: 'cancelled' },
+        paymentStatus: { notIn: ['paid', 'refunded'] },
+      },
       data: { paymentStatus: 'paid', status: 'confirmed' },
     })
     if (updated.count === 0) return
@@ -122,10 +153,13 @@ export async function handleCaptureCompleted(resource: Record<string, unknown>) 
     // Reduce stock through the CENTRAL inventory service — atomic guard
     // prevents negative stock, availability flag follows, eBay mirrors enqueue.
     let stockFailed = false
+    const decremented: Array<{ productId: string; quantity: number }> = []
     for (const item of order.items) {
       if (item.productId) {
         const res = await decreaseStock(item.productId, item.quantity, 'paypal', { orderId: order.id })
-        if (!res.ok) {
+        if (res.ok) {
+          decremented.push({ productId: item.productId, quantity: item.quantity })
+        } else {
           stockFailed = true
           hookLog.error({ productId: item.productId, quantity: item.quantity, orderId: order.id, reason: res.reason }, 'Stock decrement failed during webhook capture')
         }
@@ -135,6 +169,13 @@ export async function handleCaptureCompleted(resource: Record<string, unknown>) 
     // Never leave the order silently marked paid when the required stock
     // decrement failed — revert it so the inconsistency is visible and fixable.
     if (stockFailed) {
+      // Compensate every successful decrement before reverting the order.
+      for (const item of decremented) {
+        await increaseStock(item.productId, item.quantity, 'paypal', {
+          orderId: order.id,
+          note: 'Rollback after partial stock failure (PayPal webhook)',
+        }).catch(err => hookLog.error({ err, ...item, orderId: order.id }, 'Stock rollback failed'))
+      }
       await prisma.order.updateMany({
         where: { id: order.id, paymentStatus: 'paid' },
         data: { paymentStatus: 'pending', status: 'pending' },
@@ -156,18 +197,21 @@ export async function handleCaptureCompleted(resource: Record<string, unknown>) 
       newValue: { paymentStatus: 'paid', status: 'confirmed' },
     })
 
-    // Send confirmation email
+    // Send confirmation email — guests have no Customer row, so fall back to
+    // the email captured at checkout.
     const customer = order.customerId
       ? await prisma.customer.findUnique({ where: { id: order.customerId }, select: { email: true, name: true } })
       : null
-    if (customer) {
+    const emailTo = customer?.email || order.shippingEmail
+    const emailName = customer?.name || order.shippingFullName || 'Customer'
+    if (emailTo) {
       const shippingAddr = [
         order.shippingAddressLine1, order.shippingAddressLine2,
         order.shippingCity, order.shippingState, order.shippingPostalCode, order.shippingCountry,
       ].filter(Boolean).join(', ')
 
       sendOrderConfirmation({
-        to: customer.email, customerName: customer.name, orderNumber: order.orderNumber,
+        to: emailTo, customerName: emailName, orderNumber: order.orderNumber,
         items: order.items.map(i => ({ name: i.productName, quantity: i.quantity, price: Number(i.unitPrice) })),
         subtotal: Number(order.subtotal), shippingCost: Number(order.shippingCost), tax: Number(order.tax), total: Number(order.total),
         shippingAddress: shippingAddr,
@@ -184,13 +228,43 @@ export async function handleCaptureFailed(resource: Record<string, unknown>) {
   try {
     const supplementaryData = resource?.supplementary_data as Record<string, unknown> | undefined
     const relatedIds = supplementaryData?.related_ids as Record<string, unknown> | undefined
+    const purchaseUnit = (resource?.purchase_units as Array<Record<string, unknown>> | undefined)?.[0]
+    const customId = (resource?.custom_id || purchaseUnit?.custom_id) as string | undefined
+    const invoiceId = (resource?.invoice_id || purchaseUnit?.invoice_id) as string | undefined
     const referenceId = (relatedIds?.order_id || resource?.custom_id) as string | undefined
-    if (!referenceId) return
+    if (!referenceId && !customId && !invoiceId) return
 
-    const order = await prisma.order.findFirst({ where: { paymentIntentId: referenceId } })
+    let order = customId
+      ? await prisma.order.findFirst({
+          where: {
+            OR: [
+              { id: customId },
+              { orderNumber: customId },
+              { paymentIntentId: customId },
+            ],
+          },
+        })
+      : null
+    if (!order && invoiceId) order = await prisma.order.findFirst({ where: { orderNumber: invoiceId } })
+    if (!order && referenceId) order = await prisma.order.findFirst({ where: { paymentIntentId: referenceId } })
+    if (!order && referenceId) order = await prisma.order.findFirst({ where: { orderNumber: referenceId } })
     if (!order) return
 
-    await prisma.order.update({ where: { id: order.id }, data: { paymentStatus: 'pending' } })
+    // Only downgrade an order that is still awaiting payment. A stale or
+    // out-of-order denial must not undo a paid/refunded/cancelled state.
+    const updated = await prisma.order.updateMany({
+      where: {
+        id: order.id,
+        status: { not: 'cancelled' },
+        paymentStatus: { notIn: ['paid', 'refunded'] },
+      },
+      data: { paymentStatus: 'pending' },
+    })
+    if (updated.count === 0) {
+      hookLog.warn({ orderId: order.id, paymentStatus: order.paymentStatus, status: order.status }, 'Ignored stale PayPal capture denial')
+      return
+    }
+
     await prisma.orderTimeline.create({ data: { orderId: order.id, status: order.status, note: 'PayPal payment capture denied' } })
 
     hookLog.warn({ orderId: order.id }, 'PayPal capture denied')
@@ -201,13 +275,46 @@ export async function handleCaptureFailed(resource: Record<string, unknown>) {
 
 // ─── Storefront Payment Flow ─────────────────────────────────
 
-export async function createPaypalOrder(orderId: string, userId: string) {
-  const order = await prisma.order.findFirst({ where: { id: orderId, customerId: userId } })
+export async function createPaypalOrder(orderId: string, userId: string | null) {
+  // Guest orders have customerId = null; a signed-in user can only pay their
+  // own orders. Never let one customer address another customer's order.
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, customerId: userId ?? null },
+  })
   if (!order) throw Object.assign(new Error('Order not found'), { status: 404 })
+  if (order.status === 'cancelled') throw Object.assign(new Error('Order has been cancelled'), { status: 400 })
   if (order.paymentStatus === 'paid') throw Object.assign(new Error('Order already paid'), { status: 400 })
+  if (order.paymentStatus === 'refunded') throw Object.assign(new Error('Order has been refunded'), { status: 400 })
 
   const accessToken = await getPaypalAccessToken()
   if (!accessToken) throw Object.assign(new Error('Failed to connect to PayPal'), { status: 502 })
+
+  // Reuse a still-open PayPal order instead of replacing paymentIntentId on
+  // every click. Overwriting it used to make an approval of the earlier order
+  // impossible to match back to this store order.
+  if (order.paymentIntentId) {
+    try {
+      const existingRes = await fetch(`${PAYPAL_BASE}/v2/checkout/orders/${encodeURIComponent(order.paymentIntentId)}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      })
+      if (existingRes.ok) {
+        const existing = await existingRes.json() as { id?: string; status?: string }
+        if ((existing.status === 'CREATED' || existing.status === 'APPROVED') && existing.id) {
+          return { paypalOrderId: existing.id }
+        }
+        if (existing.status === 'COMPLETED') {
+          // Payment already happened; the webhook (or a capture retry) will
+          // confirm it. Never create a second chargeable order.
+          throw Object.assign(new Error('Payment is already being processed'), { status: 409 })
+        }
+      }
+    } catch (err) {
+      // 409 is ours; anything else (network/expired id) falls through to a new
+      // PayPal order. Reconciliation now uses custom_id/invoice_id, so a late
+      // capture of an older order still resolves to this store order.
+      if ((err as { status?: number }).status === 409) throw err
+    }
+  }
 
   const paypalOrderRes = await fetch(`${PAYPAL_BASE}/v2/checkout/orders`, {
     method: 'POST',
@@ -216,6 +323,10 @@ export async function createPaypalOrder(orderId: string, userId: string) {
       intent: 'CAPTURE',
       purchase_units: [{
         reference_id: order.orderNumber,
+        // Reconcile even if a retry created a newer PayPal order: these values
+        // identify OUR order, independent of PayPal's order id.
+        custom_id: order.id,
+        invoice_id: order.orderNumber,
         description: `Order ${order.orderNumber} — Alka Traders`,
         amount: {
           currency_code: order.currency || 'USD',
@@ -251,8 +362,11 @@ export async function createPaypalOrder(orderId: string, userId: string) {
   return { paypalOrderId: paypalData.id }
 }
 
-export async function capturePaypalOrder(paypalOrderId: string, orderId: string, userId: string) {
-  const order = await prisma.order.findFirst({ where: { id: orderId, customerId: userId }, include: { items: true } })
+export async function capturePaypalOrder(paypalOrderId: string, orderId: string, userId: string | null) {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, customerId: userId ?? null },
+    include: { items: true },
+  })
   if (!order) throw Object.assign(new Error('Order not found'), { status: 404 })
   // Ownership cross-check: the PayPal order being captured must be the exact
   // one created for this store order — never trust a client-supplied ID.
@@ -260,7 +374,29 @@ export async function capturePaypalOrder(paypalOrderId: string, orderId: string,
     hookLog.warn({ orderId, paypalOrderId, storedPaymentIntentId: order.paymentIntentId }, 'PayPal order ID mismatch during capture')
     throw Object.assign(new Error('PayPal order does not match this order'), { status: 400 })
   }
-  if (order.paymentStatus === 'paid') throw Object.assign(new Error('Order already paid'), { status: 400 })
+  if (order.status === 'cancelled') throw Object.assign(new Error('Order has been cancelled'), { status: 400 })
+  if (order.paymentStatus === 'refunded') throw Object.assign(new Error('Order has been refunded'), { status: 400 })
+
+  // Totals returned to the return-URL handler so it can render the confirmation
+  // without a second authenticated order lookup (guest orders have none).
+  const orderSummary = {
+    orderNumber: order.orderNumber,
+    subtotal: Number(order.subtotal),
+    shippingCost: Number(order.shippingCost),
+    tax: Number(order.tax),
+    total: Number(order.total),
+    currency: order.currency,
+    // Guest checkout: the redirect return has no checkout form state, but the
+    // confirmation page still needs the email to authorize tracking/cancellation.
+    shippingEmail: order.shippingEmail || null,
+  }
+
+  // Idempotent: the PayPal redirect and the webhook can both land before the
+  // customer sees the success page. Replaying capture for the exact same PayPal
+  // order must not fail or charge twice.
+  if (order.paymentStatus === 'paid') {
+    return { status: 'completed' as const, orderId, ...orderSummary }
+  }
 
   const accessToken = await getPaypalAccessToken()
   if (!accessToken) throw Object.assign(new Error('Failed to connect to PayPal'), { status: 502 })
@@ -310,19 +446,38 @@ export async function capturePaypalOrder(paypalOrderId: string, orderId: string,
 
   // Atomic idempotency guard
   const updated = await prisma.order.updateMany({
-    where: { id: orderId, paymentStatus: { not: 'paid' } },
+    where: {
+      id: orderId,
+      status: { not: 'cancelled' },
+      paymentStatus: { notIn: ['paid', 'refunded'] },
+    },
     data: { paymentStatus: 'paid', status: 'confirmed' },
   })
-  if (updated.count === 0) return { status: 'completed' as const, orderId }
+  if (updated.count === 0) {
+    // Lost a race with the webhook or an admin action. Only report success when
+    // the order is actually paid; a cancelled/refunded order must not be shown
+    // to the customer as a completed payment.
+    const latest = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { paymentStatus: true },
+    })
+    if (latest?.paymentStatus === 'paid') {
+      return { status: 'completed' as const, orderId, ...orderSummary }
+    }
+    throw Object.assign(new Error('Order is no longer payable'), { status: 409 })
+  }
 
   await prisma.orderTimeline.create({ data: { orderId, status: 'confirmed', note: 'Payment confirmed via PayPal' } })
 
   // Reduce stock through the CENTRAL inventory service (atomic + eBay sync).
   let stockFailed = false
+  const decremented: Array<{ productId: string; quantity: number }> = []
   for (const item of order.items) {
     if (item.productId) {
       const res = await decreaseStock(item.productId, item.quantity, 'paypal', { orderId })
-      if (!res.ok) {
+      if (res.ok) {
+        decremented.push({ productId: item.productId, quantity: item.quantity })
+      } else {
         stockFailed = true
         hookLog.error({ productId: item.productId, quantity: item.quantity, orderId, reason: res.reason }, 'Stock decrement failed during PayPal capture')
       }
@@ -332,6 +487,13 @@ export async function capturePaypalOrder(paypalOrderId: string, orderId: string,
   // Never leave the order silently marked paid when the required stock
   // decrement failed — revert it and surface the failure to the client.
   if (stockFailed) {
+    // Compensate every successful decrement before reverting the order.
+    for (const item of decremented) {
+      await increaseStock(item.productId, item.quantity, 'paypal', {
+        orderId,
+        note: 'Rollback after partial stock failure (PayPal capture)',
+      }).catch(err => hookLog.error({ err, ...item, orderId }, 'Stock rollback failed'))
+    }
     await prisma.order.updateMany({
       where: { id: orderId, paymentStatus: 'paid' },
       data: { paymentStatus: 'pending', status: 'pending' },
@@ -352,16 +514,21 @@ export async function capturePaypalOrder(paypalOrderId: string, orderId: string,
     newValue: { paymentStatus: 'paid', status: 'confirmed', paypalOrderId },
   })
 
-  // Send confirmation email (non-blocking)
-  const customer = await prisma.customer.findUnique({ where: { id: userId }, select: { email: true, name: true } })
-  if (customer) {
+  // Send confirmation email (non-blocking) — fall back to the guest checkout
+  // email when there is no Customer record.
+  const customer = order.customerId
+    ? await prisma.customer.findUnique({ where: { id: order.customerId }, select: { email: true, name: true } })
+    : null
+  const emailTo = customer?.email || order.shippingEmail
+  const emailName = customer?.name || order.shippingFullName || 'Customer'
+  if (emailTo) {
     const shippingAddr = [
       order.shippingAddressLine1, order.shippingAddressLine2,
       order.shippingCity, order.shippingState, order.shippingPostalCode, order.shippingCountry,
     ].filter(Boolean).join(', ')
 
     sendOrderConfirmation({
-      to: customer.email, customerName: customer.name, orderNumber: order.orderNumber,
+      to: emailTo, customerName: emailName, orderNumber: order.orderNumber,
       items: order.items.map(i => ({ name: i.productName, quantity: i.quantity, price: Number(i.unitPrice) })),
       subtotal: Number(order.subtotal), shippingCost: Number(order.shippingCost), tax: Number(order.tax), total: Number(order.total),
       shippingAddress: shippingAddr,
@@ -369,5 +536,5 @@ export async function capturePaypalOrder(paypalOrderId: string, orderId: string,
   }
 
   hookLog.info({ orderId, orderNumber: order.orderNumber, paypalOrderId }, 'PayPal payment captured')
-  return { status: 'completed' as const, orderId }
+  return { status: 'completed' as const, orderId, ...orderSummary }
 }

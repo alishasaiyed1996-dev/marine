@@ -40,6 +40,11 @@ export default function CategoryHub() {
       {category.children?.length > 0 && <nav aria-label="Subcategories" className="mb-8 flex flex-wrap gap-3">{category.children.map((child: any) => <Link key={child.id} className="rounded-full border border-[var(--border)] px-4 py-2 text-sm" to={`/${language}/categories/${child.slug}/`}>{child.name}</Link>)}</nav>}
       <h2 className="mb-5 text-2xl font-bold">Available {category.name} products ({category._count?.products || 0})</h2>
       {!products.length && !isLoading ? <p className="rounded-xl border border-[var(--border)] p-6">No published products are available in this category yet.</p> : <ProductGrid products={products} addedIds={addedIds} onAddToCart={handleAddToCart} isLoading={isLoading} />}
+      {products.length < (category._count?.products || 0) && (
+        <Link to={`/${language}/products?category=${encodeURIComponent(category.slug)}`} className="mt-6 inline-block font-semibold underline">
+          View all {category._count.products} {category.name} products
+        </Link>
+      )}
       <Link to={`/${language}/products/`} className="mt-8 inline-block underline">All products</Link>
     </>}
   </main>

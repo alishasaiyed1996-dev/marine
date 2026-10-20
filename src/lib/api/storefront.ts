@@ -82,7 +82,17 @@ export const storefront = {
     createPaypalOrder: (data: { orderId: string }) =>
       api.post<{ paypalOrderId: string }>('/storefront/payments/create-order', data, { auth: 'customer' }),
     capturePaypalOrder: (data: { paypalOrderId: string; orderId: string }) =>
-      api.post<{ status: string; orderId: string }>('/storefront/payments/capture-order', data, { auth: 'customer' }),
+      api.post<{
+        status: string
+        orderId: string
+        orderNumber?: string
+        subtotal?: number
+        shippingCost?: number
+        tax?: number
+        total?: number
+        currency?: string
+        shippingEmail?: string | null
+      }>('/storefront/payments/capture-order', data, { auth: 'customer' }),
   },
 
   // Offers
@@ -127,7 +137,7 @@ export const storefront = {
       }
       paymentMethod: string; customerNotes?: string; idempotencyKey?: string
       subtotal?: number; tax?: number; total?: number
-    }) => api.post<{ order: ApiOrder }>('/storefront/orders', data),
+    }) => api.post<{ order: ApiOrder }>('/storefront/orders', data, { auth: 'customer' }),
 
     get: (id: string) =>
       api.get<{ order: ApiOrder }>(`/storefront/orders/${id}`, { auth: 'customer' }),
@@ -137,7 +147,13 @@ export const storefront = {
       return api.get<{ orders: ApiOrder[]; pagination: Pagination }>(`/storefront/orders${qs}`, { auth: 'customer' })
     },
 
-    cancel: (id: string, reason?: string) =>
-      api.post<{ order: ApiOrder }>(`/storefront/orders/${id}/cancel`, { reason }, { auth: 'customer' }),
+    // Guests can cancel by supplying the checkout email; signed-in customers
+    // are matched by their token instead.
+    cancel: (id: string, reason?: string, email?: string) =>
+      api.post<{ order: ApiOrder }>(`/storefront/orders/${id}/cancel`, { reason, email }, { auth: 'customer' }),
+
+    // Public lookup: order number (or UUID) + checkout email.
+    track: (orderNumber: string, email: string) =>
+      api.post<{ order: ApiOrder }>('/storefront/orders/track', { orderNumber, email }),
   },
 }

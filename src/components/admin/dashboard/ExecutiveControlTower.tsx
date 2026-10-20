@@ -38,8 +38,11 @@ export function ExecutiveControlTower({ orders, rfqs, products, alerts }: Props)
     const aov = completed.length > 0 ? totalRevenue / completed.length : 0
 
     // Inventory
-    const lowStock = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 10) && (p.stockCount || 0) > 0).length
-    const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0).length
+    const lowStock = products.filter((p: any) => {
+      const stock = p.stockCount || 0
+      return stock > 0 && stock <= (p.lowStockThreshold ?? 10) && p.availability !== 'out-of-stock'
+    }).length
+    const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0 || p.availability === 'out-of-stock').length
 
     // RFQs
     const pendingRfqs = rfqs.filter((r: any) => r.status !== 'won' && r.status !== 'lost' && r.status !== 'closed').length

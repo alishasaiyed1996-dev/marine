@@ -18,8 +18,11 @@ export function BusinessHealthScore({ stats }: Props) {
 
     const inStock = stats?.inStockProducts || 0
     const outOfStock = stats?.outOfStockProducts || 0
-    const lowStockCount = stats?.lowStockProducts?.length || 0
-    const missingImages = stats?.missingImageProducts?.length || 0
+    // The API returns only a 20-item sample plus the true count; using the
+    // sample length understated the penalty when more than 20 products were
+    // low on stock or missing images.
+    const lowStockCount = stats?.lowStockCount ?? stats?.lowStockProducts?.length ?? 0
+    const missingImages = stats?.missingImageCount ?? stats?.missingImageProducts?.length ?? 0
 
     const stockHealth = (inStock / total) * 30
     const riskReduction = (1 - lowStockCount / total) * 25

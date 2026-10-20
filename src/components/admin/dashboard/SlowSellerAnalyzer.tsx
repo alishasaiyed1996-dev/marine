@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { AlertCircle, Package } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   products: any[]
@@ -12,7 +13,7 @@ export function SlowSellerAnalyzer({ products, orders }: Props) {
     // Calculate sales per product
     const salesMap = new Map<string, number>()
     for (const order of orders) {
-      if (order.status === 'cancelled') continue
+      if (isCancelledOrRefunded(order)) continue
       for (const item of order.items || []) {
         if (!item.productId) continue
         salesMap.set(item.productId, (salesMap.get(item.productId) || 0) + (item.quantity || 1))

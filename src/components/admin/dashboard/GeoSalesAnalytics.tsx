@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Globe, TrendingUp, ShoppingCart, Users } from 'lucide-react'
-import { orderCustomerEmail } from './orderFields'
+import { orderCustomerEmail, orderCustomerName } from './orderFields'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -27,7 +28,7 @@ export function GeoSalesAnalytics({ orders }: Props) {
     }> = {}
 
     for (const order of orders) {
-      if (order.status === 'cancelled') continue
+      if (isCancelledOrRefunded(order)) continue
       const country = order.shippingCountry || order.country || order.customerCountry || 'Unknown'
       if (!countryMap[country]) {
         countryMap[country] = { revenue: 0, orderCount: 0, customers: new Set(), avgOrder: 0, topProducts: {} }
@@ -35,7 +36,7 @@ export function GeoSalesAnalytics({ orders }: Props) {
       const data = countryMap[country]
       data.revenue += order.total || 0
       data.orderCount++
-      data.customers.add(orderCustomerEmail(order) || order.customerName || '')
+      data.customers.add(orderCustomerEmail(order) || orderCustomerName(order) || '')
 
       for (const item of order.items || []) {
         const name = item.productName || item.name || 'Product'
@@ -63,7 +64,7 @@ export function GeoSalesAnalytics({ orders }: Props) {
       })
   }, [orders, sortBy])
 
-  const maxRevenue = geoData.length > 0 ? geoData[0].revenue : 1
+  const maxRevenue = geoData.length > 0 ? Math.max(...geoData.map((d) => d.revenue), 1) : 1
 
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">

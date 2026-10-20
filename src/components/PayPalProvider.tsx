@@ -1,25 +1,7 @@
 import { PayPalScriptProvider, usePayPalScriptReducer } from '@paypal/react-paypal-js'
-import { createContext, useContext, type ReactNode, useState, useEffect } from 'react'
+import { type ReactNode, useState, useEffect } from 'react'
 import { storefront } from '../lib/api/storefront'
-
-interface PayPalAvailability {
-  /** True when the backend has a real client ID and the provider is mounted. */
-  configured: boolean
-  /** True while the client ID or the PayPal SDK script is still loading. */
-  loading: boolean
-}
-
-/**
- * Safe alternative to `usePayPalScriptReducer()` for components that can
- * render before the provider mounts (or when PayPal is not configured at all).
- * Calling the PayPal hook without a provider throws and takes checkout down.
- */
-const PayPalAvailabilityContext = createContext<PayPalAvailability>({
-  configured: false,
-  loading: true,
-})
-
-export const usePayPalAvailability = () => useContext(PayPalAvailabilityContext)
+import { PayPalAvailabilityContext } from '../hooks/usePayPalAvailability'
 
 /** Reads the SDK loading state from inside the provider and publishes it. */
 function PayPalScriptStatus({ children }: { children: ReactNode }) {

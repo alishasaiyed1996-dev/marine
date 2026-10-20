@@ -28,6 +28,12 @@ export async function createUser(data: { name: string; email: string; password: 
 }
 
 export async function updateUser(id: string, data: { name?: string; email?: string; password?: string; avatarUrl?: string; isActive?: boolean }, actor: AuthUser, ipAddress = '') {
+  // Self-deactivation via the generic update endpoint would lock the actor out
+  // and bypass the guard in deactivateUser.
+  if (id === actor.id && data.isActive === false) {
+    throw Object.assign(new Error('Cannot deactivate yourself'), { status: 400 })
+  }
+
   const { password, ...rest } = data
   const updateData: Record<string, unknown> = { ...rest }
 

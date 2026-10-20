@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Truck, CheckCircle, Clock, AlertTriangle, MapPin } from 'lucide-react'
+import { orderDeliveredAt } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -14,8 +15,9 @@ export function LogisticsHealthDashboard({ orders }: Props) {
     // Delivery time analysis
     const deliveryTimes: number[] = []
     for (const order of delivered) {
-      if (order.createdAt && order.deliveredAt) {
-        const days = (new Date(order.deliveredAt).getTime() - new Date(order.createdAt).getTime()) / 86400000
+      const deliveredAt = orderDeliveredAt(order)
+      if (order.createdAt && deliveredAt) {
+        const days = (new Date(deliveredAt).getTime() - new Date(order.createdAt).getTime()) / 86400000
         if (days > 0 && days < 120) deliveryTimes.push(days)
       }
     }
@@ -34,11 +36,12 @@ export function LogisticsHealthDashboard({ orders }: Props) {
     // Carrier breakdown
     const carriers: Record<string, { count: number; avgDays: number; times: number[] }> = {}
     for (const order of shipped) {
-      const carrier = order.carrier || order.shippingMethod || 'Standard'
+      const carrier = order.courier || 'Standard'
       if (!carriers[carrier]) carriers[carrier] = { count: 0, avgDays: 0, times: [] }
       carriers[carrier].count++
-      if (order.deliveredAt && order.createdAt) {
-        const days = (new Date(order.deliveredAt).getTime() - new Date(order.createdAt).getTime()) / 86400000
+      const deliveredAt = orderDeliveredAt(order)
+      if (deliveredAt && order.createdAt) {
+        const days = (new Date(deliveredAt).getTime() - new Date(order.createdAt).getTime()) / 86400000
         if (days > 0) carriers[carrier].times.push(days)
       }
     }

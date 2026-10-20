@@ -89,8 +89,6 @@ const productSchema = z.object({
 router.get('/export/csv', requireRole('inventory-manager'), asyncHandler(async (req, res) => {
   const result = await productService.exportProductsCsv({
     status: req.query.status as string,
-    page: Number(req.query.page),
-    limit: Number(req.query.limit),
   })
 
   res.setHeader('Content-Type', 'text/csv')
@@ -112,6 +110,7 @@ router.get('/', asyncHandler(async (req, res) => {
     isNewArrival: (req.query.isNewArrival as string) === 'true' ? true : undefined,
     isFeatured: (req.query.isFeatured as string) === 'true' ? true : undefined,
     onSaleAdmin: (req.query.onSale as string) === 'true' ? true : undefined,
+    filter: req.query.filter as string,
     sort: req.query.sort as string,
     order: req.query.order as string,
     page: Number(req.query.page),

@@ -114,8 +114,10 @@ async function runLowStockCheck(now: Date): Promise<void> {
 
   // Mark the check as done even when nothing is low, so an empty catalog does
   // not re-run the query on every scheduler tick.
-  await writeState('system.lowStockLastSentAt', now)
-  if (ids.length === 0) return
+  if (ids.length === 0) {
+    await writeState('system.lowStockLastSentAt', now)
+    return
+  }
 
   const products = await prisma.product.findMany({
     where: { id: { in: ids } },
@@ -123,7 +125,13 @@ async function runLowStockCheck(now: Date): Promise<void> {
     orderBy: { stockCount: 'asc' },
   })
 
-  await sendAdminLowStock({ to: ALERT_EMAIL, products })
+  const queued = await sendAdminLowStock({ to: ALERT_EMAIL, products })
+  if (!queued) {
+    log.error({ count: products.length }, 'Low-stock digest could not be queued — will retry')
+    return
+  }
+  // Advance the interval only after the digest is durably queued.
+  await writeState('system.lowStockLastSentAt', now)
   log.info({ count: products.length }, 'Low-stock digest sent')
 }
 
@@ -178,8 +186,13 @@ async function runReport(
 
   const since = new Date(now.getTime() - windowMs)
   const report = await buildReport(period, since, now)
+  const queued = await sendAdminReport({ to: await reportRecipient(), ...report })
+  if (!queued) {
+    log.error({ period }, 'Sales report could not be queued — will retry')
+    return
+  }
+  // Advance the schedule only after the report is durably queued.
   await writeState(stateKey, now)
-  await sendAdminReport({ to: await reportRecipient(), ...report })
   log.info({ period, orders: report.orders }, 'Sales report sent')
 }
 

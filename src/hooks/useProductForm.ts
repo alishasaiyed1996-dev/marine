@@ -205,6 +205,7 @@ export function useProductForm() {
   const [categoryList, setCategoryList] = useState<{ id: string; name: string }[]>([])
   const [industryList, setIndustryList] = useState<{ id: string; name: string }[]>([])
   const [uploadingImage, setUploadingImage] = useState(false)
+  const pendingUploadsRef = useRef(0)
   const productImageInputId = 'product-image-upload'
 
   // ── Effects ──
@@ -419,22 +420,31 @@ export function useProductForm() {
   // ── Image upload ──
 
   const handleImageUpload = useCallback(async (file: File) => {
+    pendingUploadsRef.current += 1
     setUploadingImage(true)
     try {
       const { asset } = await admin.media.upload(file)
-      const emptyIdx = form.images.findIndex((img) => !img.url)
-      if (emptyIdx >= 0) {
-        updateImage(emptyIdx, 'url', asset.url)
-      } else {
-        updateField('images', [...form.images, { url: asset.url, alt: file.name.replace(/\.[^.]+$/, ''), label: form.images.length === 0 ? 'Main' : '' }])
-      }
+      const alt = file.name.replace(/\.[^.]+$/, '')
+      // Functional update: multi-file uploads run concurrently, so using the
+      // captured `form.images` here would discard every earlier upload.
+      setForm((prev) => {
+        const images = [...prev.images]
+        const emptyIdx = images.findIndex((img) => !img.url)
+        if (emptyIdx >= 0) {
+          images[emptyIdx] = { ...images[emptyIdx], url: asset.url, alt: images[emptyIdx].alt || alt }
+        } else {
+          images.push({ url: asset.url, alt, label: images.length === 0 ? 'Main' : '' })
+        }
+        return { ...prev, images }
+      })
       toast('Image uploaded', 'success')
     } catch (err: any) {
       toast(err.message || 'Upload failed', 'error')
     } finally {
-      setUploadingImage(false)
+      pendingUploadsRef.current = Math.max(0, pendingUploadsRef.current - 1)
+      if (pendingUploadsRef.current === 0) setUploadingImage(false)
     }
-  }, [form.images, updateField, updateImage, toast])
+  }, [toast])
 
   // ── Helpers ──
 
@@ -515,7 +525,11 @@ export function useProductForm() {
         minimumOfferPrice: form.makeOfferEnabled && form.minimumOfferPrice ? Number(form.minimumOfferPrice) : null,
         currency: form.currency,
         stockCount: Number(form.stockCount) || 0,
-        lowStockThreshold: Number(form.lowStockThreshold) || 10,
+        // 0 is a valid threshold (alert on the last unit); only blank/invalid
+        // input falls back to the default.
+        lowStockThreshold: form.lowStockThreshold.trim() !== '' && Number.isFinite(Number(form.lowStockThreshold))
+          ? Math.max(0, Math.floor(Number(form.lowStockThreshold)))
+          : 10,
         warehouseLocation: form.warehouseLocation,
         leadTime: form.leadTime,
         specs: form.specs.filter((s) => s.name.trim()),

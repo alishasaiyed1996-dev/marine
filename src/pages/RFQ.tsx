@@ -145,7 +145,7 @@ export default function RFQ() {
             <ResponseCountdown deadline={rfqDeadline} />
           </div>
           <div className="flex gap-4 flex-wrap justify-center mt-8">
-            <Link to={lp('/rfq')} className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all no-underline rounded-xl">
+            <Link to={lp('/rfq')} onClick={() => { setRfqSubmitted(false); setRfqStep(1) }} className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all no-underline rounded-xl">
               {t('rfq.submitAnother')}
             </Link>
             <Link to={lp('/products')} className="inline-flex items-center gap-2 text-xs font-semibold border border-[var(--accent-primary)] text-[var(--accent-primary)] px-[18px] py-[10px] hover:bg-[var(--accent-primary)]/10 transition-all no-underline rounded-xl">

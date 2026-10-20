@@ -29,9 +29,12 @@ export function MissionControlDashboard({ orders, rfqs, products, customers, ale
     const aov = completed.length > 0 ? totalRevenue / completed.length : 0
     const cancelRate = orders.length > 0 ? (cancelled.length / orders.length) * 100 : 0
 
-    const lowStock = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 10) && (p.stockCount || 0) > 0).length
-    const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0).length
-    const stockValue = products.reduce((s: number, p: any) => s + (p.price || 0) * (p.stockCount || 0), 0)
+    const lowStock = products.filter((p: any) => {
+      const stock = p.stockCount || 0
+      return stock > 0 && stock <= (p.lowStockThreshold ?? 10) && p.availability !== 'out-of-stock'
+    }).length
+    const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0 || p.availability === 'out-of-stock').length
+    const stockValue = products.reduce((s: number, p: any) => s + (Number(p.regularPrice) || 0) * (p.stockCount || 0), 0)
 
     const pendingRfqs = rfqs.filter((r: any) => r.status === 'new').length
     const emergencyRfqs = rfqs.filter((r: any) => r.urgency === 'emergency' && r.status !== 'closed').length

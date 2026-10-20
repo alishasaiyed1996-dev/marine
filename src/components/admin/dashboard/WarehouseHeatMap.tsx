@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Warehouse, MapPin } from 'lucide-react'
+import { relationName } from '../../../lib/orderMetrics'
 
 interface Props {
   products: any[]
@@ -35,9 +36,10 @@ export function WarehouseHeatMap({ products }: Props) {
       }
       const bin = locationMap[loc]
       bin.products++
-      bin.stockValue += (product.price || 0) * (product.stockCount || 0)
-      if ((product.stockCount || 0) === 0) bin.outOfStock++
-      else if ((product.stockCount || 0) <= (product.lowStockThreshold || 10)) bin.lowStock++
+      bin.stockValue += (Number(product.regularPrice) || 0) * (product.stockCount || 0)
+      const stock = product.stockCount || 0
+      if (stock === 0 || product.availability === 'out-of-stock') bin.outOfStock++
+      else if (stock <= (product.lowStockThreshold ?? 10)) bin.lowStock++
     }
 
     const bins: LocationBin[] = Object.entries(locationMap)
@@ -56,12 +58,13 @@ export function WarehouseHeatMap({ products }: Props) {
     if (bins.length <= 1 && products.length > 0) {
       const categories: Record<string, { products: number; stockValue: number; lowStock: number; outOfStock: number }> = {}
       for (const p of products) {
-        const cat = p.category || 'General'
+        const cat = relationName(p.category, 'General')
         if (!categories[cat]) categories[cat] = { products: 0, stockValue: 0, lowStock: 0, outOfStock: 0 }
         categories[cat].products++
-        categories[cat].stockValue += (p.price || 0) * (p.stockCount || 0)
-        if ((p.stockCount || 0) === 0) categories[cat].outOfStock++
-        else if ((p.stockCount || 0) <= (p.lowStockThreshold || 10)) categories[cat].lowStock++
+        categories[cat].stockValue += (Number(p.regularPrice) || 0) * (p.stockCount || 0)
+        const stock = p.stockCount || 0
+        if (stock === 0 || p.availability === 'out-of-stock') categories[cat].outOfStock++
+        else if (stock <= (p.lowStockThreshold ?? 10)) categories[cat].lowStock++
       }
       return Object.entries(categories)
         .map(([id, data]) => ({

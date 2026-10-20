@@ -30,6 +30,16 @@ export function SiteConfigTab({ site, updateSite }: SiteConfigTabProps) {
             <label className={labelClass}>Phone</label>
             <input value={site.phone} onChange={(e) => updateSite('phone', e.target.value)} className={inputClass} />
           </div>
+          <div>
+            <label className={labelClass}>WhatsApp Number</label>
+            <input
+              value={site.whatsappNumber}
+              onChange={(e) => updateSite('whatsappNumber', e.target.value)}
+              className={inputClass}
+              placeholder="918799095041"
+            />
+            <p className="text-[0.625rem] text-[var(--text-muted)] mt-1">Digits only, including the country code.</p>
+          </div>
           <div className="md:col-span-2">
             <label className={labelClass}>Address</label>
             <input value={site.address} onChange={(e) => updateSite('address', e.target.value)} className={inputClass} />

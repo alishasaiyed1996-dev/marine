@@ -199,6 +199,7 @@ export interface Order {
   shippingState?: string | null
   shippingPostalCode?: string | null
   shippingCountry?: string | null
+  shippingEmail?: string | null
   trackingNumber?: string | null
   courier?: string | null
   customerNotes?: string | null
@@ -215,7 +216,7 @@ export interface Order {
   items: OrderItem[]
   orderItems?: OrderItem[]
   timeline?: OrderTimeline[]
-  customer?: { id: string; name: string; email: string } | null
+  customer?: { id: string; name: string; email: string; company?: string | null } | null
 }
 
 // ─── RFQ ───────────────────────────────────────────────────────
@@ -449,6 +450,9 @@ export interface DashboardStats {
   totalCategories?: number
   totalIndustries?: number
   totalStockUnits?: number
+  /** True totals, not just the length of the sample arrays below. */
+  lowStockCount?: number
+  missingImageCount?: number
   lowStockProducts?: { id: string; name: string; sku: string; stockCount: number; brand?: string; category?: string; availability?: string; images?: { url: string }[] }[]
   missingImageProducts?: { id: string; name: string; sku: string; brand?: string; category?: string; stockCount?: number; availability?: string; images?: { url: string }[] }[]
   categoryBreakdown?: { name: string; count: number; id?: string; category?: string; _count?: { products: number }; condition?: string }[]
@@ -501,4 +505,8 @@ export interface SearchResult {
   brand?: string
   description?: string
   productCount?: number
+  /** Relative destination returned by the server search service. */
+  path?: string
+  price?: number
+  imageUrl?: string
 }

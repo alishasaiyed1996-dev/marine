@@ -221,6 +221,14 @@ export function OrderDetailSlideOver({
                   headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                   credentials: 'include',
                 })
+                if (!res.ok) {
+                  let message = `Failed to generate invoice (HTTP ${res.status})`
+                  try {
+                    const body = await res.json()
+                    if (body?.error) message = body.error
+                  } catch { /* non-JSON error body */ }
+                  throw new Error(message)
+                }
                 const html = await res.text()
                 const blob = new Blob([html], { type: 'text/html' })
                 const url = URL.createObjectURL(blob)

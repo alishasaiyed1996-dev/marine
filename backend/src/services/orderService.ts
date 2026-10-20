@@ -10,7 +10,7 @@ export type { CreateOrderInput } from './orderMutations.js'
 
 export {
   listOrders, getOrder,
-  listCustomerOrders, getCustomerOrder,
+  listCustomerOrders, getCustomerOrder, trackOrder,
   exportOrdersCsv,
 } from './orderQueries.js'
 

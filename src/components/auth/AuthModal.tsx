@@ -82,7 +82,9 @@ export function AuthModal() {
     setErrors({})
     setShowPassword(false)
     setShowConfirmPassword(false)
-  }, [activeTab])
+    // A failed sign-in message must not follow the user to the Sign Up tab.
+    clearAuthErrors()
+  }, [activeTab, clearAuthErrors])
 
   // Escape key closes modal
   const handleKeyDown = useCallback(
@@ -116,11 +118,15 @@ export function AuthModal() {
     if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return }
 
     setSubmitting(true)
-    await login(signInEmail.trim(), signInPassword)
-    if (rememberMe) {
-      localStorage.setItem('alka-remembered-email', signInEmail.trim())
-    } else {
-      localStorage.removeItem('alka-remembered-email')
+    const signedIn = await login(signInEmail.trim(), signInPassword)
+    // Only remember the email after a successful sign-in — a typo'd attempt
+    // must not overwrite (or clear) the previously remembered address.
+    if (signedIn) {
+      if (rememberMe) {
+        localStorage.setItem('alka-remembered-email', signInEmail.trim())
+      } else {
+        localStorage.removeItem('alka-remembered-email')
+      }
     }
     setSubmitting(false)
   }

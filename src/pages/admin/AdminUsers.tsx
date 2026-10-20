@@ -117,6 +117,7 @@ export default function AdminUsers() {
     try {
       await admin.users.update(id, { isActive: !user.active })
       setUsers((prev) => prev.map((u) => u.id === id ? { ...u, active: !u.active } : u))
+      setSelectedUser((prev) => (prev && prev.id === id ? { ...prev, active: !user.active } : prev))
       toast(`${user.name} ${newStatus}`, 'success')
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Failed to update user', 'error')
@@ -127,6 +128,7 @@ export default function AdminUsers() {
     try {
       await admin.users.changeRole(id, role)
       setUsers((prev) => prev.map((u) => u.id === id ? { ...u, role } : u))
+      setSelectedUser((prev) => (prev && prev.id === id ? { ...prev, role } : prev))
       setEditRoleUser(null)
       toast('Role updated', 'success')
     } catch (err: unknown) {

@@ -206,8 +206,11 @@ export default function Products() {
     })
   }
   const applyPriceFilter = () => {
-    const min = Math.max(0, parseInt(localMinPrice, 10) || 0)
-    const max = Math.max(parseInt(localMaxPrice, 10) || 0, min + 1)
+    const parsedMin = parseInt(localMinPrice, 10)
+    const parsedMax = parseInt(localMaxPrice, 10)
+    // An empty/invalid max means "no upper bound", not a $0–$1 filter.
+    const min = Number.isFinite(parsedMin) ? Math.max(0, parsedMin) : 0
+    const max = Number.isFinite(parsedMax) ? Math.max(parsedMax, min + 1) : DEFAULT_PRICE_MAX
     setPriceRange({ min, max })
     writeParams((p) => {
       if (min > 0) p.set('priceMin', String(min))
@@ -297,7 +300,7 @@ export default function Products() {
     searchParams.get('industry') ? 1 : 0,
     searchParams.get('priceMin') || searchParams.get('priceMax') ? 1 : 0,
     searchParams.get('onSale') ? 1 : 0,
-    searchParams.get('urgency') ? 1 : 0,
+    searchParams.get('availability') ? 1 : 0,
   ].reduce<number>((a, b) => a + b, 0)
   const hasJunkFilters = activeFacets > 1 || currentPage > 1
   const productsSeoTitle = seoQueryLabel

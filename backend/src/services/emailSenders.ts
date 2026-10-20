@@ -96,7 +96,7 @@ export async function sendAdminLowStock(params: {
   to: string; products: { name: string; sku: string; stockCount: number; lowStockThreshold: number }[]
 }) {
   const tpl = emailTemplates.adminLowStock(params)
-  await queueEmail({ ...tpl, to: params.to })
+  return queueEmail({ ...tpl, to: params.to })
 }
 
 export async function sendAdminNewCustomer(params: {
@@ -112,5 +112,5 @@ export async function sendAdminReport(params: {
   topProducts: { name: string; quantity: number; revenue: number }[]
 }) {
   const tpl = emailTemplates.adminReport(params)
-  await queueEmail({ ...tpl, to: params.to })
+  return queueEmail({ ...tpl, to: params.to })
 }

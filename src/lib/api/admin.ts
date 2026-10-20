@@ -43,6 +43,8 @@ export interface OfferAnalytics {
 // services/dashboardService.ts — kept in sync with the canonical DashboardStats).
 export interface DashboardAlertsResponse {
   lowStockProducts: { id: string; name: string; sku: string; stockCount: number; lowStockThreshold: number }[]
+  /** Total low-stock products; lowStockProducts is only the first 20. */
+  lowStockCount: number
   overdueRfqs: { id: string; rfqNumber: string; fullName: string; urgency: string; createdAt: string }[]
   outOfStockCount: number
 }
@@ -154,7 +156,7 @@ export const admin = {
   rfqs: {
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
-      return api.get<{ rfqs: ApiRfq[]; pagination: Pagination }>(`/admin/rfqs${qs}`, { auth: 'admin' })
+      return api.get<{ rfqs: ApiRfq[]; statusCounts?: Record<string, number>; pagination: Pagination }>(`/admin/rfqs${qs}`, { auth: 'admin' })
     },
     assignees: () =>
       api.get<{ users: { id: string; name: string }[] }>('/admin/rfqs/assignees', { auth: 'admin' }),
@@ -169,8 +171,8 @@ export const admin = {
       api.post<{ message: string }>(`/admin/rfqs/${id}/respond`, { message }, { auth: 'admin' }),
     convertToOffer: (id: string, offeredPrice: number, message?: string) =>
       api.post<{ offer: ApiOffer }>(`/admin/rfqs/${id}/convert-to-offer`, { offeredPrice, message }, { auth: 'admin' }),
-    convertToOrder: (id: string, total: number, unitPrice: number) =>
-      api.post<{ order: ApiOrder }>(`/admin/rfqs/${id}/convert-to-order`, { total, unitPrice }, { auth: 'admin' }),
+    convertToOrder: (id: string, unitPrice: number) =>
+      api.post<{ order: ApiOrder }>(`/admin/rfqs/${id}/convert-to-order`, { unitPrice }, { auth: 'admin' }),
   },
 
   // Offers
@@ -179,7 +181,7 @@ export const admin = {
       api.get<{ analytics: OfferAnalytics }>(`/admin/offers/analytics?days=${days}`, { auth: 'admin' }),
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
-      return api.get<{ offers: ApiOffer[]; pagination: Pagination }>(`/admin/offers${qs}`, { auth: 'admin' })
+      return api.get<{ offers: ApiOffer[]; pagination: Pagination; statusCounts?: Record<string, number> }>(`/admin/offers${qs}`, { auth: 'admin' })
     },
     get: (id: string) => api.get<{ offer: ApiOffer }>(`/admin/offers/${id}`, { auth: 'admin' }),
     accept: (id: string) => api.patch<{ offer: ApiOffer }>(`/admin/offers/${id}/accept`, undefined, { auth: 'admin' }),
@@ -224,7 +226,11 @@ export const admin = {
   messages: {
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
-      return api.get<{ messages: ApiMessage[]; pagination: Pagination }>(`/admin/messages${qs}`, { auth: 'admin' })
+      return api.get<{
+        messages: ApiMessage[]
+        counts?: { inbox: number; sent: number; trash: number; starred: number; unread: number }
+        pagination: Pagination
+      }>(`/admin/messages${qs}`, { auth: 'admin' })
     },
     get: (id: string) => api.get<{ message: ApiMessage }>(`/admin/messages/${id}`, { auth: 'admin' }),
     compose: (data: { to: string; subject: string; message: string }) =>
@@ -245,7 +251,7 @@ export const admin = {
   media: {
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
-      return api.get<{ assets: ApiMediaAsset[]; totalSize?: number; pagination: Pagination }>(`/admin/media${qs}`, { auth: 'admin' })
+      return api.get<{ assets: ApiMediaAsset[]; labels?: string[]; totalSize?: number; pagination: Pagination }>(`/admin/media${qs}`, { auth: 'admin' })
     },
     usage: (id: string) => api.get<{ usage: { productId: string; productName: string; productSku: string }[] }>(`/admin/media/${id}/usage`, { auth: 'admin' }),
     delete: (id: string) => api.del<{ message: string }>(`/admin/media/${id}`, { auth: 'admin' }),

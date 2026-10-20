@@ -50,7 +50,7 @@ async function optimizeImage(buffer: Buffer, _mimetype: string): Promise<{ optim
 
 // ─── Queries ──────────────────────────────────────────────────
 
-export async function listMediaAssets(params: { search?: string; page?: number; limit?: number }) {
+export async function listMediaAssets(params: { search?: string; label?: string; sort?: string; page?: number; limit?: number }) {
   const { page, limit, skip } = paginationParams(params.page, params.limit)
   const where: any = {}
   if (params.search) {
@@ -61,15 +61,30 @@ export async function listMediaAssets(params: { search?: string; page?: number; 
       { label: { contains: params.search, mode: 'insensitive' } },
     ]
   }
+  if (params.label !== undefined) {
+    // The UI shows an "Unlabeled" bucket for assets without a label.
+    where.label = params.label === 'Unlabeled' ? null : params.label
+  }
+
+  let orderBy: any = { createdAt: 'desc' }
+  if (params.sort === 'name') orderBy = { altText: 'asc' }
+  else if (params.sort === 'label') orderBy = { label: 'asc' }
+  else if (params.sort === 'size') orderBy = { fileSize: 'desc' }
 
   // Total stored bytes across ALL assets matching the filter, so the library
   // header shows a real total rather than only the current page's size.
-  const [assets, total, sizeAgg] = await Promise.all([
-    prisma.mediaAsset.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+  const [assets, total, sizeAgg, labelRows] = await Promise.all([
+    prisma.mediaAsset.findMany({ where, orderBy, skip, take: limit }),
     prisma.mediaAsset.count({ where }),
     prisma.mediaAsset.aggregate({ _sum: { fileSize: true }, where }),
+    prisma.mediaAsset.findMany({ distinct: ['label'], select: { label: true }, orderBy: { label: 'asc' } }),
   ])
-  return { assets, totalSize: sizeAgg._sum.fileSize || 0, pagination: paginationResponse(total, page, limit) }
+  return {
+    assets,
+    labels: labelRows.map((row) => row.label || 'Unlabeled'),
+    totalSize: sizeAgg._sum.fileSize || 0,
+    pagination: paginationResponse(total, page, limit),
+  }
 }
 
 export async function getMediaUsage(assetId: string) {

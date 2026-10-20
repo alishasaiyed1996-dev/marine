@@ -20,3 +20,10 @@ export function orderCustomerName(order: any): string {
   const email = orderCustomerEmail(order)
   return email ? email.split('@')[0] : 'Customer'
 }
+
+/** Orders have no deliveredAt column; the timeline records the transition. */
+export function orderDeliveredAt(order: any): string | null {
+  const timeline = Array.isArray(order?.timeline) ? order.timeline : []
+  const deliveredEvent = timeline.find((entry: any) => entry?.status === 'delivered')
+  return order?.deliveredAt || deliveredEvent?.createdAt || order?.updatedAt || null
+}

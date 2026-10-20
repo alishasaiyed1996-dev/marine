@@ -54,10 +54,13 @@ router.post('/:id/logo', (req: Request, res: Response, next: NextFunction) => {
     next()
   })
 }, asyncHandler(async (req: AuthRequest, res) => {
+  if (!req.file) {
+    return sendError(res, 'No file uploaded. Use the "file" field with an image.', 400)
+  }
   try {
     const result = await brandLogoService.uploadBrandLogo(
       req.params.id as string,
-      req.file!,
+      req.file,
       req.user!,
       req.ip
     )

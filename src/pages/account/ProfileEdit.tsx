@@ -24,7 +24,7 @@ export default function ProfileEdit() {
     setPhone('phone' in user ? (user as { phone?: string }).phone || '' : '')
     setCompany('company' in user ? (user as { company?: string }).company || '' : '')
     setCountry('country' in user ? (user as { country?: string }).country || '' : '')
-  }, [user, navigate])
+  }, [user, navigate, lp])
 
   if (!user) return null
 

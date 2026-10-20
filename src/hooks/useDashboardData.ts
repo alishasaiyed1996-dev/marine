@@ -37,6 +37,29 @@ export interface DashboardInsightData {
   refresh: () => Promise<void>
 }
 
+/** The admin list endpoints clamp `limit` to 100, so analytics data has to be
+ *  collected across pages instead of asking for one oversized page. */
+const DASHBOARD_PAGE_SIZE = 100
+
+async function collectPages<T>(
+  loadPage: (page: number) => Promise<{ items: T[]; totalPages: number }>,
+  maxItems: number,
+): Promise<T[]> {
+  const first = await loadPage(1)
+  const items = [...first.items]
+  const pageCount = Math.min(
+    first.totalPages || 1,
+    Math.ceil(maxItems / DASHBOARD_PAGE_SIZE),
+  )
+  if (pageCount > 1) {
+    const rest = await Promise.all(
+      Array.from({ length: pageCount - 1 }, (_, index) => loadPage(index + 2)),
+    )
+    for (const page of rest) items.push(...page.items)
+  }
+  return items.slice(0, maxItems)
+}
+
 export function useDashboardData(): DashboardInsightData {
   const [stats, setStats] = useState<ApiDashboardStats | null>(null)
   const [alerts, setAlerts] = useState<DashboardAlert[]>([])
@@ -57,19 +80,34 @@ export function useDashboardData(): DashboardInsightData {
         admin.dashboard.stats(),
         admin.dashboard.alerts(),
         admin.dashboard.activity(50),
-        admin.orders.list({ limit: '200' }),
-        admin.rfqs.list({ limit: '100' }),
-        admin.offers.list({ limit: '100' }),
-        admin.products.list({ limit: '500' }),
-        admin.customers.list({ limit: '200' }),
+        collectPages(async (page) => {
+          const res = await admin.orders.list({ page: String(page), limit: String(DASHBOARD_PAGE_SIZE) })
+          return { items: res.orders || [], totalPages: res.pagination?.totalPages || 1 }
+        }, 200),
+        collectPages(async (page) => {
+          const res = await admin.rfqs.list({ page: String(page), limit: String(DASHBOARD_PAGE_SIZE) })
+          return { items: res.rfqs || [], totalPages: res.pagination?.totalPages || 1 }
+        }, 100),
+        collectPages(async (page) => {
+          const res = await admin.offers.list({ page: String(page), limit: String(DASHBOARD_PAGE_SIZE) })
+          return { items: res.offers || [], totalPages: res.pagination?.totalPages || 1 }
+        }, 100),
+        collectPages(async (page) => {
+          const res = await admin.products.list({ page: String(page), limit: String(DASHBOARD_PAGE_SIZE) })
+          return { items: res.products || [], totalPages: res.pagination?.totalPages || 1 }
+        }, 500),
+        collectPages(async (page) => {
+          const res = await admin.customers.list({ page: String(page), limit: String(DASHBOARD_PAGE_SIZE) })
+          return { items: res.customers || [], totalPages: res.pagination?.totalPages || 1 }
+        }, 200),
       ])
 
       if (results[0].status === 'fulfilled') setStats(results[0].value as ApiDashboardStats)
       if (results[1].status === 'fulfilled') {
         const a = results[1].value as DashboardAlertsResponse
         const built: DashboardAlert[] = []
-        if (a.lowStockProducts?.length) {
-          built.push({ id: 'low-stock', type: 'warning', message: `${a.lowStockProducts.length} products are low on stock`, entityType: 'product' })
+        if ((a.lowStockCount ?? a.lowStockProducts?.length ?? 0) > 0) {
+          built.push({ id: 'low-stock', type: 'warning', message: `${a.lowStockCount ?? a.lowStockProducts.length} products are low on stock`, entityType: 'product' })
         }
         if (a.overdueRfqs?.length) {
           built.push({ id: 'overdue-rfqs', type: 'danger', message: `${a.overdueRfqs.length} RFQs have exceeded response SLA`, entityType: 'rfq' })
@@ -91,24 +129,19 @@ export function useDashboardData(): DashboardInsightData {
         })))
       }
       if (results[3].status === 'fulfilled') {
-        const val = results[3].value as { orders?: ApiOrder[] }
-        setOrders(val?.orders || [])
+        setOrders(results[3].value as ApiOrder[])
       }
       if (results[4].status === 'fulfilled') {
-        const val = results[4].value as { rfqs?: ApiRfq[] }
-        setRfqs(val?.rfqs || [])
+        setRfqs(results[4].value as ApiRfq[])
       }
       if (results[5].status === 'fulfilled') {
-        const val = results[5].value as { offers?: ApiOffer[] }
-        setOffers(val?.offers || [])
+        setOffers(results[5].value as ApiOffer[])
       }
       if (results[6].status === 'fulfilled') {
-        const val = results[6].value as { products?: ApiProduct[] }
-        setProducts(val?.products || [])
+        setProducts(results[6].value as ApiProduct[])
       }
       if (results[7].status === 'fulfilled') {
-        const val = results[7].value as { customers?: ApiCustomer[] }
-        setCustomers(val?.customers || [])
+        setCustomers(results[7].value as ApiCustomer[])
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data')

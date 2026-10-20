@@ -1,4 +1,5 @@
 import { Response } from 'express'
+import { toJsonSafe } from '../utils/json.js'
 
 // ─── Standardized API Response Envelope ───────────────────────
 // All API responses should use these helpers to ensure consistent
@@ -31,7 +32,9 @@ export function sendSuccess<T extends Record<string, unknown>>(
 ) {
   const body: Record<string, unknown> = { ok: true, ...data }
   if (pagination) body.pagination = pagination
-  return res.status(status).json(body)
+  // Prisma Decimal → number at the HTTP boundary. The shared API contract
+  // exposes money as numbers; see utils/json.ts for why this is necessary.
+  return res.status(status).json(toJsonSafe(body))
 }
 
 

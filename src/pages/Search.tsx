@@ -134,7 +134,11 @@ export default function SearchPage() {
     if (results.length === 0) return
     if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex((i) => Math.min(i + 1, results.length - 1)) }
     if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex((i) => Math.max(i - 1, 0)) }
-    if (e.key === 'Enter') { e.preventDefault(); handleSelect(results[activeIndex]) }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const selected = results[activeIndex]
+      if (selected) handleSelect(selected)
+    }
   }
 
   return (

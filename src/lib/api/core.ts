@@ -67,8 +67,12 @@ let csrfToken: string | null = null
 let csrfTokenFetchedAt = 0
 let csrfTokenPromise: Promise<string | null> | null = null
 
-// Track ongoing refresh to deduplicate concurrent 401 retries
-let refreshInProgress: Promise<RefreshResult> | null = null
+// Track ongoing refreshes to deduplicate concurrent 401 retries. Admin and
+// customer sessions use different cookies/endpoints, so they must never share
+// a promise — otherwise one role's successful refresh makes the other role
+// retry with a token that was never refreshed.
+let adminRefreshInProgress: Promise<RefreshResult> | null = null
+let customerRefreshInProgress: Promise<RefreshResult> | null = null
 
 async function getCsrfToken(): Promise<string | null> {
   // Return cached token if still fresh (refresh at 50 min, expires at 60 min)
@@ -270,15 +274,15 @@ export async function apiFetch<T = unknown>(
   if (res.status === 401) {
     let refreshed = false
     if (auth === 'admin' && adminAccessToken) {
-      if (!refreshInProgress) {
-        refreshInProgress = tryRefreshAdmin().finally(() => { refreshInProgress = null })
+      if (!adminRefreshInProgress) {
+        adminRefreshInProgress = tryRefreshAdmin().finally(() => { adminRefreshInProgress = null })
       }
-      refreshed = (await refreshInProgress) === 'ok'
+      refreshed = (await adminRefreshInProgress) === 'ok'
     } else if (auth === 'customer' && customerAccessToken) {
-      if (!refreshInProgress) {
-        refreshInProgress = tryRefreshCustomer().finally(() => { refreshInProgress = null })
+      if (!customerRefreshInProgress) {
+        customerRefreshInProgress = tryRefreshCustomer().finally(() => { customerRefreshInProgress = null })
       }
-      refreshed = (await refreshInProgress) === 'ok'
+      refreshed = (await customerRefreshInProgress) === 'ok'
     }
     if (refreshed) {
       const token = auth === 'admin' ? adminAccessToken : customerAccessToken

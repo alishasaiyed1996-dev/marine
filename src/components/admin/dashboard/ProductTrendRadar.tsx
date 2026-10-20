@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react'
+import { orderItemLineTotal } from '../../../lib/orderMetrics'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   products: any[]
@@ -21,7 +23,7 @@ export function ProductTrendRadar({ products, orders }: Props) {
     const productOrders = new Map<string, { firstHalf: number; secondHalf: number; total: number; revenue: number }>()
 
     for (const order of orders) {
-      if (order.status === 'cancelled') continue
+      if (isCancelledOrRefunded(order)) continue
       const orderTime = new Date(order.createdAt).getTime()
       if (orderTime < cutoff) continue
 
@@ -34,7 +36,7 @@ export function ProductTrendRadar({ products, orders }: Props) {
         const data = productOrders.get(pid)!
         const qty = item.quantity || 1
         data.total += qty
-        data.revenue += (item.price || 0) * qty
+        data.revenue += orderItemLineTotal(item)
         if (orderTime >= midPoint) data.secondHalf += qty
         else data.firstHalf += qty
       }

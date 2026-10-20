@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Target, Plus, X, TrendingUp, Edit3, Check } from 'lucide-react'
 import { orderCustomerEmail } from './orderFields'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Goal {
   id: string
@@ -47,7 +48,7 @@ export function GoalTracker({ orders, products }: Props) {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
-    const monthOrders = orders.filter(o => o.createdAt >= monthStart && o.status !== 'cancelled')
+    const monthOrders = orders.filter(o => o.createdAt >= monthStart && !isCancelledOrRefunded(o))
     const monthCustomers = new Set(monthOrders.map(o => orderCustomerEmail(o)).filter(Boolean))
 
     return {

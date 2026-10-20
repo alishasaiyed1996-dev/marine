@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { UserX, AlertTriangle, CheckCircle } from 'lucide-react'
 import { orderCustomerEmail, orderCustomerName } from './orderFields'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -16,6 +17,8 @@ export function ChurnPredictor({ orders, customers }: Props) {
     const map = new Map<string, { name: string; totalSpend: number; orderCount: number; lastOrder: string }>()
 
     for (const order of orders) {
+      // A cancelled/refunded order is not an active relationship signal.
+      if (isCancelledOrRefunded(order)) continue
       const email = orderCustomerEmail(order)
       if (!email) continue
       if (!map.has(email)) {

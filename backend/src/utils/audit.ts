@@ -16,6 +16,20 @@ interface AuditOptions {
   userAgent?: string
 }
 
+/**
+ * Convert values to Prisma-Json-safe data. Dates/Decimals become strings and
+ * undefined fields are dropped, while the stored audit value stays structured
+ * instead of a JSON-encoded string (which the admin UI cannot inspect).
+ */
+function toJsonValue(value: unknown) {
+  if (value === undefined) return undefined
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch {
+    return String(value)
+  }
+}
+
 export async function logAudit(options: AuditOptions) {
   try {
     await prisma.auditLog.create({
@@ -26,8 +40,8 @@ export async function logAudit(options: AuditOptions) {
         entityType: options.entityType,
         entityId: options.entityId,
         entityName: options.entityName,
-        previousValue: options.previousValue ? JSON.stringify(options.previousValue) : undefined,
-        newValue: options.newValue ? JSON.stringify(options.newValue) : undefined,
+        previousValue: toJsonValue(options.previousValue),
+        newValue: toJsonValue(options.newValue),
         ipAddress: options.ipAddress,
         userAgent: options.userAgent,
       },

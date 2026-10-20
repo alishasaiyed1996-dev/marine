@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
+import { orderItemLineTotal, orderItemSku, relationName } from '../../../lib/orderMetrics'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   products: any[]
@@ -17,23 +19,23 @@ export function SearchAnalytics({ products, orders }: Props) {
     }> = {}
 
     for (const order of orders) {
-      if (order.status === 'cancelled') continue
+      if (isCancelledOrRefunded(order)) continue
       for (const item of order.items || []) {
-        const pid = item.productId || item.productName || 'unknown'
+        const pid = item.productId || orderItemSku(item) || item.productName || 'unknown'
         if (!productPopularity[pid]) {
-          const product = products.find((p: any) => p.id === pid)
+          const product = products.find((p: any) => p.id === pid || (p.sku && p.sku === pid))
           productPopularity[pid] = {
             name: item.productName || item.name || product?.name || 'Unknown',
-            sku: item.sku || product?.sku || pid,
-            brand: product?.brand?.name || product?.brand || '—',
-            category: product?.category || item.category || 'Uncategorized',
+            sku: orderItemSku(item) || product?.sku || pid,
+            brand: relationName(product?.brand, '—'),
+            category: relationName(product?.category, item.category || 'Uncategorized'),
             orderCount: 0, totalSold: 0, revenue: 0,
           }
         }
         const data = productPopularity[pid]
         data.orderCount++
         data.totalSold += item.quantity || 1
-        data.revenue += (item.price || 0) * (item.quantity || 1)
+        data.revenue += orderItemLineTotal(item)
       }
     }
 

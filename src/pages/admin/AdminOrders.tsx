@@ -48,35 +48,20 @@ export default function AdminOrders() {
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
-  const filteredOrders = useMemo(() => {
-    let result = [...orders]
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      result = result.filter(
-        (o) =>
-          o.id.toLowerCase().includes(q) ||
-          o.customerName.toLowerCase().includes(q) ||
-          o.company.toLowerCase().includes(q) ||
-          o.items.some((i) => i.sku.toLowerCase().includes(q))
-      )
-    }
-    if (statusFilter) {
-      result = result.filter((o) => o.status === statusFilter)
-    }
-    if (dateFrom) {
-      result = result.filter((o) => o.createdAt >= dateFrom)
-    }
-    if (dateTo) {
-      result = result.filter((o) => o.createdAt <= dateTo)
-    }
-    return result
-  }, [orders, search, statusFilter, dateFrom, dateTo])
-
-  // The server paginates and filters; the client-side pass above only refines
-  // within the already-loaded page. Total pages come from the server so
-  // pagination works past the first page.
+  // The server applies the search/status/date filters and returns exactly one
+  // page. Re-filtering client-side would silently drop valid server matches
+  // (e.g. guest shipping name/email) and break totals.
   const totalPages = Math.max(1, Math.ceil(serverTotal / ITEMS_PER_PAGE))
-  const paginatedOrders = filteredOrders.slice(0, ITEMS_PER_PAGE)
+  const paginatedOrders = orders
+
+  const refreshSelectedOrder = useCallback(async (orderId: string) => {
+    try {
+      const { order } = await admin.orders.get(orderId)
+      if (order) setSelectedOrder((current) => (current?.id === orderId ? mapApiOrder(order) : current))
+    } catch (err) {
+      console.error('Failed to refresh selected order:', err)
+    }
+  }, [])
 
   // "All" = every order matching the current search/date filters (not just the
   // page). The per-status tabs come straight from the server too.
@@ -109,7 +94,8 @@ export default function AdminOrders() {
     try {
       await admin.orders.updateStatus(orderId, next[0].status)
       toast(`Order ${order.orderNumber} → ${next[0].label}`, 'success')
-      fetchOrders()
+      await fetchOrders()
+      await refreshSelectedOrder(orderId)
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Failed to update status', 'error')
     }
@@ -120,7 +106,8 @@ export default function AdminOrders() {
     try {
       await admin.orders.cancel(orderId, 'Cancelled by admin')
       toast(`Order ${order?.orderNumber || orderId} cancelled`, 'success')
-      fetchOrders()
+      await fetchOrders()
+      await refreshSelectedOrder(orderId)
     } catch (err: unknown) {
       toast(err instanceof Error ? err.message : 'Failed to cancel order', 'error')
     }

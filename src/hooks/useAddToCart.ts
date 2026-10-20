@@ -22,9 +22,14 @@ export function useAddToCart() {
   const handleAddToCart = useCallback(
     (product: Product, quantity = 1) => {
       if (!product.inStock) return
+      const before = useStore.getState().cart.find((i) => i.product.id === product.id)?.quantity ?? 0
       for (let i = 0; i < quantity; i++) {
         addToCart(product)
       }
+      const after = useStore.getState().cart.find((i) => i.product.id === product.id)?.quantity ?? 0
+      // addToCart silently refuses once stock is exhausted; don't confirm an
+      // add that never happened.
+      if (after <= before) return
       setAddedIds((prev) => new Set(prev).add(product.id))
       if (timerRef.current.has(product.id)) {
         clearTimeout(timerRef.current.get(product.id))

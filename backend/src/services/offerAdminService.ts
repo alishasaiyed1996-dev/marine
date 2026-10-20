@@ -5,6 +5,7 @@ import { sendOfferDecision } from './emailSenders.js'
 import logger from '../utils/logger.js'
 import type { AuthUser } from '../middleware/auth.js'
 import { canDecide, acceptedAmountOf, OFFER_PAYMENT_WINDOW_MS, type AdminOfferAction } from './offerRules.js'
+import { computeOrderTotals } from './orderPricing.js'
 import {
   computeOfferSnapshot,
   bucketOffersByDay,
@@ -69,7 +70,10 @@ export async function listOffers(params: { status?: string; productId?: string; 
     ]
   }
 
-  const [offers, total] = await Promise.all([
+  const statusWhere = { ...where }
+  delete statusWhere.status
+
+  const [offers, total, grouped] = await Promise.all([
     prisma.offer.findMany({
       where,
       include: {
@@ -82,9 +86,15 @@ export async function listOffers(params: { status?: string; productId?: string; 
       skip, take: limit,
     }),
     prisma.offer.count({ where }),
+    // Tally every tab under the current search filter (ignoring the status
+    // filter) so tab badges reflect the whole result set, not just this page.
+    prisma.offer.groupBy({ by: ['status'], where: statusWhere, _count: { _all: true } }),
   ])
 
-  return { offers, pagination: paginationResponse(total, page, limit) }
+  const statusCounts: Record<string, number> = {}
+  for (const group of grouped) statusCounts[group.status] = group._count._all
+
+  return { offers, statusCounts, pagination: paginationResponse(total, page, limit) }
 }
 
 function csvCell(value: unknown): string {
@@ -248,13 +258,26 @@ export async function counterOffer(id: string, counterPrice: number, actor: Auth
 export async function convertOfferToOrder(id: string, actor: AuthUser) {
   const offer = await prisma.offer.findUnique({
     where: { id },
-    include: { product: { select: { id: true, name: true, sku: true, regularPrice: true, salePrice: true } } },
+    include: {
+      product: { select: { id: true, name: true, sku: true, regularPrice: true, salePrice: true } },
+      customer: { select: { id: true, name: true, email: true, country: true, city: true, address: true } },
+      rfq: { select: { id: true, rfqNumber: true, productDescription: true, partNumber: true, deliveryLocation: true, country: true, fullName: true } },
+    },
   })
   if (!offer) throw Object.assign(new Error('Offer not found'), { status: 404 })
   if (offer.orderId) throw Object.assign(new Error('This offer already has an order'), { status: 400 })
   if (offer.status !== 'accepted') throw Object.assign(new Error('Only accepted offers can be converted to orders'), { status: 400 })
 
-  const price = Number(offer.acceptedPrice ?? offer.counterPrice ?? offer.offeredPrice)
+  // Same price the customer was promised on acceptance; a legacy row without
+  // acceptedPrice falls back to the counter/offered amount.
+  const acceptedPrice = Number(offer.acceptedPrice)
+  const price = acceptedPrice > 0 ? acceptedPrice : acceptedAmountOf(offer)
+  const quantity = Math.max(1, offer.quantity)
+  const subtotal = Math.round(price * quantity * 100) / 100
+
+  const customerId = offer.customerId || offer.customer?.id || null
+  const country = offer.customer?.country || offer.rfq?.country || ''
+  const { shippingCost, tax, total } = await computeOrderTotals(subtotal, country)
 
   // Historical pricing snapshot + offer link so both conversion paths
   // (bank-transfer here, PayPal via offerService) produce identical order data.
@@ -264,15 +287,20 @@ export async function convertOfferToOrder(id: string, actor: AuthUser) {
       status: 'pending',
       paymentMethod: 'bank-transfer',
       paymentStatus: 'pending',
-      subtotal: price * offer.quantity,
-      shippingCost: 25,
-      tax: 0,
-      total: price * offer.quantity + 25,
+      subtotal,
+      shippingCost,
+      tax,
+      total,
       currency: 'USD',
       originalListedPrice: offer.product ? Number(offer.product.regularPrice) : null,
       negotiatedPrice: price,
+      shippingFullName: offer.customer?.name || offer.rfq?.fullName || '',
+      shippingEmail: customerId ? null : offer.customerEmail,
+      shippingAddressLine1: offer.customer?.address || null,
+      shippingCity: offer.customer?.city || offer.rfq?.deliveryLocation || '',
+      shippingCountry: country,
       customerNotes: `Converted from offer ${offer.offerNumber}`,
-      customerId: offer.customerId || undefined,
+      customerId: customerId || undefined,
       offerId: offer.id,
     },
   })
@@ -281,16 +309,21 @@ export async function convertOfferToOrder(id: string, actor: AuthUser) {
     await prisma.orderItem.create({
       data: {
         orderId: order.id,
-        productId: offer.productId || undefined,
-        productName: offer.product?.name || 'Unknown Product',
-        productSku: offer.product?.sku || '',
-        quantity: offer.quantity,
+        productId: offer.product?.id || undefined,
+        productName: offer.product?.name || offer.rfq?.productDescription?.slice(0, 500) || 'Custom offer',
+        productSku: offer.product?.sku || offer.rfq?.partNumber || '',
+        quantity,
         unitPrice: price,
-        totalPrice: price * offer.quantity,
+        totalPrice: subtotal,
       },
     })
     await prisma.orderTimeline.create({
-      data: { orderId: order.id, status: 'pending', note: `Converted from offer ${offer.offerNumber}` },
+      data: {
+        orderId: order.id,
+        status: 'pending',
+        note: `Converted from offer ${offer.offerNumber}`,
+        createdBy: actor.id,
+      },
     })
   } catch (error) {
     await prisma.order.delete({ where: { id: order.id } }).catch(() => {})

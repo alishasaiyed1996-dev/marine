@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { TrendingUp, TrendingDown, Minus, BarChart3 } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -21,7 +22,7 @@ export function SalesTrendAnalyzer({ orders }: Props) {
     const weeklyItems: Record<string, number> = {}
 
     for (const order of orders) {
-      if (order.status === 'cancelled' || !order.createdAt) continue
+      if (isCancelledOrRefunded(order) || !order.createdAt) continue
       const week = getWeekStart(order.createdAt)
       weeklyRevenue[week] = (weeklyRevenue[week] || 0) + (order.total || 0)
       weeklyOrders[week] = (weeklyOrders[week] || 0) + 1

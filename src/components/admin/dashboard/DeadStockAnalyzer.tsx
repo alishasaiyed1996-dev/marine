@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { PackageX, Search } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   products: any[]
@@ -13,6 +14,9 @@ export function DeadStockAnalyzer({ products, orders }: Props) {
     // Collect product IDs that appear in any recent order
     const recentProductIds = new Set<string>()
     for (const order of orders) {
+      // Cancelled/refunded orders are not demand; counting them made products
+      // that only ever appeared in failed orders look like active sellers.
+      if (isCancelledOrRefunded(order)) continue
       for (const item of order.items || []) {
         if (item.productId) recentProductIds.add(item.productId)
       }

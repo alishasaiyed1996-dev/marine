@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Search,
   ClipboardList,
@@ -161,20 +161,12 @@ export default function AdminAuditLog() {
     return () => clearTimeout(timer)
   }, [fetchLogs])
 
-  // Client-side filtering as refinement
-  const filtered = useMemo(() => {
-    let result = [...log]
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      result = result.filter((e) => e.action.toLowerCase().includes(q) || e.details.toLowerCase().includes(q) || e.user.toLowerCase().includes(q))
-    }
-    if (typeFilter) result = result.filter((e) => e.type === typeFilter)
-    return result
-  }, [log, search, typeFilter])
-
-  // Server paginates/filters; the client pass only refines within the page.
+  // The server applies the search/type filters and returns exactly one page.
+  // Do not re-filter here: server matches can include fields the display string
+  // omits (entity id, IP, old/new JSON), and dropping those rows made the page
+  // look empty even though the API reported results.
   const totalPages = Math.max(1, Math.ceil(serverTotal / ITEMS_PER_PAGE))
-  const paginated = filtered.slice(0, ITEMS_PER_PAGE)
+  const paginated = log
 
   const formatTime = (d: string) => {
     const date = new Date(d)

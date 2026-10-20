@@ -11,13 +11,14 @@ export async function listMessages(params: { status?: string; search?: string; f
   const { page, limit, skip } = paginationParams(params.page, params.limit)
 
   const where: any = {}
-  if (params.status) where.status = params.status
   // Folder is a higher-level view over `status`: inbox = new/read,
-  // sent = replied (compose/reply outcomes), trash = soft-deleted.
+  // sent = replied (compose/reply outcomes), trash = soft-deleted. An explicit
+  // status filter is honoured when no folder is selected.
   if (params.folder === 'inbox') where.status = { in: ['new', 'read'] }
   else if (params.folder === 'sent') where.status = { in: ['replied'] }
   else if (params.folder === 'trash') where.status = 'trashed'
   else if (params.folder === 'starred') where.status = { not: 'trashed' }
+  else if (params.status) where.status = params.status
   else where.status = { not: 'trashed' }
   if (params.folder === 'starred') where.isStarred = true
   if (params.search) {
@@ -29,7 +30,7 @@ export async function listMessages(params: { status?: string; search?: string; f
     ]
   }
 
-  const [messages, total] = await Promise.all([
+  const [messages, total, inboxCount, sentCount, trashCount, starredCount, unreadCount] = await Promise.all([
     prisma.contactMessage.findMany({
       where,
       include: { assignee: { select: { id: true, name: true, email: true } } },
@@ -37,9 +38,25 @@ export async function listMessages(params: { status?: string; search?: string; f
       skip, take: limit,
     }),
     prisma.contactMessage.count({ where }),
+    // Folder badges describe the whole mailbox, not just the page on screen.
+    prisma.contactMessage.count({ where: { status: { in: ['new', 'read'] } } }),
+    prisma.contactMessage.count({ where: { status: 'replied' } }),
+    prisma.contactMessage.count({ where: { status: 'trashed' } }),
+    prisma.contactMessage.count({ where: { isStarred: true, status: { not: 'trashed' } } }),
+    prisma.contactMessage.count({ where: { status: 'new' } }),
   ])
 
-  return { messages, pagination: paginationResponse(total, page, limit) }
+  return {
+    messages,
+    counts: {
+      inbox: inboxCount,
+      sent: sentCount,
+      trash: trashCount,
+      starred: starredCount,
+      unread: unreadCount,
+    },
+    pagination: paginationResponse(total, page, limit),
+  }
 }
 
 export async function getMessage(id: string) {
@@ -137,6 +154,9 @@ export async function restoreMessage(id: string, actor: AuthUser, ipAddress = ''
 export async function destroyMessage(id: string, actor: AuthUser, ipAddress = '') {
   const message = await prisma.contactMessage.findUnique({ where: { id } })
   if (!message) throw Object.assign(new Error('Message not found'), { status: 404 })
+  if (message.status !== 'trashed') {
+    throw Object.assign(new Error('Message must be moved to trash before permanent deletion'), { status: 400 })
+  }
 
   await prisma.contactMessage.delete({ where: { id } })
   await logAudit({ actor, action: 'message.delete', entityType: 'contact_message', entityId: message.id, entityName: message.subject || message.name, ipAddress })

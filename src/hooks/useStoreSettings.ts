@@ -39,6 +39,13 @@ const DEFAULTS: StoreSettings = {
   paymentMethods: [],
 }
 
+/** Numeric setting with a fallback; keeps a legitimate 0 (free shipping, 0% tax). */
+function numberSetting(raw: unknown, fallback: number): number {
+  if (raw === undefined || raw === null || raw === '') return fallback
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 /** Same shape the admin saves under `store.paymentMethods` (a JSON string). */
 function parsePaymentMethods(raw: unknown): PaymentMethodSetting[] {
   let value = raw
@@ -67,14 +74,19 @@ async function fetchSettingsAndNotify(): Promise<StoreSettings> {
   fetchPromise = storefront.settings()
     .then((res) => {
       const s = res.settings || {}
+      // Admin Settings edits one public company email (`site.email`); the RFQ
+      // and emergency addresses remain dedicated overrides when configured.
+      const companyEmail = String(s['site.email'] || '')
       cachedSettings = {
         whatsappNumber: String(s['site.whatsappNumber'] || DEFAULTS.whatsappNumber),
-        shippingCost: Number(s['checkout.shippingCost']) || DEFAULTS.shippingCost,
-        taxRate: Number(s['checkout.taxRate']) || DEFAULTS.taxRate,
-        freeShippingThreshold: Number(s['checkout.freeShippingThreshold']) || DEFAULTS.freeShippingThreshold,
-        rfqEmail: String(s['site.rfqEmail'] || DEFAULTS.rfqEmail),
-        emergencyEmail: String(s['site.emergencyEmail'] || DEFAULTS.emergencyEmail),
-        phoneNumber: String(s['site.phoneNumber'] || DEFAULTS.phoneNumber),
+        shippingCost: numberSetting(s['checkout.shippingCost'], DEFAULTS.shippingCost),
+        taxRate: numberSetting(s['checkout.taxRate'], DEFAULTS.taxRate),
+        freeShippingThreshold: numberSetting(s['checkout.freeShippingThreshold'], DEFAULTS.freeShippingThreshold),
+        rfqEmail: String(s['site.rfqEmail'] || companyEmail || DEFAULTS.rfqEmail),
+        emergencyEmail: String(s['site.emergencyEmail'] || companyEmail || DEFAULTS.emergencyEmail),
+        // Admin Settings saves the phone as `site.phone`; `site.phoneNumber`
+        // only exists for legacy rows.
+        phoneNumber: String(s['site.phone'] || s['site.phoneNumber'] || DEFAULTS.phoneNumber),
         googleAnalyticsId: String(s['site.googleAnalyticsId'] || DEFAULTS.googleAnalyticsId),
         maintenanceMode: s['site.maintenanceMode'] === true || s['site.maintenanceMode'] === 'true',
         shippingZones: parseShippingZones(s['store.shippingZones']),

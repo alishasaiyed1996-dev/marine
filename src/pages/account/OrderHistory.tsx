@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { Package, Eye, Clock, Truck, CheckCircle, XCircle, ChevronRight } from 'lucide-react'
 import { useOrders } from '../../hooks/useApiQuery'
@@ -20,7 +21,10 @@ const statusConfig: Record<string, { color: string; icon: typeof Package }> = {
 export default function OrderHistory() {
   const user = useStore((s) => s.user)
   const lp = useLocalizedPath()
-  const { data: orders, isLoading, isError, error } = useOrders(Boolean(user))
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isFetching, isError, error } = useOrders(user?.id, page)
+  const orders = data?.orders ?? []
+  const pagination = data?.pagination
   const errorMessage = error instanceof Error ? error.message : 'Failed to load orders'
 
   // Redirect after render instead of during it (React forbids navigation
@@ -107,7 +111,7 @@ export default function OrderHistory() {
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="font-display text-lg font-bold text-[var(--text-primary)]">
-                          ${Number(order.grandTotal || 0).toFixed(2)}
+                          ${Number(order.total || 0).toFixed(2)}
                         </span>
                         <Link
                           to={lp(`/track-order?id=${encodeURIComponent(order.orderNumber)}`)}
@@ -120,6 +124,30 @@ export default function OrderHistory() {
                   </div>
                 )
               })}
+
+              {pagination && pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    disabled={page <= 1 || isFetching}
+                    className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
+                    disabled={page >= pagination.totalPages || isFetching}
+                    className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

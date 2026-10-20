@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { TrendingUp, Calendar } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -10,7 +11,7 @@ export function RevenuePulse({ orders }: Props) {
     const revenueByDate: Record<string, number> = {}
 
     for (const order of orders) {
-      if (order.status === 'cancelled') continue
+      if (isCancelledOrRefunded(order)) continue
       const date = order.createdAt?.split('T')[0]
       if (date) {
         revenueByDate[date] = (revenueByDate[date] || 0) + (order.total || 0)

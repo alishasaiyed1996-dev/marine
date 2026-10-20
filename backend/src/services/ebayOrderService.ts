@@ -16,7 +16,7 @@
 import { prisma } from '../server.js'
 import { generateOrderNumber } from '../utils/helpers.js'
 import logger from '../utils/logger.js'
-import { decreaseStock } from './centralInventory.js'
+import { decreaseStock, increaseStock } from './centralInventory.js'
 import { getOrder, listOrdersSince, isEbayConfigured, isRetryableError, type EbayApiOrder } from './ebayClient.js'
 import { extractOrderId, extractEventId, skuCandidates } from './ebayOrderEvents.js'
 
@@ -47,13 +47,21 @@ export async function processEbayOrderEvent(
   try {
     await prisma.ebayEventLog.create({ data: { eventId, topic, payload: payload as object } })
   } catch {
-    log.info({ eventId, topic }, 'Duplicate eBay event — already processed, skipping')
-    await prisma.ebayEventLog.updateMany({
-      where: { eventId, status: 'failed' },
-      data: { status: 'duplicate' },
-    })
-    return { status: 'duplicate', note: 'event already seen' }
+    const existingEvent = await prisma.ebayEventLog.findUnique({ where: { eventId } })
+    // A 'received' row is a deferred event being retried by the scheduler.
+    // Let the retry proceed instead of treating its own event id as a duplicate.
+    if (!existingEvent || existingEvent.status !== 'received') {
+      log.info({ eventId, topic }, 'Duplicate eBay event — already processed, skipping')
+      await prisma.ebayEventLog.updateMany({
+        where: { eventId, status: 'failed' },
+        data: { status: 'duplicate' },
+      })
+      return { status: 'duplicate', note: 'event already seen' }
+    }
+    log.info({ eventId, topic }, 'Retrying deferred eBay event')
   }
+
+  let activeOrderId: string | null = null
 
   try {
     const orderId = extractOrderId(payload)
@@ -62,12 +70,20 @@ export async function processEbayOrderEvent(
       return { status: 'ignored', note: 'no orderId in payload' }
     }
 
-    // ── Order-level idempotency: was this eBay order already processed? ──
+    // ── Order-level idempotency: claim this eBay order atomically. Event ids
+    // differ for redeliveries/poll buckets, so the unique ebay_order_id row is
+    // the real guard against creating two internal orders (and two deductions).
     const existing = await prisma.ebayOrder.findUnique({ where: { ebayOrderId: orderId } })
     if (existing && existing.status === 'processed') {
       await markEvent(eventId, 'duplicate', `order ${orderId} already processed`)
       return { status: 'duplicate', note: 'order already processed' }
     }
+    const orderClaimed = await claimEbayOrder(orderId)
+    if (!orderClaimed) {
+      await markEvent(eventId, 'duplicate', `order ${orderId} is already being processed`)
+      return { status: 'duplicate', note: 'order already being processed' }
+    }
+    activeOrderId = orderId
 
     // ── Verify against the real API — never trust the payload alone. ──
     let ebayOrder: EbayApiOrder
@@ -76,6 +92,8 @@ export async function processEbayOrderEvent(
     } catch (err) {
       if (isRetryableError(err)) {
         // Event log row stays 'received' → scheduler reprocesses later.
+        // Release the order claim so that retry can take it immediately.
+        await releaseEbayOrderClaim(orderId, 'temporary eBay API failure')
         log.warn({ err, orderId, eventId }, 'eBay order fetch deferred (temporary failure)')
         return { status: 'deferred', note: 'temporary API failure — will retry' }
       }
@@ -86,6 +104,7 @@ export async function processEbayOrderEvent(
 
     // Only paid orders claim stock.
     if (ebayOrder.orderPaymentStatus && ebayOrder.orderPaymentStatus !== 'PAID') {
+      await upsertEbayOrder(orderId, 'ignored', ebayOrder, `payment status ${ebayOrder.orderPaymentStatus} — not claiming stock`)
       await markEvent(eventId, 'ignored', `payment status ${ebayOrder.orderPaymentStatus} — not claiming stock`)
       return { status: 'ignored', note: 'order not paid' }
     }
@@ -133,11 +152,18 @@ export async function processEbayOrderEvent(
       }
       const regular = Number(product.regularPrice) || 0
       const sale = product.salePrice != null ? Number(product.salePrice) : null
-      const unitPrice = sale != null && sale > 0 && sale < regular ? sale : regular
+      const catalogUnit = sale != null && sale > 0 && sale < regular ? sale : regular
+      const quantity = li.quantity || 1
+      // Prefer what the buyer actually paid on eBay over the current catalogue
+      // price; a later local price change must not rewrite eBay order revenue.
+      const lineCost = Number(li.lineItemCost?.value)
+      const unitPrice = Number.isFinite(lineCost) && lineCost > 0
+        ? Math.round((lineCost / quantity) * 100) / 100
+        : catalogUnit
       mapped.push({
         productId: product.id,
         sku,
-        quantity: li.quantity || 1,
+        quantity,
         title: li.title || sku,
         unitPrice,
       })
@@ -175,10 +201,12 @@ export async function processEbayOrderEvent(
 
     // ── Claim stock through CENTRAL INVENTORY (atomic, race-safe). ──
     const failures: string[] = []
+    const claimed: Array<{ productId: string; quantity: number }> = []
     try {
       for (const m of mapped) {
         const res = await decreaseStock(m.productId, m.quantity, 'ebay', { orderId: order.id })
-        if (!res.ok) failures.push(`${m.sku}: ${res.reason}`)
+        if (res.ok) claimed.push({ productId: m.productId, quantity: m.quantity })
+        else failures.push(`${m.sku}: ${res.reason}`)
         await prisma.orderItem.create({
           data: {
             orderId: order.id,
@@ -195,6 +223,13 @@ export async function processEbayOrderEvent(
     } catch (err) {
       // Never leave a paid-looking order without stock (existing architecture
       // rule). Remove the order rows; the EbayOrder row records the failure.
+      // Restore every unit already claimed by this attempt first.
+      for (const item of claimed) {
+        await increaseStock(item.productId, item.quantity, 'ebay', {
+          orderId: order.id,
+          note: 'Rollback after partial stock failure (eBay order import)',
+        }).catch(rollbackErr => log.error({ rollbackErr, ...item, orderId: order.id }, 'eBay stock rollback failed'))
+      }
       await prisma.orderItem.deleteMany({ where: { orderId: order.id } })
       await prisma.orderTimeline?.deleteMany?.({ where: { orderId: order.id } }).catch(() => {})
       await prisma.order.delete({ where: { id: order.id } }).catch(() => {})
@@ -217,9 +252,44 @@ export async function processEbayOrderEvent(
     return { status: 'processed' }
   } catch (err) {
     log.error({ err, eventId, topic }, 'eBay order event processing failed')
+    if (activeOrderId) await releaseEbayOrderClaim(activeOrderId, (err as Error).message)
     await markEvent(eventId, 'failed', (err as Error).message)
     return { status: 'failed', note: (err as Error).message }
   }
+}
+
+const PROCESSING_STALE_MS = 10 * 60 * 1000
+
+/**
+ * Atomically claim an eBay order before creating an internal order. The
+ * unique ebay_order_id guarantees only one worker wins; failed/ignored or
+ * stale processing rows may be retried.
+ */
+async function claimEbayOrder(orderId: string): Promise<boolean> {
+  try {
+    await prisma.ebayOrder.create({ data: { ebayOrderId: orderId, status: 'processing' } })
+    return true
+  } catch {
+    const claimed = await prisma.ebayOrder.updateMany({
+      where: {
+        ebayOrderId: orderId,
+        OR: [
+          { status: { in: ['failed', 'ignored'] } },
+          { status: 'processing', updatedAt: { lt: new Date(Date.now() - PROCESSING_STALE_MS) } },
+        ],
+      },
+      data: { status: 'processing', lastError: null, processedAt: null },
+    })
+    return claimed.count > 0
+  }
+}
+
+/** Release a processing claim after a retryable failure. */
+async function releaseEbayOrderClaim(orderId: string, reason: string) {
+  await prisma.ebayOrder.updateMany({
+    where: { ebayOrderId: orderId, status: 'processing' },
+    data: { status: 'failed', lastError: reason },
+  }).catch(() => {})
 }
 
 async function markEvent(eventId: string, status: string, error?: string) {

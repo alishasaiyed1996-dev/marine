@@ -4,10 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { useStore } from '../../store/useStore'
 import { storefront } from '../../lib/api'
 import { useLocalizedPath } from '../../lib/locale'
-import { apiProductsToFrontend } from '../../lib/adapters'
 import { SearchInput, SearchResultsList } from '../search'
 import type { SearchResult } from '../search'
-import type { Product } from '../../types'
 
 const pages = [
   { title: 'Home', path: '/' },
@@ -32,26 +30,38 @@ export function CommandSearch() {
   const inputRef = useRef<HTMLInputElement>(null!)
   const navigate = useNavigate()
   const lp = useLocalizedPath()
-  const [apiProducts, setApiProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<{ id: string; name: string; count: number }[]>([])
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
 
-  // Fetch products and categories from API
+  // Query the full-text search endpoint so results are not limited to the
+  // first catalogue page. The backend already returns product slugs and
+  // category/brand slug filters.
   useEffect(() => {
+    const term = debouncedQuery.trim()
+    if (!term) {
+      setSearchResults([])
+      return
+    }
     let cancelled = false
-    Promise.all([
-      storefront.products.list({ limit: '50' }).catch(() => null),
-      storefront.categories.list().catch(() => null),
-    ]).then(([prodRes, catRes]) => {
-      if (cancelled) return
-      if (prodRes?.products?.length) setApiProducts(apiProductsToFrontend(prodRes.products).slice(0, 50))
-      if (catRes?.categories?.length) {
-        setCategories(catRes.categories.map((c: any) => ({
-          id: c.slug || c.id, name: c.name, count: c._count?.products ?? c.productCount ?? 0,
+    storefront.search(term)
+      .then((res) => {
+        if (cancelled) return
+        setSearchResults((res.results || []).map((r) => ({
+          id: r.id,
+          type: r.type,
+          title: r.title || r.name || '',
+          description: r.description || r.brand || '',
+          path: r.path || (r.type === 'product' && r.slug
+            ? `/product/${r.slug}`
+            : r.type === 'category' && r.slug
+              ? `/products?category=${r.slug}`
+              : r.type === 'brand' && r.slug
+                ? `/products?brand=${r.slug}`
+                : '/products'),
         })))
-      }
-    })
+      })
+      .catch(() => { if (!cancelled) setSearchResults([]) })
     return () => { cancelled = true }
-  }, [])
+  }, [debouncedQuery])
 
   useEffect(() => {
     if (commandOpen) {
@@ -87,16 +97,7 @@ export function CommandSearch() {
 
   const results: SearchResult[] = q
     ? [
-        ...apiProducts
-          .filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q))
-          .slice(0, 5)
-          .map((p) => ({
-            id: p.id,
-            type: 'product' as const,
-            title: p.name,
-            description: `${p.brand} · ${p.sku}`,
-            path: `/products?search=${encodeURIComponent(p.name)}`,
-          })),
+        ...searchResults,
         ...pages
           .filter((p) => p.title.toLowerCase().includes(q))
           .map((p) => ({
@@ -105,15 +106,6 @@ export function CommandSearch() {
             title: p.title,
             description: p.path,
             path: p.path,
-          })),
-        ...categories
-          .filter((c) => c.name.toLowerCase().includes(q))
-          .map((c) => ({
-            id: c.id,
-            type: 'category' as const,
-            title: c.name,
-            description: `${c.count} products`,
-            path: `/products?category=${c.id}`,
           })),
       ]
     : []
@@ -134,7 +126,8 @@ export function CommandSearch() {
       setActiveIndex((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      handleSelect(results[activeIndex])
+      const selected = results[activeIndex]
+      if (selected) handleSelect(selected)
     }
   }
 

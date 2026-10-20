@@ -119,10 +119,10 @@ export default function AdminBrands() {
         toast(`Brand "${form.name}" added`, 'success')
       }
       fetchBrands()
+      setShowModal(false)
     } catch (err: any) {
       toast(err.message || 'Failed to save brand', 'error')
     }
-    setShowModal(false)
   }
 
   const handleDelete = async (brandId: string) => {

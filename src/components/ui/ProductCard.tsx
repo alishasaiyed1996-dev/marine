@@ -8,7 +8,7 @@ import { OptimizedImage } from './OptimizedImage'
 import { useStoreSettings } from '../../hooks/useStoreSettings'
 import { useSaleCountdown } from '../../hooks/useSaleCountdown'
 import { usePrefetchOnHover } from '../../hooks/usePrefetchOnHover'
-import { storefront } from '../../lib/api'
+import { fetchProductDetail, productDetailQueryKey } from '../../hooks/useApiQuery'
 import { useLocalizedPath } from '../../lib/locale'
 import { isLightColor, getProductImageUrl } from '../../lib/utils'
 
@@ -46,9 +46,12 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
   const whatsappText = encodeURIComponent('Hi, I need a quote for ' + product.name + ' (SKU: ' + product.sku + ').')
 
   // Warm the product-detail cache on hover so clicking the card opens the
-  // detail page instantly (no loading screen) — fires once per card.
-  const detailQueryKey = useMemo(() => ['products', 'detail', product.id], [product.id])
-  const prefetchDetail = usePrefetchOnHover(detailQueryKey, () => storefront.products.get(product.id))
+  // detail page instantly (no loading screen) — fires once per card. The key
+  // must match the route param used by ProductDetail (slug) and the prefetched
+  // value must be the adapted frontend shape, exactly like `useProductDetail`.
+  const detailKey = product.slug || product.id
+  const detailQueryKey = useMemo(() => productDetailQueryKey(detailKey), [detailKey])
+  const prefetchDetail = usePrefetchOnHover(detailQueryKey, () => fetchProductDetail(detailKey))
 
   // Touch devices never hover, so tapping a card always paid the full
   // HTML → JS → API waterfall. Warm the same cache when the card scrolls

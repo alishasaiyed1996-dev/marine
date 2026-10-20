@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { Crown, TrendingUp, ShoppingCart, FileText, AlertTriangle, Package, DollarSign } from 'lucide-react'
+import { orderItemLineTotal, orderItemSku, relationName } from '../../../lib/orderMetrics'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   stats: any
@@ -9,49 +11,67 @@ interface Props {
   products: any[]
 }
 
-export function ExecutiveDashboard({ orders, rfqs, alerts, products }: Props) {
+export function ExecutiveDashboard({ stats, orders, rfqs, alerts, products }: Props) {
   const data = useMemo(() => {
     const now = Date.now()
     const DAY = 86400000
 
-    const activeOrders = orders.filter(o => !['cancelled', 'delivered'].includes(o.status))
-    const todayOrders = orders.filter(o => o.createdAt?.startsWith(new Date().toISOString().split('T')[0]))
-    const thisWeekOrders = orders.filter(o => (now - new Date(o.createdAt).getTime()) < 7 * DAY)
-    const thisMonthOrders = orders.filter(o => (now - new Date(o.createdAt).getTime()) < 30 * DAY)
+    // Cancelled/refunded orders are not realized revenue and must not inflate
+    // period counts or the average-order-value denominator.
+    const validOrders = orders.filter((o: any) => !isCancelledOrRefunded(o))
+    const activeOrders = validOrders.filter(o => o.status !== 'delivered')
+    const todayOrders = validOrders.filter(o => o.createdAt?.startsWith(new Date().toISOString().split('T')[0]))
+    const thisWeekOrders = validOrders.filter(o => (now - new Date(o.createdAt).getTime()) < 7 * DAY)
+    const thisMonthOrders = validOrders.filter(o => (now - new Date(o.createdAt).getTime()) < 30 * DAY)
 
-    const totalRevenue = orders.reduce((s: number, o: any) => s + (o.status !== 'cancelled' ? (o.total || 0) : 0), 0)
-    const monthRevenue = thisMonthOrders.reduce((s: number, o: any) => s + (o.status !== 'cancelled' ? (o.total || 0) : 0), 0)
-    const weekRevenue = thisWeekOrders.reduce((s: number, o: any) => s + (o.status !== 'cancelled' ? (o.total || 0) : 0), 0)
-    const todayRevenue = todayOrders.reduce((s: number, o: any) => s + (o.status !== 'cancelled' ? (o.total || 0) : 0), 0)
+    const totalRevenue = validOrders.reduce((s: number, o: any) => s + (o.total || 0), 0)
+    const monthRevenue = thisMonthOrders.reduce((s: number, o: any) => s + (o.total || 0), 0)
+    const weekRevenue = thisWeekOrders.reduce((s: number, o: any) => s + (o.total || 0), 0)
+    const todayRevenue = todayOrders.reduce((s: number, o: any) => s + (o.total || 0), 0)
 
     const pendingRfqs = rfqs.filter(r => r.status !== 'won' && r.status !== 'lost' && r.status !== 'closed')
     const emergencyRfqs = rfqs.filter(r => r.urgency === 'emergency' && r.status !== 'closed')
     const dangerAlerts = alerts.filter((a: any) => a.type === 'danger')
 
-    const lowStockProducts = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 10))
-    const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0)
+    const lowStockProducts = products.filter((p: any) => {
+      const stock = p.stockCount || 0
+      return stock > 0 && stock <= (p.lowStockThreshold ?? 10) && p.availability !== 'out-of-stock'
+    })
+    const outOfStock = products.filter((p: any) => p.availability === 'out-of-stock' || (p.stockCount || 0) <= 0)
 
-    // Revenue per product category
+    // Revenue per product category. Order items only carry productId/SKU, so
+    // resolve the product (and its category relation) from the catalogue.
+    const productMap = new Map<string, any>()
+    for (const product of products) {
+      productMap.set(product.id, product)
+      if (product.sku) productMap.set(product.sku, product)
+    }
+
     const categoryRevenue: Record<string, number> = {}
-    for (const order of orders) {
-      if (order.status === 'cancelled') continue
+    for (const order of validOrders) {
       for (const item of order.items || []) {
-        const cat = item.category || 'Uncategorized'
-        categoryRevenue[cat] = (categoryRevenue[cat] || 0) + (item.price || 0) * (item.quantity || 1)
+        const product = productMap.get(item.productId) || productMap.get(orderItemSku(item))
+        const cat = relationName(product?.category, 'Uncategorized')
+        categoryRevenue[cat] = (categoryRevenue[cat] || 0) + orderItemLineTotal(item)
       }
     }
     const topCategory = Object.entries(categoryRevenue).sort((a, b) => b[1] - a[1])[0]
 
     return {
       totalRevenue, monthRevenue, weekRevenue, todayRevenue,
-      activeOrders: activeOrders.length, totalOrders: orders.length,
+      activeOrders: activeOrders.length, totalOrders: validOrders.length,
+      todayOrderCount: todayOrders.length,
+      weekOrderCount: thisWeekOrders.length,
+      monthOrderCount: thisMonthOrders.length,
       pendingRfqs: pendingRfqs.length, emergencyRfqs: emergencyRfqs.length,
       alertCount: dangerAlerts.length + emergencyRfqs.length,
-      lowStockCount: lowStockProducts.length, outOfStockCount: outOfStock.length,
+      // `stats` counts the full catalog; `products` is capped for dashboard use.
+      lowStockCount: stats?.lowStockCount ?? lowStockProducts.length,
+      outOfStockCount: stats?.outOfStockProducts ?? outOfStock.length,
       topCategory: topCategory ? { name: topCategory[0], revenue: topCategory[1] } : null,
-      avgOrderValue: orders.length > 0 ? totalRevenue / orders.filter((o: any) => o.status !== 'cancelled').length : 0,
+      avgOrderValue: validOrders.length > 0 ? totalRevenue / validOrders.length : 0,
     }
-  }, [orders, rfqs, alerts, products])
+  }, [stats, orders, rfqs, alerts, products])
 
   const bigStats = [
     { label: 'Total Revenue', value: `$${data.totalRevenue.toLocaleString()}`, icon: DollarSign, color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10' },
@@ -88,9 +108,9 @@ export function ExecutiveDashboard({ orders, rfqs, alerts, products }: Props) {
       {/* Period breakdown */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         {[
-          { label: 'Today', revenue: data.todayRevenue, orders: orders.filter(o => o.createdAt?.startsWith(new Date().toISOString().split('T')[0])).length },
-          { label: 'This Week', revenue: data.weekRevenue, orders: orders.filter(o => (Date.now() - new Date(o.createdAt).getTime()) < 7 * 86400000).length },
-          { label: 'This Month', revenue: data.monthRevenue, orders: orders.filter(o => (Date.now() - new Date(o.createdAt).getTime()) < 30 * 86400000).length },
+          { label: 'Today', revenue: data.todayRevenue, orders: data.todayOrderCount },
+          { label: 'This Week', revenue: data.weekRevenue, orders: data.weekOrderCount },
+          { label: 'This Month', revenue: data.monthRevenue, orders: data.monthOrderCount },
         ].map(p => (
           <div key={p.label} className="rounded-xl border border-[var(--border)] p-3 text-center">
             <p className="text-[0.5rem] font-bold text-[var(--text-muted)] uppercase">{p.label}</p>

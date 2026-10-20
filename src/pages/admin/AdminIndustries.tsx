@@ -138,10 +138,10 @@ export default function AdminIndustries() {
         toast(`Industry "${form.name}" added`, 'success')
       }
       fetchIndustries()
+      setShowModal(false)
     } catch (err: any) {
       toast(err.message || 'Failed to save industry', 'error')
     }
-    setShowModal(false)
   }
 
   const handleDelete = async (industryId: string) => {

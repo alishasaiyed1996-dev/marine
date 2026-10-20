@@ -77,7 +77,7 @@ export function OKRDashboard({ orders, products, customers }: Props) {
 
   // Auto-populate current values from data
   const populated = useMemo(() => {
-    const totalRevenue = orders.filter((o: any) => o.status !== 'cancelled').reduce((s: number, o: any) => s + (o.total || 0), 0)
+    const totalRevenue = orders.filter((o: any) => !isCancelledOrRefunded(o)).reduce((s: number, o: any) => s + (o.total || 0), 0)
     const completedOrders = orders.filter((o: any) => !isCancelledOrRefunded(o))
     const aov = completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0
 

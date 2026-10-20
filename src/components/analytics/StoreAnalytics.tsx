@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useStoreSettings } from '../../hooks/useStoreSettings'
+import { getCspNonce } from '../../lib/csp'
 
 /**
  * Injects the Google Analytics 4 tag when the admin has configured
@@ -25,6 +26,10 @@ export function StoreAnalytics() {
 
     const init = document.createElement('script')
     init.id = INIT_ID
+    // The page CSP uses a per-response nonce; dynamically created inline
+    // scripts must carry it or the browser blocks the GA config.
+    const nonce = getCspNonce()
+    if (nonce) init.nonce = nonce
     init.textContent =
       `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}` +
       `gtag('js',new Date());gtag('config','${id}');`

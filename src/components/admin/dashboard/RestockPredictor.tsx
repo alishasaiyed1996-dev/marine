@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { AlertTriangle, Clock, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   products: any[]
@@ -10,14 +11,14 @@ interface Props {
 export function RestockPredictor({ products, orders }: Props) {
   const recommendations = useMemo(() => {
     const lowStock = products.filter(p => {
-      const threshold = p.lowStockThreshold || 10
+      const threshold = p.lowStockThreshold ?? 10
       return (p.stockCount || 0) <= threshold
     })
 
     return lowStock.map((p: any) => {
       // Calculate sales velocity from orders
       const productOrders = orders.filter(o =>
-        o.status !== 'cancelled' && (o.items || []).some((i: any) => i.productId === p.id)
+        !isCancelledOrRefunded(o) && (o.items || []).some((i: any) => i.productId === p.id)
       )
       const totalSold = productOrders.reduce((s: number, o: any) => {
         const item = (o.items || []).find((i: any) => i.productId === p.id)
@@ -41,7 +42,7 @@ export function RestockPredictor({ products, orders }: Props) {
         sku: p.sku,
         brand: p.brand?.name || p.brand || '—',
         stockCount: p.stockCount || 0,
-        lowStockThreshold: p.lowStockThreshold || 10,
+        lowStockThreshold: p.lowStockThreshold ?? 10,
         avgDailySales: Math.round(avgDailySales * 100) / 100,
         daysUntilStockout,
         reorderQty,

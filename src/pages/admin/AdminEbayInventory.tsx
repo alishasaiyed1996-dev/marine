@@ -121,44 +121,64 @@ export default function AdminEbayInventory() {
               <tr><td colSpan={7} className="text-center py-8 text-[var(--text-muted)]">Loading…</td></tr>
             ) : products.length === 0 ? (
               <tr><td colSpan={7} className="text-center py-8 text-[var(--text-muted)]">No products found.</td></tr>
-            ) : products.map((p) => (
-              <tr key={p.id}>
-                <td className="max-w-[280px]">
-                  <span className="block truncate font-medium text-[var(--text-primary)]" title={p.name}>{p.name}</span>
-                  <span className="text-xs text-[var(--text-muted)]">{p.sku}</span>
-                </td>
-                <td>
-                  <span className="font-semibold text-[var(--text-primary)]">{p.stockCount}</span>
-                  {p.stockCount === 0 && <span className="admin-badge cancelled ml-2">0</span>}
-                </td>
-                <td><span className="admin-badge draft">{p.availability.replace(/-/g, ' ')}</span></td>
-                {p.ebayListings.length === 0 ? (
-                  <td colSpan={4} className="text-xs text-[var(--text-muted)]">Not listed on eBay</td>
-                ) : p.ebayListings.map((l) => (
-                  <>
-                    <td key={`${l.id}-id`} className="text-xs">
-                      {l.ebayListingId ? (
-                        <a
-                          href={`https://www.ebay.com/itm/${l.ebayListingId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-[var(--accent-gold)] hover:underline"
-                        >
-                          {l.ebayListingId} <ExternalLink size={11} />
-                        </a>
-                      ) : (
-                        <span className="text-[var(--text-muted)]">offer: {l.ebayOfferId?.slice(0, 12) || '—'}</span>
-                      )}
+            ) : products.flatMap((p) => {
+              const listings = p.ebayListings || []
+              if (listings.length === 0) {
+                return [(
+                  <tr key={p.id}>
+                    <td className="max-w-[280px]">
+                      <span className="block truncate font-medium text-[var(--text-primary)]" title={p.name}>{p.name}</span>
+                      <span className="text-xs text-[var(--text-muted)]">{p.sku}</span>
                     </td>
-                    <td key={`${l.id}-qty`}>{l.lastSyncedQty ?? '—'}</td>
-                    <td key={`${l.id}-status`}><SyncStatus listing={l} /></td>
-                    <td key={`${l.id}-time`} className="text-xs text-[var(--text-muted)]">
-                      {l.lastSyncAt ? new Date(l.lastSyncAt).toLocaleString() : 'never'}
+                    <td>
+                      <span className="font-semibold text-[var(--text-primary)]">{p.stockCount}</span>
+                      {p.stockCount === 0 && <span className="admin-badge cancelled ml-2">0</span>}
                     </td>
-                  </>
-                ))}
-              </tr>
-            ))}
+                    <td><span className="admin-badge draft">{p.availability.replace(/-/g, ' ')}</span></td>
+                    <td colSpan={4} className="text-xs text-[var(--text-muted)]">Not listed on eBay</td>
+                  </tr>
+                )]
+              }
+              // A product can be listed in several eBay marketplaces. Use
+              // rowSpan on the product/stock cells so every listing gets its
+              // own row and the table columns stay aligned.
+              return listings.map((l, index) => (
+                <tr key={l.id}>
+                  {index === 0 && (
+                    <>
+                      <td rowSpan={listings.length} className="max-w-[280px] align-top">
+                        <span className="block truncate font-medium text-[var(--text-primary)]" title={p.name}>{p.name}</span>
+                        <span className="text-xs text-[var(--text-muted)]">{p.sku}</span>
+                      </td>
+                      <td rowSpan={listings.length} className="align-top">
+                        <span className="font-semibold text-[var(--text-primary)]">{p.stockCount}</span>
+                        {p.stockCount === 0 && <span className="admin-badge cancelled ml-2">0</span>}
+                      </td>
+                      <td rowSpan={listings.length} className="align-top"><span className="admin-badge draft">{p.availability.replace(/-/g, ' ')}</span></td>
+                    </>
+                  )}
+                  <td className="text-xs">
+                    {l.ebayListingId ? (
+                      <a
+                        href={`https://www.ebay.com/itm/${l.ebayListingId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[var(--accent-gold)] hover:underline"
+                      >
+                        {l.ebayListingId} <ExternalLink size={11} />
+                      </a>
+                    ) : (
+                      <span className="text-[var(--text-muted)]">offer: {l.ebayOfferId?.slice(0, 12) || '—'}</span>
+                    )}
+                  </td>
+                  <td>{l.lastSyncedQty ?? '—'}</td>
+                  <td><SyncStatus listing={l} /></td>
+                  <td className="text-xs text-[var(--text-muted)]">
+                    {l.lastSyncAt ? new Date(l.lastSyncAt).toLocaleString() : 'never'}
+                  </td>
+                </tr>
+              ))
+            })}
           </tbody>
         </table>
       </div>

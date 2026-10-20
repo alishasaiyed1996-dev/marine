@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search,
@@ -169,13 +169,13 @@ export default function AdminRFQs() {
   const [selectedRFQ, setSelectedRFQ] = useState<RFQ | null>(null)
   const [page, setPage] = useState(1)
   const [serverTotal, setServerTotal] = useState(0)
+  const [serverStatusCounts, setServerStatusCounts] = useState<Record<string, number>>({})
   const [assignees, setAssignees] = useState<{ id: string; name: string }[]>([])
   const [offerTarget, setOfferTarget] = useState<RFQ | null>(null)
   const [offerPrice, setOfferPrice] = useState('')
   const [creatingOffer, setCreatingOffer] = useState(false)
   const [orderTarget, setOrderTarget] = useState<RFQ | null>(null)
   const [orderUnitPrice, setOrderUnitPrice] = useState('')
-  const [orderTotal, setOrderTotal] = useState('')
   const [creatingOrder, setCreatingOrder] = useState(false)
   const [respondTarget, setRespondTarget] = useState<RFQ | null>(null)
   const [respondMessage, setRespondMessage] = useState('')
@@ -202,6 +202,7 @@ export default function AdminRFQs() {
       const res = await admin.rfqs.list(params)
       setRfqs((res.rfqs || []).map(mapApiRfq))
       setServerTotal(res.pagination?.total ?? 0)
+      setServerStatusCounts(res.statusCounts || {})
     } catch (err: unknown) {
       console.error('Failed to load RFQs:', err)
       toast('Failed to load RFQs', 'error')
@@ -221,33 +222,14 @@ export default function AdminRFQs() {
     })
   }, [rfqs])
 
-  const filtered = useMemo(() => {
-    let result = [...rfqs]
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      result = result.filter((r) =>
-        r.number.toLowerCase().includes(q) ||
-        r.company.toLowerCase().includes(q) ||
-        r.subject.toLowerCase().includes(q) ||
-        r.partNumber.toLowerCase().includes(q) ||
-        r.customerName.toLowerCase().includes(q) ||
-        r.customerEmail.toLowerCase().includes(q)
-      )
-    }
-    if (urgencyFilter) result = result.filter((r) => r.urgency === urgencyFilter)
-    if (statusFilter) result = result.filter((r) => r.status === statusFilter)
-    return result
-  }, [rfqs, search, urgencyFilter, statusFilter])
-
-  // Server paginates/filters; the client pass only refines within the page.
+  // The server applies the search/urgency/status filters and returns one page.
   const totalPages = Math.max(1, Math.ceil(serverTotal / ITEMS_PER_PAGE))
-  const paginated = filtered.slice(0, ITEMS_PER_PAGE)
+  const paginated = rfqs
 
-  const statusCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    rfqs.forEach((r) => counts.set(r.status, (counts.get(r.status) || 0) + 1))
-    return counts
-  }, [rfqs])
+  const statusCounts = new Map(Object.entries(serverStatusCounts))
+  // Status tallies ignore the status filter, so use their sum for the All tab
+  // instead of the filtered page total.
+  const allRequestsCount = Object.values(serverStatusCounts).reduce((sum, n) => sum + n, 0)
 
   const formatDate = (d: string) => (d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
 
@@ -276,22 +258,19 @@ export default function AdminRFQs() {
   const handleConvertToOrder = async () => {
     if (!orderTarget) return
     const unitPrice = Number(orderUnitPrice)
-    const total = Number(orderTotal)
     if (
-      orderUnitPrice.trim() === '' || orderTotal.trim() === '' ||
-      !Number.isFinite(unitPrice) || unitPrice < 0 ||
-      !Number.isFinite(total) || total < 0
+      orderUnitPrice.trim() === '' ||
+      !Number.isFinite(unitPrice) || unitPrice < 0
     ) {
-      toast('Enter a valid unit price and order total', 'error')
+      toast('Enter a valid unit price', 'error')
       return
     }
     setCreatingOrder(true)
     try {
-      await admin.rfqs.convertToOrder(orderTarget.id, total, unitPrice)
+      await admin.rfqs.convertToOrder(orderTarget.id, unitPrice)
       toast(`Order created from ${orderTarget.number}`, 'success')
       setOrderTarget(null)
       setOrderUnitPrice('')
-      setOrderTotal('')
       fetchRfqs()
       navigate('/admin/orders')
     } catch (err: unknown) {
@@ -379,7 +358,7 @@ export default function AdminRFQs() {
       {/* Urgency Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         <button onClick={() => { setUrgencyFilter(''); setPage(1) }} className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${urgencyFilter === '' ? 'bg-[var(--accent-gold)] text-[var(--btn-blue-text)] shadow-[0_4px_12px_rgba(232,170,36,0.2)]' : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-gold)]'}`}>
-          All ({serverTotal})
+          All ({allRequestsCount})
         </button>
         {(Object.keys(urgencyConfig) as RFQUrgency[]).map((u) => (
           <button key={u} onClick={() => { setUrgencyFilter(u === urgencyFilter ? '' : u); setPage(1) }} className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${urgencyFilter === u ? `${urgencyConfig[u].bg} ${urgencyConfig[u].color} border border-current/20` : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-gold)]'}`}>
@@ -510,7 +489,7 @@ export default function AdminRFQs() {
                     <button onClick={() => { setOfferTarget(selectedRFQ); setOfferPrice('') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent-gold)]/20 bg-[var(--accent-gold)]/10 px-3 py-2 text-xs font-bold text-[var(--accent-gold)] hover:bg-[var(--accent-gold)]/20 transition-colors">
                       <HandCoins size={12} /> Create Offer
                     </button>
-                    <button onClick={() => { setOrderTarget(selectedRFQ); setOrderUnitPrice(''); setOrderTotal('') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--success)]/20 bg-[var(--success)]/10 px-3 py-2 text-xs font-bold text-[var(--success)] hover:bg-[var(--success)]/20 transition-colors">
+                    <button onClick={() => { setOrderTarget(selectedRFQ); setOrderUnitPrice('') }} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--success)]/20 bg-[var(--success)]/10 px-3 py-2 text-xs font-bold text-[var(--success)] hover:bg-[var(--success)]/20 transition-colors">
                       <ShoppingCart size={12} /> Convert to Order
                     </button>
                   </div>
@@ -648,35 +627,20 @@ export default function AdminRFQs() {
               <span>From {orderTarget.number} · {orderTarget.customerName}</span>
             </div>
             <p className="text-[0.625rem] text-[var(--text-muted)]">
-              Creates a pending bank-transfer order from this RFQ and marks the RFQ as won.
+              Creates a pending bank-transfer order from this RFQ and marks the RFQ as won. Shipping and tax are calculated server-side from the configured settings.
             </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Unit Price (USD)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={orderUnitPrice}
-                  onChange={(e) => setOrderUnitPrice(e.target.value)}
-                  placeholder="0.00"
-                  aria-label="Unit price"
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm font-mono text-[var(--text-primary)] focus:border-[var(--accent-gold)]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Order Total (USD)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={orderTotal}
-                  onChange={(e) => setOrderTotal(e.target.value)}
-                  placeholder="0.00"
-                  aria-label="Order total"
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm font-mono text-[var(--text-primary)] focus:border-[var(--accent-gold)]"
-                />
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">Unit Price (USD)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={orderUnitPrice}
+                onChange={(e) => setOrderUnitPrice(e.target.value)}
+                placeholder="0.00"
+                aria-label="Unit price"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] py-2.5 px-4 text-sm font-mono text-[var(--text-primary)] focus:border-[var(--accent-gold)]"
+              />
             </div>
             <div className="flex items-center justify-end gap-2">
               <button onClick={() => setOrderTarget(null)} className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--text-muted)] transition-colors">Cancel</button>

@@ -16,6 +16,7 @@
  */
 import { prisma } from '../server.js'
 import logger from '../utils/logger.js'
+import { getEffectivePrice } from '../utils/helpers.js'
 import { getUserAccessToken, updateInventoryItemQuantity, updateOfferQuantity, isEbayConfigured } from './ebayClient.js'
 
 const log = logger.child({ context: 'ebay-listings' })
@@ -71,7 +72,7 @@ export async function createListingForProduct(input: CreateListingInput, actorId
     where: { id: input.productId },
     select: {
       id: true, sku: true, name: true, status: true, condition: true,
-      regularPrice: true, salePrice: true, stockCount: true,
+      regularPrice: true, salePrice: true, saleStartsAt: true, saleEndsAt: true, stockCount: true,
       description: true, shortDescription: true, manufacturer: true, mpn: true,
     },
   })
@@ -82,9 +83,7 @@ export async function createListingForProduct(input: CreateListingInput, actorId
 
   // ── Spec rule: listing quantity ≤ central available stock. ──
   const centralQty = product.stockCount
-  const sale = product.salePrice != null ? Number(product.salePrice) : null
-  const regular = Number(product.regularPrice) || 0
-  const price = input.price ?? (sale != null && sale > 0 && sale < regular ? sale : regular)
+  const price = input.price ?? getEffectivePrice(product)
   if (price <= 0) throw Object.assign(new Error('Product has no price — set one before listing'), { status: 400 })
 
   const marketplace = input.marketplace || 'EBAY_US'

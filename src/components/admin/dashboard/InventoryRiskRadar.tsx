@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Radar, Package } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   products: any[]
@@ -7,7 +8,7 @@ interface Props {
 }
 
 export function InventoryRiskRadar({ products, orders }: Props) {
-  const [view, setView] = useState<'overview' | 'critical' | 'warning'>('overview')
+  const [view, setView] = useState<'overview' | 'critical' | 'warning' | 'healthy'>('overview')
 
   const analysis = useMemo(() => {
     const now = Date.now()
@@ -15,7 +16,7 @@ export function InventoryRiskRadar({ products, orders }: Props) {
     const productOrderMap = new Map<string, number>()
 
     for (const order of orders) {
-      if (order.status === 'cancelled') continue
+      if (isCancelledOrRefunded(order)) continue
       for (const item of order.items || []) {
         const pid = item.productId
         if (pid) productOrderMap.set(pid, (productOrderMap.get(pid) || 0) + (item.quantity || 1))
@@ -24,7 +25,7 @@ export function InventoryRiskRadar({ products, orders }: Props) {
 
     const risks = products.map((p: any) => {
       const stock = p.stockCount || 0
-      const threshold = p.lowStockThreshold || 10
+      const threshold = p.lowStockThreshold ?? 10
       const totalSold = productOrderMap.get(p.id) || 0
       const daysSinceAdded = Math.max(1, (now - new Date(p.createdAt || now).getTime()) / DAY)
       const velocity = totalSold / daysSinceAdded
@@ -33,7 +34,7 @@ export function InventoryRiskRadar({ products, orders }: Props) {
       let riskType = 'none'
       let riskScore = 0
 
-      if (stock === 0) {
+      if (stock === 0 || p.availability === 'out-of-stock') {
         riskLevel = 'critical'
         riskType = 'out-of-stock'
         riskScore = 100
@@ -68,6 +69,7 @@ export function InventoryRiskRadar({ products, orders }: Props) {
 
   const filtered = view === 'critical' ? analysis.critical
     : view === 'warning' ? analysis.warnings
+    : view === 'healthy' ? analysis.healthy
     : analysis.risks
 
   const riskConfig = {
@@ -106,7 +108,7 @@ export function InventoryRiskRadar({ products, orders }: Props) {
           { label: 'Warning', count: analysis.warnings.length, color: 'text-[var(--accent-gold)]' },
           { label: 'Healthy', count: analysis.healthy.length, color: 'text-[var(--success)]' },
         ].map(s => (
-          <button key={s.label} onClick={() => setView(s.label.toLowerCase() as 'overview' | 'critical' | 'warning')}
+          <button key={s.label} onClick={() => setView(s.label.toLowerCase() as 'overview' | 'critical' | 'warning' | 'healthy')}
             className={`flex-1 rounded-xl p-2 text-center transition-all ${view === s.label.toLowerCase() ? 'ring-2 ring-current/20 bg-[var(--surface-soft)]' : 'bg-[var(--surface-soft)] hover:bg-[var(--border)]'}`}>
             <p className={`font-mono text-lg font-extrabold ${s.color}`}>{s.count}</p>
             <p className="text-[0.5rem] font-bold text-[var(--text-muted)] uppercase">{s.label}</p>

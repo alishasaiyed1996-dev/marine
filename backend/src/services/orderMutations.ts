@@ -1,5 +1,5 @@
 import { prisma } from '../server.js'
-import { generateOrderNumber } from '../utils/helpers.js'
+import { generateOrderNumber, getEffectivePrice } from '../utils/helpers.js'
 import { orderInclude } from '../utils/prisma-helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { sendOrderShipped, sendOrderCancelled, sendOrderConfirmation } from './emailSenders.js'
@@ -8,7 +8,7 @@ import { escapeHtml } from '../utils/html-escape.js'
 import logger from '../utils/logger.js'
 import { processPaypalRefund } from '../utils/paypal.js'
 import { decreaseStock, increaseStock } from './centralInventory.js'
-import { calcShippingCost, parseShippingZones } from '../utils/shipping.js'
+import { computeOrderTotals } from './orderPricing.js'
 import { getStoreTimezone } from './settingsService.js'
 import type { AuthUser } from '../middleware/auth.js'
 
@@ -17,7 +17,7 @@ const STATUS_FLOW = ['pending', 'confirmed', 'paid', 'processing', 'packed', 'sh
 export interface CreateOrderInput {
   items: { productId: string; quantity: number }[]
   shipping: {
-    fullName: string; addressLine1: string; addressLine2?: string
+    fullName: string; email?: string; addressLine1: string; addressLine2?: string
     city: string; state?: string; postalCode?: string; country: string
   }
   paymentMethod: string
@@ -30,6 +30,12 @@ export interface CreateOrderInput {
 
 export async function createOrder(input: CreateOrderInput) {
   const { items, shipping, paymentMethod, customerNotes, idempotencyKey, customerId } = input
+
+  // Guest orders have no Customer row, so the email supplied at checkout is
+  // the only way to send confirmations and shipping updates.
+  if (!customerId && !shipping.email?.trim()) {
+    throw Object.assign(new Error('Email address is required for guest checkout'), { status: 400 })
+  }
 
   if (idempotencyKey) {
     const existingOrder = await prisma.order.findFirst({
@@ -63,10 +69,18 @@ export async function createOrder(input: CreateOrderInput) {
       skippedItems.push({ productId: item.productId, quantity: item.quantity })
       continue
     }
+    if (product.status !== 'published') {
+      // Draft/hidden/archived products must never be purchasable through the
+      // public checkout, even if the client sends their UUID.
+      logger.warn({ productId: item.productId, status: product.status }, 'Order line skipped — product is not published')
+      skippedItems.push({ productId: item.productId, quantity: item.quantity })
+      continue
+    }
     if (product.availability === 'out-of-stock' || product.stockCount < item.quantity) {
       throw Object.assign(new Error(`Insufficient stock for ${product.name}`), { status: 400 })
     }
-    const price = Number(product.salePrice && Number(product.salePrice) < Number(product.regularPrice) ? product.salePrice : product.regularPrice)
+    // Date-aware: an expired or not-yet-started sale must never be charged.
+    const price = getEffectivePrice(product)
     orderItems.push({
       productId: product.id, productName: product.name, productSku: product.sku,
       quantity: item.quantity, unitPrice: price, totalPrice: price * item.quantity,
@@ -83,29 +97,11 @@ export async function createOrder(input: CreateOrderInput) {
     )
   }
 
-  const [shippingCostSetting, taxRateSetting, freeShippingThresholdSetting, shippingZonesSetting] = await Promise.all([
-    prisma.storeSetting.findUnique({ where: { key: 'checkout.shippingCost' } }),
-    prisma.storeSetting.findUnique({ where: { key: 'checkout.taxRate' } }),
-    prisma.storeSetting.findUnique({ where: { key: 'checkout.freeShippingThreshold' } }),
-    prisma.storeSetting.findUnique({ where: { key: 'store.shippingZones' } }),
-  ])
-
   // Shipping is priced by the customer's country from the admin-configured
   // shipping zones; when no zone matches (or none are configured) it falls back
   // to the flat checkout.shippingCost + free-shipping threshold. The server
   // always calculates this — the client can never dictate shipping.
-  const baseShippingCost = Number(shippingCostSetting?.value) || Number(process.env.DEFAULT_SHIPPING_COST) || 25
-  const freeShippingThreshold = Number(freeShippingThresholdSetting?.value) || 100
-  const shippingCost = calcShippingCost({
-    subtotal,
-    country: shipping.country,
-    zones: parseShippingZones(shippingZonesSetting?.value),
-    baseShippingCost,
-    freeShippingThreshold,
-  })
-  const taxRate = Number(taxRateSetting?.value) || Number(process.env.DEFAULT_TAX_RATE) || 0.08
-  const tax = Math.round(subtotal * taxRate * 100) / 100
-  const total = subtotal + shippingCost + tax
+  const { shippingCost, tax, total } = await computeOrderTotals(subtotal, shipping.country)
 
   const order = await prisma.order.create({
     data: {
@@ -113,6 +109,7 @@ export async function createOrder(input: CreateOrderInput) {
       status: 'pending', paymentMethod, paymentStatus: 'pending',
       subtotal, shippingCost, tax, total, currency: 'USD',
       shippingFullName: shipping.fullName,
+      shippingEmail: customerId ? null : shipping.email?.trim() || null,
       shippingAddressLine1: shipping.addressLine1,
       shippingAddressLine2: shipping.addressLine2 || null,
       shippingCity: shipping.city,
@@ -164,10 +161,29 @@ export async function createOrder(input: CreateOrderInput) {
 
 // ─── Request Cancellation ──────────────────────────────────────
 
-export async function requestOrderCancellation(id: string, customerId: string, reason?: string) {
-  const order = await prisma.order.findFirst({ where: { id, customerId } })
+export async function requestOrderCancellation(
+  id: string,
+  customerId: string | null,
+  reason?: string,
+  guestEmail?: string,
+) {
+  // Signed-in customers can only cancel their own orders. Guests prove
+  // ownership with the email address used at checkout (their order is stored
+  // with customerId = null).
+  const address = guestEmail?.trim()
+  if (!customerId && !address) {
+    throw Object.assign(new Error('Order not found'), { status: 404 })
+  }
+
+  const where = customerId
+    ? { id, customerId }
+    : { id, customerId: null, shippingEmail: { equals: address, mode: 'insensitive' as const } }
+
+  const order = await prisma.order.findFirst({ where })
   if (!order) throw Object.assign(new Error('Order not found'), { status: 404 })
   if (order.status === 'cancelled') throw Object.assign(new Error('Order already cancelled'), { status: 400 })
+  // Idempotent: retries must not create duplicate timeline entries or emails.
+  if (order.cancelRequested) return order
 
   const updated = await prisma.order.update({
     where: { id },
@@ -178,7 +194,12 @@ export async function requestOrderCancellation(id: string, customerId: string, r
     data: { orderId: id, status: order.status, note: 'Cancellation requested: ' + (reason || 'No reason provided') },
   })
 
-  const cancelCustomer = await prisma.customer.findUnique({ where: { id: customerId }, select: { email: true, name: true } })
+  const cancelCustomer = customerId
+    ? await prisma.customer.findUnique({ where: { id: customerId }, select: { email: true, name: true } })
+    : order.shippingEmail
+      ? { email: order.shippingEmail, name: order.shippingFullName || 'Customer' }
+      : null
+
   if (cancelCustomer) {
     sendOrderCancelled({
       to: cancelCustomer.email, customerName: cancelCustomer.name,
@@ -194,6 +215,11 @@ export async function requestOrderCancellation(id: string, customerId: string, r
 export async function updateOrderStatus(id: string, status: string, note: string | undefined, actor: AuthUser, ipAddress = '') {
   const order = await prisma.order.findUnique({ where: { id } })
   if (!order) throw Object.assign(new Error('Order not found'), { status: 404 })
+  // A cancelled order is terminal: re-submitting cancellation must not run the
+  // stock-restore/refund compensation a second time or resend notifications.
+  if (status === 'cancelled' && order.status === 'cancelled') {
+    throw Object.assign(new Error('Order is already cancelled'), { status: 400 })
+  }
 
   const currentIdx = STATUS_FLOW.indexOf(order.status)
   const newIdx = STATUS_FLOW.indexOf(status)
@@ -202,7 +228,7 @@ export async function updateOrderStatus(id: string, status: string, note: string
     throw Object.assign(new Error('Can only advance order status forward'), { status: 400 })
   }
 
-  const updated = await prisma.order.update({ where: { id }, data: { status } })
+  let updated = await prisma.order.update({ where: { id }, data: { status } })
 
   await prisma.orderTimeline.create({
     data: { orderId: id, status, note, createdBy: actor.id },
@@ -211,24 +237,38 @@ export async function updateOrderStatus(id: string, status: string, note: string
   if (status === 'paid' && order.paymentStatus !== 'paid') {
     const items = await prisma.orderItem.findMany({ where: { orderId: id } })
     let stockFailed = false
+    const decremented: Array<{ productId: string; quantity: number }> = []
     for (const item of items) {
       if (item.productId) {
         const res = await decreaseStock(item.productId, item.quantity, 'website', { orderId: id })
         if (!res.ok) {
           stockFailed = true
           logger.error({ productId: item.productId, quantity: item.quantity, orderId: id, reason: res.reason }, 'Stock decrement failed during admin order confirmation')
+        } else {
+          decremented.push({ productId: item.productId, quantity: item.quantity })
         }
       }
     }
     // Never leave the order marked paid when the required stock decrement failed.
-    // Revert the status and surface the failure instead of silently succeeding.
+    // Restore every unit already claimed so a retry does not double-decrement.
     if (stockFailed) {
+      for (const item of decremented) {
+        await increaseStock(item.productId, item.quantity, 'website', {
+          orderId: id,
+          note: 'Rollback after partial stock failure (admin order confirmation)',
+        }).catch(err => logger.error({ err, ...item, orderId: id }, 'Admin stock rollback failed'))
+      }
       await prisma.order.update({ where: { id }, data: { status: order.status } })
       await prisma.orderTimeline.create({
         data: { orderId: id, status: order.status, note: 'Stock decrement failed — order reverted. Manual review required.' },
       })
       throw Object.assign(new Error('Order could not be confirmed: stock decrement failed. Manual review required.'), { status: 409 })
     }
+
+    // Admin marked the order paid: keep paymentStatus in sync with the status,
+    // otherwise the order stays "pending" for payment and cancellation will
+    // skip the refund/stock-restore path.
+    updated = await prisma.order.update({ where: { id }, data: { paymentStatus: 'paid' } })
   }
 
   if (status === 'cancelled' && order.paymentStatus === 'paid') {
@@ -241,7 +281,9 @@ export async function updateOrderStatus(id: string, status: string, note: string
     newValue: { status }, ipAddress,
   })
 
-  if (status === 'paid' && order.paymentMethod !== 'card') {
+  // PayPal/card capture already sends the payment confirmation. Admin merely
+  // advancing the fulfilment status to "paid" must not email the customer again.
+  if (status === 'paid' && order.paymentStatus !== 'paid' && order.paymentMethod !== 'card') {
     await sendOrderPaidEmail(id, order)
   }
   if (status === 'cancelled') {
@@ -255,7 +297,7 @@ export async function updateOrderStatus(id: string, status: string, note: string
     : status === 'cancelled' ? 'orderCancelled' as const
     : null
   if (adminKey) {
-    const contact = await orderCustomerContact(order.customerId)
+    const contact = await orderCustomerContact(order)
     notifyOrderEvent(adminKey, {
       orderNumber: order.orderNumber, status, total: Number(order.total), note, ...contact,
     }).catch(err => logger.error({ err }, 'Admin order notification failed'))
@@ -271,19 +313,15 @@ export async function updateTracking(id: string, trackingNumber: string, courier
     where: { id }, data: { trackingNumber, courier },
   })
 
-  if (order.customerId) {
-    const customer = await prisma.customer.findUnique({
-      where: { id: order.customerId }, select: { email: true, name: true },
-    })
-    if (customer) {
-      sendOrderShipped({
-        to: customer.email, customerName: customer.name,
-        orderNumber: order.orderNumber, trackingNumber, courier,
-      }).catch(err => logger.error({ err }, 'Ship email failed'))
-    }
+  const recipient = await orderContact(order)
+  if (recipient) {
+    sendOrderShipped({
+      to: recipient.email, customerName: recipient.name,
+      orderNumber: order.orderNumber, trackingNumber, courier,
+    }).catch(err => logger.error({ err }, 'Ship email failed'))
   }
 
-  const contact = await orderCustomerContact(order.customerId)
+  const contact = await orderCustomerContact(order)
   notifyOrderEvent('orderShipped', {
     orderNumber: order.orderNumber, status: order.status,
     total: Number(order.total), note: `Tracking ${trackingNumber} (${courier})`, ...contact,
@@ -319,7 +357,7 @@ export async function cancelOrder(id: string, reason: string | undefined, actor:
 
   await sendOrderCancelledEmail(order)
 
-  const contact = await orderCustomerContact(order.customerId)
+  const contact = await orderCustomerContact(order)
   notifyOrderEvent('orderCancelled', {
     orderNumber: order.orderNumber, status: 'cancelled',
     total: Number(order.total), note: reason, ...contact,
@@ -353,6 +391,7 @@ export async function generateInvoiceHtml(id: string) {
   const customer = (order as Record<string, unknown>).customer as Record<string, string> || {}
   const shipping = {
     fullName: order.shippingFullName || '',
+    email: order.shippingEmail || '',
     addressLine1: order.shippingAddressLine1 || '',
     city: order.shippingCity || '',
     country: order.shippingCountry || '',
@@ -364,7 +403,7 @@ export async function generateInvoiceHtml(id: string) {
       <div style="text-align:right"><h2 style="margin:0">INVOICE</h2><p style="font-family:monospace;font-size:14px;color:#666">#${order.orderNumber}</p><p style="font-size:13px;color:#666">Date: ${invoiceDate}</p></div>
     </div>
     <div style="display:flex;gap:40px;margin-bottom:30px">
-      <div style="flex:1"><h3 style="font-size:12px;text-transform:uppercase;color:#999;margin-bottom:8px">Bill To</h3><p style="font-size:13px"><strong>${escapeHtml(customer.name || shipping.fullName || 'N/A')}</strong></p><p style="font-size:13px;color:#666">${escapeHtml(customer.email || '')}</p><p style="font-size:13px;color:#666">${escapeHtml(shipping.addressLine1 || '')}${shipping.city ? ', ' + escapeHtml(shipping.city) : ''}${shipping.country ? ', ' + escapeHtml(shipping.country) : ''}</p></div>
+      <div style="flex:1"><h3 style="font-size:12px;text-transform:uppercase;color:#999;margin-bottom:8px">Bill To</h3><p style="font-size:13px"><strong>${escapeHtml(customer.name || shipping.fullName || 'N/A')}</strong></p><p style="font-size:13px;color:#666">${escapeHtml(customer.email || shipping.email || '')}</p><p style="font-size:13px;color:#666">${escapeHtml(shipping.addressLine1 || '')}${shipping.city ? ', ' + escapeHtml(shipping.city) : ''}${shipping.country ? ', ' + escapeHtml(shipping.country) : ''}</p></div>
       <div style="flex:1"><h3 style="font-size:12px;text-transform:uppercase;color:#999;margin-bottom:8px">Payment</h3><p style="font-size:13px">Method: ${escapeHtml(order.paymentMethod || 'N/A')}</p><p style="font-size:13px">Status: ${escapeHtml(order.paymentStatus || 'pending')}</p>${order.trackingNumber ? `<p style="font-size:13px">Tracking: ${escapeHtml(order.trackingNumber)} (${escapeHtml(order.courier || '')})</p>` : ''}</div>
     </div>
     <table style="width:100%;border-collapse:collapse">${items}</table>
@@ -379,13 +418,36 @@ export async function generateInvoiceHtml(id: string) {
 
 // ─── Private Helpers ──────────────────────────────────────────
 
-/** Contact details for admin order alerts (empty for guest orders). */
-async function orderCustomerContact(customerId: string | null): Promise<{ customerName?: string; customerEmail?: string }> {
-  if (!customerId) return {}
-  const customer = await prisma.customer.findUnique({
-    where: { id: customerId }, select: { name: true, email: true },
-  })
-  return customer ? { customerName: customer.name, customerEmail: customer.email } : {}
+/** Contact details for admin order alerts (guest email when available). */
+async function orderCustomerContact(order: { customerId: string | null; shippingEmail?: string | null; shippingFullName?: string | null }): Promise<{ customerName?: string; customerEmail?: string }> {
+  if (order.customerId) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: order.customerId }, select: { name: true, email: true },
+    })
+    if (customer) return { customerName: customer.name, customerEmail: customer.email }
+  }
+  if (order.shippingEmail) {
+    return { customerName: order.shippingFullName || 'Guest customer', customerEmail: order.shippingEmail }
+  }
+  return {}
+}
+
+/** Delivery address for order emails — Customer.email or guest checkout email. */
+async function orderContact(order: {
+  customerId: string | null
+  shippingEmail?: string | null
+  shippingFullName?: string | null
+}): Promise<{ email: string; name: string } | null> {
+  if (order.customerId) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: order.customerId }, select: { email: true, name: true },
+    })
+    if (customer) return { email: customer.email, name: customer.name }
+  }
+  if (order.shippingEmail) {
+    return { email: order.shippingEmail, name: order.shippingFullName || 'Customer' }
+  }
+  return null
 }
 
 async function restoreStockAndRefund(id: string, order: any) {
@@ -424,17 +486,14 @@ async function restoreStockAndRefund(id: string, order: any) {
 }
 
 async function sendOrderPaidEmail(id: string, order: any) {
-  if (!order.customerId) return
-  const customer = await prisma.customer.findUnique({
-    where: { id: order.customerId }, select: { email: true, name: true },
-  })
-  if (!customer) return
+  const recipient = await orderContact(order)
+  if (!recipient) return
 
   const orderItems = await prisma.orderItem.findMany({ where: { orderId: id } })
   const shippingAddr = [order.shippingAddressLine1, order.shippingAddressLine2, order.shippingCity, order.shippingState, order.shippingPostalCode, order.shippingCountry].filter(Boolean).join(', ')
 
   sendOrderConfirmation({
-    to: customer.email, customerName: customer.name, orderNumber: order.orderNumber,
+    to: recipient.email, customerName: recipient.name, orderNumber: order.orderNumber,
     items: orderItems.map(i => ({ name: i.productName, quantity: i.quantity, price: Number(i.unitPrice) })),
     subtotal: Number(order.subtotal), shippingCost: Number(order.shippingCost),
     tax: Number(order.tax), total: Number(order.total),
@@ -443,14 +502,11 @@ async function sendOrderPaidEmail(id: string, order: any) {
 }
 
 async function sendOrderCancelledEmail(order: any) {
-  if (!order.customerId) return
-  const customer = await prisma.customer.findUnique({
-    where: { id: order.customerId }, select: { email: true, name: true },
-  })
-  if (!customer) return
+  const recipient = await orderContact(order)
+  if (!recipient) return
 
   sendOrderCancelled({
-    to: customer.email, customerName: customer.name,
+    to: recipient.email, customerName: recipient.name,
     orderNumber: order.orderNumber, reason: order.cancelReason || 'Cancelled by admin',
   }).catch(err => logger.error({ err }, 'Cancel email failed'))
 }

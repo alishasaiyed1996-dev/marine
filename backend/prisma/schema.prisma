@@ -300,6 +300,10 @@ model Order {
   total                Decimal   @default(0) @db.Decimal(12, 2)
   currency             String    @default("USD") @db.VarChar(3)
   shippingFullName     String?   @map("shipping_full_name") @db.VarChar(255)
+  // Guest checkout contact email. Customer orders use Customer.email; guest
+  // orders have no Customer row, so this is their only delivery address for
+  // confirmations, shipping notices, and cancellations.
+  shippingEmail        String?   @map("shipping_email") @db.VarChar(255)
   shippingAddressLine1 String?   @map("shipping_address_line1") @db.VarChar(255)
   shippingAddressLine2 String?   @map("shipping_address_line2") @db.VarChar(255)
   shippingCity         String?   @map("shipping_city") @db.VarChar(100)

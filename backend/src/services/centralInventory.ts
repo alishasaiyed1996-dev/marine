@@ -27,6 +27,19 @@ export interface DecreaseResult {
 
 /** Set the availability flag to match stock — the website's out-of-stock UI reads this. */
 async function syncAvailabilityFlag(productId: string, stockCount: number): Promise<void> {
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { availability: true },
+  }).catch((err) => {
+    log.error({ err, productId }, 'Availability flag read failed')
+    return null
+  })
+  if (!product) return
+  // `sourced` and `emergency` are deliberate merchandising states (procurement
+  // availability), not stock-derived ones. A sale must not silently turn an
+  // emergency-listed part into a normal listing.
+  if (product.availability === 'sourced' || product.availability === 'emergency') return
+
   await prisma.product.update({
     where: { id: productId },
     data: { availability: stockCount > 0 ? 'in-stock' : 'out-of-stock' },

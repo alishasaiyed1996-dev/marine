@@ -45,10 +45,12 @@ export async function fullTextSearch(query: string): Promise<{
     prisma.category.findMany({
       where: { isVisible: true, OR: [{ name: { contains: search, mode: 'insensitive' } }] },
       take: 5,
+      include: { _count: { select: { products: { where: { status: 'published' } } } } },
     }),
     prisma.brand.findMany({
       where: { isVisible: true, OR: [{ name: { contains: search, mode: 'insensitive' } }] },
       take: 5,
+      include: { _count: { select: { products: { where: { status: 'published' } } } } },
     }),
   ])
 
@@ -57,7 +59,9 @@ export async function fullTextSearch(query: string): Promise<{
       id: p.id,
       slug: p.slug,
       type: 'product' as const,
+      name: p.name,
       title: p.name,
+      sku: p.sku,
       description: p.description?.slice(0, 120) || '',
       path: `/product/${p.slug}`,
       price: Number(p.salePrice && Number(p.salePrice) < Number(p.regularPrice) ? p.salePrice : p.regularPrice),
@@ -67,15 +71,21 @@ export async function fullTextSearch(query: string): Promise<{
     ...categories.map(c => ({
       id: c.id,
       type: 'category' as const,
+      name: c.name,
       title: c.name,
-      description: '',
+      slug: c.slug,
+      productCount: c._count.products,
+      description: `${c._count.products} products`,
       path: `/products?category=${c.slug}`,
     })),
     ...brands.map(b => ({
       id: b.id,
       type: 'brand' as const,
+      name: b.name,
       title: b.name,
-      description: '',
+      slug: b.slug,
+      productCount: b._count.products,
+      description: `${b._count.products} products`,
       path: `/products?brand=${b.slug}`,
     })),
   ]

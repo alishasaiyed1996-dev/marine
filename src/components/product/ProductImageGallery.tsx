@@ -44,6 +44,22 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const active = images[Math.min(activeIndex, images.length - 1)]
 
+  // Navigating between products reuses this component instance, so every
+  // per-product state (selected photo, failed-image count, zoom/share) must be
+  // reset — otherwise the new gallery opens on a stale index or shows the
+  // placeholder because the previous product's images "failed".
+  useEffect(() => {
+    setActiveIndex(0)
+    setFailedCount(0)
+    setShowZoom(false)
+    setZoomPos({ x: 50, y: 50 })
+    setShowShare(false)
+    setTouchScale(1)
+    setTouchOrigin({ x: 50, y: 50 })
+    lastTouchDistance.current = null
+    lastTapTime.current = 0
+  }, [product.id])
+
   const goPrev = useCallback(() => {
     setTouchScale(1)
     setActiveIndex((i) => (i - 1 + images.length) % images.length)
@@ -57,6 +73,8 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   // Keyboard navigation (← →) while the gallery is on screen
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target?.isContentEditable || (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return
       if (e.key === 'ArrowLeft') goPrev()
       else if (e.key === 'ArrowRight') goNext()
     }

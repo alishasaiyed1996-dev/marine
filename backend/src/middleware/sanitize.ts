@@ -42,13 +42,25 @@ export function sanitize(req: Request, _res: Response, next: NextFunction) {
   if (req.body && typeof req.body === 'object') {
     req.body = sanitizeValue(req.body)
   }
-  // Also sanitize query params (some routes use them for search)
+  // Also sanitize query params (some routes use them for search). Express 5
+  // exposes req.query through a getter that parses on every access, so
+  // mutating the object returned here would be discarded. Define an own,
+  // writable property — same technique as validateQuery.
   if (req.query && typeof req.query === 'object') {
+    const sanitizedQuery: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(req.query)) {
-      if (typeof value === 'string') {
-        (req.query as Record<string, string>)[key] = xss(value, xssOptions).trim()
-      }
+      sanitizedQuery[key] = typeof value === 'string'
+        ? xss(value, xssOptions).trim()
+        : Array.isArray(value)
+          ? value.map((v) => (typeof v === 'string' ? xss(v, xssOptions).trim() : v))
+          : value
     }
+    Object.defineProperty(req, 'query', {
+      value: sanitizedQuery,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
   }
   next()
 }

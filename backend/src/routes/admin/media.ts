@@ -17,6 +17,8 @@ const listMediaQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(24).optional(),
   search: z.string().max(200).optional(),
+  label: z.string().max(100).optional(),
+  sort: z.enum(['date', 'name', 'label', 'size']).optional(),
 })
 
 const uuidParamSchema = z.object({
@@ -39,6 +41,8 @@ const upload = multer({
 router.get('/', validateQuery(listMediaQuerySchema), asyncHandler(async (req, res) => {
   const result = await mediaService.listMediaAssets({
     search: req.query.search as string,
+    label: req.query.label as string | undefined,
+    sort: req.query.sort as string | undefined,
     page: Number(req.query.page),
     limit: Number(req.query.limit),
   })

@@ -58,8 +58,11 @@ export function BusinessIntelligenceCenter({ orders, rfqs, products, customers }
     })
 
     // Inventory health
-    const lowStock = products.filter((p: any) => (p.stockCount || 0) <= (p.lowStockThreshold || 10) && (p.stockCount || 0) > 0).length
-    const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0).length
+    const lowStock = products.filter((p: any) => {
+      const stock = p.stockCount || 0
+      return stock > 0 && stock <= (p.lowStockThreshold ?? 10) && p.availability !== 'out-of-stock'
+    }).length
+    const outOfStock = products.filter((p: any) => (p.stockCount || 0) === 0 || p.availability === 'out-of-stock').length
     const stockHealthPct = products.length > 0 ? ((products.length - lowStock - outOfStock) / products.length) * 100 : 100
 
     results.push({

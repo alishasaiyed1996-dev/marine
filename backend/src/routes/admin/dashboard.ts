@@ -6,7 +6,7 @@ import { z } from 'zod'
 import * as dashboardService from '../../services/dashboardService.js'
 
 const activityQuerySchema = z.object({
-  limit: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 })
 
 const router = Router()
@@ -24,8 +24,7 @@ router.get('/alerts', asyncHandler(async (_req, res) => {
 
 // ─── Recent Activity ───────────────────────────────────────────
 router.get('/activity', validateQuery(activityQuerySchema), asyncHandler(async (req, res) => {
-  const limit = Number(req.query.limit) || 20
-  sendSuccess(res, await dashboardService.getRecentActivity(limit))
+  sendSuccess(res, await dashboardService.getRecentActivity(Number(req.query.limit)))
 }))
 
 export default router

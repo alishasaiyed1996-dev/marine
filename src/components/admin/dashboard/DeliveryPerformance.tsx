@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Truck, Clock, CheckCircle, TrendingUp } from 'lucide-react'
+import { orderDeliveredAt } from './orderFields'
 
 interface Props {
   orders: any[]
@@ -8,12 +9,12 @@ interface Props {
 export function DeliveryPerformance({ orders }: Props) {
   const stats = useMemo(() => {
     const delivered = orders.filter(o =>
-      o.status === 'delivered' && (o.deliveredAt || o.updatedAt) && o.createdAt
+      o.status === 'delivered' && o.createdAt && orderDeliveredAt(o)
     )
 
     const deliveryTimes = delivered.map(o => {
       const created = new Date(o.createdAt).getTime()
-      const deliveredAt = new Date(o.deliveredAt || o.updatedAt).getTime()
+      const deliveredAt = new Date(orderDeliveredAt(o) as string).getTime()
       return Math.round((deliveredAt - created) / 86400000)
     }).filter(d => d >= 0)
 

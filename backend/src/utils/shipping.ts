@@ -19,7 +19,9 @@ export interface ShippingZone {
   active?: boolean
 }
 
-// Mirror of src/data/countries.ts (code → label). Keep in sync.
+// Fallback for runtimes without Intl.DisplayNames. The canonical label lookup
+// below uses ICU so it covers every country the storefront offers, instead of a
+// hand-maintained subset that silently missed zones for most destinations.
 const COUNTRY_LABELS: Record<string, string> = {
   IN: 'India',
   SG: 'Singapore',
@@ -39,6 +41,24 @@ const COUNTRY_LABELS: Record<string, string> = {
   AU: 'Australia',
   NO: 'Norway',
   DK: 'Denmark',
+}
+
+type RegionDisplayNames = { of: (code: string) => string | undefined }
+const DisplayNamesCtor = (Intl as unknown as {
+  DisplayNames?: new (locales: string[], options: { type: string }) => RegionDisplayNames
+}).DisplayNames
+const regionNames = DisplayNamesCtor
+  ? new DisplayNamesCtor(['en'], { type: 'region' })
+  : null
+
+function countryLabel(code: string): string | undefined {
+  try {
+    const label = regionNames?.of(code)
+    if (label && label !== code) return label
+  } catch {
+    // Invalid/unknown region code — fall through to the static subset.
+  }
+  return COUNTRY_LABELS[code]
 }
 
 // Common zone spellings that differ from the country label.
@@ -76,7 +96,7 @@ export function findZoneForCountry(zones: ShippingZone[], country: string): Ship
   const candidates = new Set<string>()
   if (country) candidates.add(normalizeRegion(country))
   if (code) candidates.add(normalizeRegion(code))
-  const label = COUNTRY_LABELS[code]
+  const label = countryLabel(code)
   if (label) candidates.add(normalizeRegion(label))
 
   return zones.find(

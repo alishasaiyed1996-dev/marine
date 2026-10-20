@@ -63,19 +63,19 @@ export default function AdminDashboard() {
           link: '/admin/products?filter=out-of-stock',
         }]
       : []),
-    ...(dashboard.missingImageProducts.length > 0
+    ...(dashboard.missingImageCount > 0
       ? [{
           type: 'warning' as const,
           icon: <ImageOff size={16} />,
-          message: `${dashboard.missingImageProducts.length} products have missing images`,
+          message: `${dashboard.missingImageCount} products have missing images`,
           link: '/admin/products?filter=missing-images',
         }]
       : []),
-    ...(dashboard.lowStockProducts.length > 0
+    ...(dashboard.lowStockCount > 0
       ? [{
           type: 'info' as const,
           icon: <TrendingDown size={16} />,
-          message: `${dashboard.lowStockProducts.length} products are low on stock (at or below their low-stock threshold)`,
+          message: `${dashboard.lowStockCount} products are low on stock (at or below their low-stock threshold)`,
           link: '/admin/products?filter=low-stock',
         }]
       : []),
@@ -374,7 +374,7 @@ export default function AdminDashboard() {
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">
-              Stock Alerts — Low Stock Products ({dashboard.lowStockProducts.length})
+              Stock Alerts — Low Stock Products ({dashboard.lowStockCount})
             </h2>
             <Link
               to="/admin/products?filter=low-stock"

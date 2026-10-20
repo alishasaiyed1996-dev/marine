@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { AlertOctagon } from 'lucide-react'
 import { orderCustomerEmail } from './orderFields'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface Props {
   orders: any[]
@@ -33,20 +34,24 @@ export function FraudDetectionCenter({ orders }: Props) {
     }
 
     for (const [email, entries] of Object.entries(emailOrders)) {
-      // Check 1-hour window
+      // Check 1-hour window. Find the busiest window once per customer —
+      // previously every order in the same cluster emitted an identical alert.
+      entries.sort((a, b) => a.time - b.time)
+      let busiest: typeof entries = []
       for (let i = 0; i < entries.length; i++) {
-        const hourWindow = entries.filter(e => Math.abs(e.time - entries[i].time) < 3600000)
-        if (hourWindow.length >= 4) {
-          const totalValue = hourWindow.reduce((s, e) => s + (e.order.total || 0), 0)
-          alerts.push({
-            id: `vel-${email}-${i}`,
-            type: 'velocity',
-            description: `${hourWindow.length} orders in 1 hour`,
-            severity: totalValue > 5000 ? 'critical' : 'high',
-            email, amount: totalValue,
-            evidence: `Total value: $${totalValue.toLocaleString()} across ${hourWindow.length} orders`,
-          })
-        }
+        const window = entries.slice(i).filter((e) => e.time - entries[i].time < 3600000)
+        if (window.length > busiest.length) busiest = window
+      }
+      if (busiest.length >= 4) {
+        const totalValue = busiest.reduce((s, e) => s + (e.order.total || 0), 0)
+        alerts.push({
+          id: `vel-${email}`,
+          type: 'velocity',
+          description: `${busiest.length} orders in 1 hour`,
+          severity: totalValue > 5000 ? 'critical' : 'high',
+          email, amount: totalValue,
+          evidence: `Total value: $${totalValue.toLocaleString()} across ${busiest.length} orders`,
+        })
       }
 
       // Check cancellation pattern
@@ -64,13 +69,14 @@ export function FraudDetectionCenter({ orders }: Props) {
     }
 
     // 2. Unusually high order values
-    const orderValues = orders.map(o => o.total || 0).filter(v => v > 0)
+    const liveOrders = orders.filter((o) => !isCancelledOrRefunded(o))
+    const orderValues = liveOrders.map(o => o.total || 0).filter(v => v > 0)
     const avgValue = orderValues.length > 0 ? orderValues.reduce((s, v) => s + v, 0) / orderValues.length : 0
     const stdDev = orderValues.length > 0
       ? Math.sqrt(orderValues.reduce((s, v) => s + (v - avgValue) ** 2, 0) / orderValues.length)
       : 0
 
-    for (const order of orders) {
+    for (const order of liveOrders) {
       if (order.total > avgValue + 3 * stdDev && order.total > 5000) {
         alerts.push({
           id: `outlier-${order.id}`,
@@ -106,7 +112,7 @@ export function FraudDetectionCenter({ orders }: Props) {
 
     // 4. Duplicate amounts
     const amountMap: Record<number, string[]> = {}
-    for (const order of orders) {
+    for (const order of liveOrders) {
       if (!order.total || order.total === 0) continue
       const key = Math.round(order.total * 100) / 100
       if (!amountMap[key]) amountMap[key] = []

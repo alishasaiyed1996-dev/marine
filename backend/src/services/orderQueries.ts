@@ -26,6 +26,8 @@ export async function listOrders(params: OrderFilters) {
       { customer: { name: { contains: params.search, mode: 'insensitive' } } },
       { customer: { email: { contains: params.search, mode: 'insensitive' } } },
       { customer: { company: { contains: params.search, mode: 'insensitive' } } },
+      { shippingFullName: { contains: params.search, mode: 'insensitive' } },
+      { shippingEmail: { contains: params.search, mode: 'insensitive' } },
       { items: { some: { productSku: { contains: params.search, mode: 'insensitive' } } } },
     ]
   }
@@ -70,9 +72,20 @@ export async function getOrder(id: string) {
 
 // ─── Queries (Storefront — customer's own orders) ──────────────
 
-export async function listCustomerOrders(customerId: string, page = 1, limit = 20) {
+export async function listCustomerOrders(customerId: string, page = 1, limit = 20, search?: string) {
   const skip = (page - 1) * limit
-  const where = { customerId }
+  const where: any = { customerId }
+
+  // Track Order searches by order number. Filtering server-side means an
+  // older order isn't missed just because it falls outside the first page.
+  if (search) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search)
+    where.OR = [
+      { orderNumber: { contains: search, mode: 'insensitive' } },
+      { trackingNumber: { contains: search, mode: 'insensitive' } },
+      ...(isUuid ? [{ id: search }] : []),
+    ]
+  }
 
   const [orders, total] = await Promise.all([
     prisma.order.findMany({
@@ -98,6 +111,41 @@ export async function listCustomerOrders(customerId: string, page = 1, limit = 2
 export async function getCustomerOrder(id: string, customerId: string) {
   const order = await prisma.order.findFirst({
     where: { id, customerId },
+    include: { items: true, timeline: { orderBy: { createdAt: 'desc' } } },
+  })
+  if (!order) throw Object.assign(new Error('Order not found'), { status: 404 })
+  return order
+}
+
+/**
+ * Guest (and signed-in) order lookup by order number/UUID + email. Requiring
+ * the email used at checkout keeps order details private to the purchaser.
+ */
+export async function trackOrder(orderKey: string, email: string) {
+  const key = orderKey.trim()
+  const address = email.trim()
+  if (!key || !address) {
+    throw Object.assign(new Error('Order not found'), { status: 404 })
+  }
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
+  const order = await prisma.order.findFirst({
+    where: {
+      AND: [
+        {
+          OR: [
+            { orderNumber: { equals: key, mode: 'insensitive' } },
+            ...(isUuid ? [{ id: key }] : []),
+          ],
+        },
+        {
+          OR: [
+            { shippingEmail: { equals: address, mode: 'insensitive' } },
+            { customer: { email: { equals: address, mode: 'insensitive' } } },
+          ],
+        },
+      ],
+    },
     include: { items: true, timeline: { orderBy: { createdAt: 'desc' } } },
   })
   if (!order) throw Object.assign(new Error('Order not found'), { status: 404 })

@@ -30,8 +30,12 @@ export function RFQSection() {
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0)
   }, [])
-  const { rfqSubmitted, rfqId, rfqDeadline, setRfqDeadline } = useStore()
+  const { rfqId, rfqDeadline, setRfqDeadline } = useStore()
   const settings = useStoreSettings()
+  // Track success locally: the shared store flag is the dedicated /rfq page's
+  // state, and leaking it made a later /rfq visit show a success screen for a
+  // home-page submission.
+  const [submitted, setSubmitted] = useState(false)
   // Persisted draft: a customer who hard-refreshes (or fat-fingers F5) keeps
   // every field they already typed instead of losing the whole form.
   const [formData, setFormData] = usePersistentState<typeof INITIAL_RFQ>('alka-rfq-draft', INITIAL_RFQ)
@@ -63,8 +67,9 @@ export function RFQSection() {
         consent: true,
         source: 'home-rfq-section',
       })
-      useStore.setState({ rfqSubmitted: true, rfqId: result.rfqNumber || rfqId })
+      useStore.setState({ rfqId: result.rfqNumber || rfqId })
       setRfqDeadline(getRfqResponseDeadline(formData.urgency))
+      setSubmitted(true)
       // Draft fulfilled — clear it so the next visit starts clean.
       setFormData(INITIAL_RFQ)
     } catch (err) {
@@ -78,7 +83,7 @@ export function RFQSection() {
     }
   }
 
-  if (rfqSubmitted) {
+  if (submitted) {
     return (
       <section className="section-y bg-[var(--secondary-bg)]">
         <div className="site-container">

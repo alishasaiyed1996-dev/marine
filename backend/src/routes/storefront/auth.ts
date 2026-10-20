@@ -46,7 +46,7 @@ const resetPasswordSchema = z.object({
 router.post('/register', registerLimiter, validateBody(registerSchema), asyncHandler(async (req, res) => {
   try {
     const result = await authService.registerCustomer(req.body)
-    res.cookie('refreshToken', result.refreshToken, result.cookieOptions)
+    res.cookie(authService.CUSTOMER_REFRESH_COOKIE, result.refreshToken, result.cookieOptions)
     sendSuccess(res, { accessToken: result.accessToken, user: result.user }, 201)
   } catch (err: any) {
     sendError(res, err.message, err.status || 500)
@@ -57,7 +57,7 @@ router.post('/register', registerLimiter, validateBody(registerSchema), asyncHan
 router.post('/login', loginLimiter, validateBody(loginSchema), asyncHandler(async (req, res) => {
   try {
     const result = await authService.loginCustomer(req.body.email, req.body.password)
-    res.cookie('refreshToken', result.refreshToken, result.cookieOptions)
+    res.cookie(authService.CUSTOMER_REFRESH_COOKIE, result.refreshToken, result.cookieOptions)
     sendSuccess(res, { accessToken: result.accessToken, user: result.user })
   } catch (err: any) {
     sendError(res, err.message, err.status || 500)
@@ -66,7 +66,8 @@ router.post('/login', loginLimiter, validateBody(loginSchema), asyncHandler(asyn
 
 // ─── Logout ────────────────────────────────────────────────────
 router.post('/logout', authenticateCustomer, asyncHandler(async (_req, res) => {
-  res.clearCookie('refreshToken')
+  res.clearCookie(authService.CUSTOMER_REFRESH_COOKIE)
+  res.clearCookie(authService.LEGACY_REFRESH_COOKIE)
   sendSuccess(res, { message: 'Logged out' })
 }))
 
@@ -93,8 +94,10 @@ router.put('/me', authenticateCustomer, validateBody(updateProfileSchema), async
 // ─── Refresh Token ────────────────────────────────────────────
 router.post('/refresh', asyncHandler(async (req, res) => {
   try {
-    const result = await authService.refreshCustomerToken(req.cookies?.refreshToken)
-    res.cookie('refreshToken', result.refreshToken, result.cookieOptions)
+    const token = req.cookies?.[authService.CUSTOMER_REFRESH_COOKIE]
+      || req.cookies?.[authService.LEGACY_REFRESH_COOKIE]
+    const result = await authService.refreshCustomerToken(token)
+    res.cookie(authService.CUSTOMER_REFRESH_COOKIE, result.refreshToken, result.cookieOptions)
     sendSuccess(res, { accessToken: result.accessToken })
   } catch (err: any) {
     sendError(res, err.message, err.status || 500)

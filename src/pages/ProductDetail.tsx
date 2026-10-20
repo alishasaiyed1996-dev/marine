@@ -130,6 +130,11 @@ export default function ProductDetail() {
 
   const price = product.price
   const effectivePrice = product.onSale && product.salePrice ? product.salePrice : price
+  // `product.price` is the effective (sale) price after adaptation; the
+  // pre-discount amount lives in `regularPrice`.
+  const originalPrice = product.regularPrice && product.regularPrice > 0
+    ? product.regularPrice
+    : price
 
   // ── Categorized content ────────────────────────────────────────
   // The admin description is a free-text blob mixing "Label: value" spec
@@ -178,7 +183,10 @@ export default function ProductDetail() {
 
   const handleAddToCart = () => {
     if (!product.inStock) return
+    const before = useStore.getState().cart.find((i) => i.product.id === product.id)?.quantity ?? 0
     for (let i = 0; i < quantity; i++) addToCart(product)
+    const after = useStore.getState().cart.find((i) => i.product.id === product.id)?.quantity ?? 0
+    if (after <= before) return
     setAdded(true)
     setTimeout(() => setAdded(false), 2000)
   }
@@ -254,10 +262,10 @@ export default function ProductDetail() {
                       ${product.salePrice.toFixed(2)}
                     </span>
                     <span className="font-display font-bold text-xl text-[var(--text-muted)] line-through tabular-nums">
-                      ${product.price.toFixed(2)}
+                      ${originalPrice.toFixed(2)}
                     </span>
                     <span className="text-xs font-bold bg-[var(--danger)] text-[var(--btn-danger-text)] px-2 py-0.5 rounded">
-                      {t('product.percentageOff', { percent: Math.round((1 - product.salePrice / product.price) * 100) })}
+                      {t('product.percentageOff', { percent: Math.max(0, Math.round((1 - product.salePrice / originalPrice) * 100)) })}
                     </span>
                   </div>
                 ) : (
@@ -342,8 +350,10 @@ export default function ProductDetail() {
                     </button>
                     <span className="min-w-[32px] text-center text-sm font-semibold text-[var(--text-primary)]">{quantity}</span>
                     <button
-                      onClick={() => setQuantity((q) => q + 1)}
-                      className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-[var(--border)] transition-colors border-none cursor-pointer font-bold text-[var(--text-secondary)] text-sm"
+                      onClick={() => setQuantity((q) => Math.min(q + 1, Math.max(1, product.stockCount)))}
+                      disabled={quantity >= Math.max(1, product.stockCount)}
+                      aria-label={t('product.quantity')}
+                      className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-[var(--border)] transition-colors border-none cursor-pointer font-bold text-[var(--text-secondary)] text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Plus size={16} />
                     </button>

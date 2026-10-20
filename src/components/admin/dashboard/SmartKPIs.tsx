@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Package, CheckCircle, DollarSign, AlertTriangle, Sparkles, Tag, FileText, BarChart3 } from 'lucide-react'
+import { isCancelledOrRefunded } from './orderStatus'
 
 interface KPI {
   label: string
@@ -26,7 +27,7 @@ export function SmartKPIs({ stats, orders, rfqs, products }: Props) {
       (sum, p) => sum + (p.regularPrice || 0) * (p.stockCount || 0), 0
     )
 
-    const validOrders = orders.filter(o => o.status !== 'cancelled')
+    const validOrders = orders.filter(o => !isCancelledOrRefunded(o))
     const avgOrder = validOrders.length > 0
       ? validOrders.reduce((sum, o) => sum + (o.total || 0), 0) / validOrders.length
       : 0

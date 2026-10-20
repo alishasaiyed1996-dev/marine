@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { Truck, Shield } from 'lucide-react'
+import { Truck, Shield, Loader2 } from 'lucide-react'
 import { useStore, type SkippedCartItem } from '../store/useStore'
 import { storefront } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
 import { calcShippingCost } from '../lib/shipping'
 import { useLocalizedPath, useLocale } from '../lib/locale'
-import { usePayPalAvailability } from '../components/PayPalProvider'
+import { usePayPalAvailability } from '../hooks/usePayPalAvailability'
 import { SEO } from '../components/seo/SEO'
 import { CheckoutSuccess } from './checkout/CheckoutSuccess'
 import { CheckoutShipping } from './checkout/CheckoutShipping'
@@ -18,13 +18,15 @@ import { CheckoutReview } from './checkout/CheckoutReview'
 export default function Checkout() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const lp = useLocalizedPath()
   const locale = useLocale()
   const stepLabels = [t('checkout.shippingLabel'), t('checkout.paymentLabel'), t('checkout.reviewLabel')]
   const {
-    cart, user, getCartTotal, clearCart, getCartCount,
+    cart, user, isSessionLoading, getCartTotal, clearCart, getCartCount,
     checkoutStep, setCheckoutStep,
     orderPlaced, setOrderPlaced,
+    setOrderSummary,
     cancelReason, setCancelReason,
   } = useStore()
 
@@ -52,6 +54,105 @@ export default function Checkout() {
   // Idempotency key for this checkout session: lets the backend dedupe a
   // double-submitted order creation (see backend createOrder `[idem:...]`).
   const idempotencyKeyRef = useRef(`ck-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  // Tracks the checkout inputs baked into a pre-created PayPal store order. If
+  // shipping, cart, or the payment method changes, that order must not be
+  // reused — otherwise the customer confirms stale details.
+  const createdOrderFingerprintRef = useRef('')
+
+  // PayPal's redirect flow (used when the popup is blocked or a redirect-only
+  // funding source is chosen) comes back to /checkout?paypal=success&orderId=…
+  // with the PayPal order token. Capture it here so the customer sees the
+  // confirmation instead of being bounced to the catalog by the empty-cart
+  // guard.
+  const paypalReturnHandledRef = useRef(false)
+  const [paypalReturnRestoring, setPaypalReturnRestoring] = useState(
+    () => searchParams.get('paypal') === 'success'
+      && Boolean(searchParams.get('orderId') && searchParams.get('token'))
+  )
+
+  useEffect(() => {
+    const paypalStatus = searchParams.get('paypal')
+    if (!paypalStatus || paypalReturnHandledRef.current) return
+    // After a reload the access token is restored from the refresh cookie
+    // asynchronously. Wait for that to finish so a signed-in customer's order
+    // is captured with the right identity.
+    if (paypalStatus === 'success' && localStorage.getItem('alka-auth') && isSessionLoading) return
+
+    paypalReturnHandledRef.current = true
+    const returnedOrderId = searchParams.get('orderId')
+    const paypalOrderId = searchParams.get('token')
+
+    if (paypalStatus === 'cancelled') {
+      setOrderError('PayPal payment was cancelled. Your cart is still saved.')
+      setPaypalReturnRestoring(false)
+      setSearchParams({}, { replace: true })
+      return
+    }
+
+    if (paypalStatus !== 'success' || !returnedOrderId || !paypalOrderId) {
+      setOrderError('Payment could not be confirmed. Please contact support with your order number.')
+      setPaypalReturnRestoring(false)
+      setSearchParams({}, { replace: true })
+      return
+    }
+
+    let active = true
+    setOrderError('')
+    setOrderLoading(true)
+    useStore.setState({ orderId: returnedOrderId })
+
+    void (async () => {
+      try {
+        const result = await storefront.payments.capturePaypalOrder({
+          paypalOrderId,
+          orderId: returnedOrderId,
+        })
+        if (!active) return
+        if (result.status === 'completed' && result.orderNumber) {
+          setOrderSummary({
+            orderNumber: result.orderNumber,
+            subtotal: Number(result.subtotal ?? 0),
+            shippingCost: Number(result.shippingCost ?? 0),
+            tax: Number(result.tax ?? 0),
+            total: Number(result.total ?? 0),
+            currency: result.currency || 'USD',
+            shippingEmail: result.shippingEmail ?? null,
+          })
+        } else {
+          setOrderSummary(null)
+        }
+        setOrderPlaced(true)
+        clearCart()
+        setCheckoutStep(1)
+        setSearchParams({}, { replace: true })
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      } catch (err: unknown) {
+        if (!active) return
+        setOrderError(err instanceof Error
+          ? err.message
+          : 'Payment could not be confirmed. Please contact support with your order number.')
+        setPaypalReturnRestoring(false)
+        setSearchParams({}, { replace: true })
+      } finally {
+        if (active) setOrderLoading(false)
+      }
+    })()
+
+    return () => { active = false }
+  }, [searchParams, setSearchParams, isSessionLoading, setOrderPlaced, setOrderSummary, clearCart, setCheckoutStep])
+
+  const checkoutFingerprint = useCallback(() => JSON.stringify({
+    paymentMethod,
+    shipping,
+    cart: cart.map((item) => [item.product.id, item.quantity]),
+  }), [paymentMethod, shipping, cart])
+
+  const resetPreparedOrder = () => {
+    if (!createdOrderId) return
+    setCreatedOrderId(null)
+    createdOrderFingerprintRef.current = ''
+    idempotencyKeyRef.current = `ck-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
 
   // Pre-fill name and email from user when available
   useEffect(() => {
@@ -64,12 +165,13 @@ export default function Checkout() {
     }
   }, [user])
 
-  // Redirect if empty cart (guest checkout is allowed)
+  // Redirect if empty cart (guest checkout is allowed). While a PayPal return
+  // is being captured the order may already be placed and the cart cleared.
   useEffect(() => {
-    if (!orderPlaced && cart.length === 0) {
+    if (!orderPlaced && !paypalReturnRestoring && cart.length === 0) {
       navigate(`/${locale}/products`)
     }
-  }, [cart.length, orderPlaced, navigate, locale])
+  }, [cart.length, orderPlaced, paypalReturnRestoring, navigate, locale])
 
   const settings = useStoreSettings()
   const subtotal = getCartTotal()
@@ -152,7 +254,10 @@ export default function Checkout() {
       })),
       shipping: {
         fullName: shipping.fullName,
-        email: !user ? shipping.email : undefined,
+        // Always send the email: guests need it for confirmations/tracking,
+        // and a signed-in request still falls back to a guest order if its
+        // session token has expired mid-checkout.
+        email: shipping.email.trim() || undefined,
         addressLine1: shipping.addressLine1,
         addressLine2: shipping.addressLine2 || undefined,
         city: shipping.city,
@@ -204,14 +309,22 @@ export default function Checkout() {
           }
         : null,
     })
+    createdOrderFingerprintRef.current = checkoutFingerprint()
     return serverOrderId
-  }, [cart, user, shipping, paymentMethod, subtotal, tax, total])
+  }, [cart, shipping, paymentMethod, subtotal, tax, total, checkoutFingerprint])
 
   const handlePlaceOrder = async () => {
     setOrderLoading(true)
     setOrderError('')
     try {
+      // A store order may already have been prepared for a previous PayPal
+      // attempt. Never submit it if the customer changed shipping/cart/method.
+      if (createdOrderId && createdOrderFingerprintRef.current !== checkoutFingerprint()) {
+        resetPreparedOrder()
+      }
       await createStoreOrder()
+      setCreatedOrderId(null)
+      createdOrderFingerprintRef.current = ''
       setOrderPlaced(true)
       clearCart()
       setCheckoutStep(1)
@@ -226,8 +339,14 @@ export default function Checkout() {
 
   // PayPal Smart Buttons callbacks
   const handleCreatePaypalOrder = async (_data: unknown, _actions: unknown) => {
-    // First create the store order if not already created
+    // First create the store order if not already created. Reuse is only safe
+    // while every input that was baked into it is unchanged.
+    const fingerprint = checkoutFingerprint()
     let currentOrderId = createdOrderId
+    if (currentOrderId && createdOrderFingerprintRef.current !== fingerprint) {
+      resetPreparedOrder()
+      currentOrderId = null
+    }
     if (!currentOrderId) {
       setCreatingOrder(true)
       try {
@@ -263,6 +382,8 @@ export default function Checkout() {
         orderId,
       })
 
+      setCreatedOrderId(null)
+      createdOrderFingerprintRef.current = ''
       setOrderPlaced(true)
       clearCart()
       setCheckoutStep(1)
@@ -288,8 +409,15 @@ export default function Checkout() {
   }
 
   const updateShipping = (field: string, value: string) => {
+    // Any address edit invalidates a store order pre-created for PayPal.
+    resetPreparedOrder()
     setShipping((prev) => ({ ...prev, [field]: value }))
     setErrors((prev) => ({ ...prev, [field]: false }))
+  }
+
+  const handlePaymentMethodChange = (method: string) => {
+    if (method !== paymentMethod) resetPreparedOrder()
+    setPaymentMethod(method)
   }
 
   // Order confirmation
@@ -302,7 +430,18 @@ export default function Checkout() {
         setCancelReason={setCancelReason}
         setCancelSubmitted={setCancelSubmitted}
         handleContinueShopping={handleContinueShopping}
+        guestEmail={!user ? shipping.email.trim() || undefined : undefined}
       />
+    )
+  }
+
+  // Returning from PayPal's redirect flow — capture before showing checkout.
+  if (paypalReturnRestoring) {
+    return (
+      <div className="py-32 text-center" role="status" aria-live="polite">
+        <Loader2 size={28} className="mx-auto mb-4 animate-spin text-[var(--accent-primary)]" />
+        <p className="text-sm text-[var(--text-secondary)]">{t('checkout.paypalProcessing')}</p>
+      </div>
     )
   }
 
@@ -389,7 +528,7 @@ export default function Checkout() {
           {checkoutStep === 2 && (
             <CheckoutPayment
               paymentMethod={paymentMethod}
-              setPaymentMethod={setPaymentMethod}
+              setPaymentMethod={handlePaymentMethodChange}
               availableMethods={Array.from(availablePaymentMethods)}
               goToStep={goToStep}
             />
