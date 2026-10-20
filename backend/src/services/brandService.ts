@@ -1,8 +1,44 @@
 import { prisma } from '../server.js'
-import { generateSlug } from '../utils/helpers.js'
+import { isHubIndexable } from '../utils/hubSeo.js'
+import { generateSlug, assertValidSlug } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { invalidateCachePath } from '../middleware/cacheGet.js'
 import type { AuthUser } from '../middleware/auth.js'
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+async function resolveBrandSlug(base: string, explicit: boolean, excludeId?: string): Promise<string> {
+  const clean = assertValidSlug(base)
+  const [current, historical] = await Promise.all([
+    prisma.brand.findFirst({
+      where: { slug: clean, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      select: { id: true },
+    }),
+    prisma.brandSlugHistory.findUnique({
+      where: { slug: clean },
+      select: { id: true, brandId: true },
+    }),
+  ])
+  const ownHistory = historical && historical.brandId === excludeId
+  if (!current && (!historical || ownHistory)) {
+    if (ownHistory && historical) {
+      await prisma.brandSlugHistory.delete({ where: { id: historical.id } }).catch(() => {})
+    }
+    return clean
+  }
+  if (explicit) {
+    const message = 'That URL slug is already used by another brand or an old brand URL.'
+    throw Object.assign(new Error(message), { status: 409, details: [{ field: 'slug', message }] })
+  }
+  let suffix = 2
+  while (true) {
+    const candidate = `${clean}-${suffix}`
+    const clash = await prisma.brand.findUnique({ where: { slug: candidate }, select: { id: true } })
+    const oldClash = await prisma.brandSlugHistory.findUnique({ where: { slug: candidate }, select: { id: true } })
+    if (!clash && !oldClash) return candidate
+    suffix += 1
+  }
+}
 
 // ─── Queries ──────────────────────────────────────────────────
 
@@ -37,17 +73,38 @@ export async function getBrandBySlug(slug: string) {
     },
   })
   if (!brand) throw Object.assign(new Error('Brand not found'), { status: 404 })
-  return { brand }
+  // Same shared decision as the sitemap and the server-rendered robots meta.
+  const indexable = isHubIndexable({
+    description: brand.description,
+    seoTitle: brand.seoTitle,
+    seoDescription: brand.seoDescription,
+    productCount: brand._count.products,
+    isVisible: brand.isVisible,
+  })
+  return { brand: { ...brand, indexable } }
+}
+
+/** Resolve a previous brand URL to its current slug for a 301. */
+export async function getBrandByOldSlug(slug: string) {
+  const row = await prisma.brandSlugHistory.findUnique({
+    where: { slug },
+    include: { brand: { select: { slug: true, isVisible: true } } },
+  })
+  if (!row || !row.brand.isVisible) return null
+  return { slug: row.brand.slug }
 }
 
 // ─── Mutations ────────────────────────────────────────────────
 
 export async function createBrand(data: Record<string, unknown>, actor: AuthUser, ipAddress = '') {
-  const slug = generateSlug(data.name as string)
-  const existing = await prisma.brand.findUnique({ where: { slug } })
-  if (existing) throw Object.assign(new Error('Brand with this name already exists'), { status: 400 })
+  const { slug: requestedSlug, ...fields } = data
+  const explicit = typeof requestedSlug === 'string' && requestedSlug.trim() !== ''
+  const slug = await resolveBrandSlug(
+    explicit ? String(requestedSlug) : generateSlug(fields.name as string),
+    explicit,
+  )
 
-  const brand = await prisma.brand.create({ data: { ...data, slug } as never })
+  const brand = await prisma.brand.create({ data: { ...fields, slug } as never })
   invalidateCachePath('/storefront/brands')
   await logAudit({ actor, action: 'brand.create', entityType: 'brand', entityId: brand.id, entityName: brand.name, newValue: brand, ipAddress })
   return { brand }
@@ -57,14 +114,23 @@ export async function updateBrand(id: string, data: Record<string, unknown>, act
   const existing = await prisma.brand.findUnique({ where: { id } })
   if (!existing) throw Object.assign(new Error('Brand not found'), { status: 404 })
 
+  // Renaming keeps the URL. The slug changes only when the admin deliberately
+  // submits a different one; the old URL is stored for a 301.
+  const { slug: requestedSlug, ...fields } = data
   let slug = existing.slug
-  if (data.name && data.name !== existing.name) {
-    slug = generateSlug(data.name as string)
-    const slugExists = await prisma.brand.findFirst({ where: { slug, id: { not: id } } })
-    if (slugExists) slug = `${slug}-${Date.now()}`
+  if (requestedSlug !== undefined && requestedSlug !== null && String(requestedSlug).trim() !== '') {
+    const nextSlug = await resolveBrandSlug(String(requestedSlug), true, id)
+    if (nextSlug !== existing.slug) slug = nextSlug
   }
 
-  const brand = await prisma.brand.update({ where: { id }, data: { ...data, slug } })
+  const brand = await prisma.brand.update({ where: { id }, data: { ...fields, slug } })
+  if (slug !== existing.slug) {
+    await prisma.brandSlugHistory.upsert({
+      where: { slug: existing.slug },
+      update: {},
+      create: { brandId: id, slug: existing.slug },
+    })
+  }
   invalidateCachePath('/storefront/brands')
   await logAudit({ actor, action: 'brand.update', entityType: 'brand', entityId: brand.id, entityName: brand.name, previousValue: existing, newValue: brand, ipAddress })
   return { brand }

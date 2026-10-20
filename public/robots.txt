@@ -1,13 +1,19 @@
 # Alka Traders - Robots.txt
 # https://alkatraders.co
 
-# Default: allow all crawlers
+# Default: allow all crawlers. Public storefront pages, product pages, brand
+# hubs and category hubs are crawlable; transactional and user-specific pages
+# are not. Keep this list in sync with PRIVATE_ROUTE_RE in server.js.
 User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /api/
 Disallow: /*/checkout
-Disallow: /*/account/
+Disallow: /*/account
+Disallow: /*/search
+Disallow: /*/track-order
+Disallow: /*/forgot-password
+Disallow: /*/reset-password
 
 # AI Crawlers - Explicitly allow for AI chatbot SEO
 User-agent: GPTBot

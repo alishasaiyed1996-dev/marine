@@ -37,8 +37,14 @@ export interface Product {
   filename: string
   name: string
   brand: string
+  /** Canonical brand slug for the brand hub (/en/brands/{slug}/). */
+  brandSlug?: string
   sku: string
   category: ProductCategory
+  /** Human-readable category name for breadcrumbs and schema. */
+  categoryName?: string
+  /** False when the category hub is hidden and therefore 404s. */
+  categoryVisible?: boolean
   industry: string[]
   availability: Availability
   specs: Record<string, string>
@@ -46,6 +52,8 @@ export interface Product {
   description: string
   condition: 'new' | 'refurbished' | 'used' | 'reconditioned' | 'unused'
   price: number
+  currency?: string
+  ogImageUrl?: string | null
   regularPrice?: number
   salePrice?: number
   onSale?: boolean

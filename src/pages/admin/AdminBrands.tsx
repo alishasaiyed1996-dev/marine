@@ -9,12 +9,16 @@ import {
   Upload,
   X,
   Eye,
+  EyeOff,
   Loader2,
+  ShieldCheck,
+  AlertTriangle,
 } from 'lucide-react'
 import { admin } from '../../lib/api'
 import { useToast } from '../../components/admin/toast-context'
 import { ConfirmDialog } from '../../components/admin/ConfirmDialog'
 import { OptimizedImage } from '../../components/ui/OptimizedImage'
+import { getHubSeoIssues, getHubSeoWarnings } from '../../lib/seo/hubSeo'
 
 interface BrandFormData {
   name: string
@@ -26,6 +30,7 @@ interface BrandFormData {
   website: string
   country: string
   logo: string
+  isVisible: boolean
 }
 
 const logoInputId = 'brand-logo-upload'
@@ -33,10 +38,23 @@ const logoInputId = 'brand-logo-upload'
 const availableSectors = ['Marine', 'Industrial', 'Automation', 'Hydraulic', 'Pneumatic', 'Electrical', 'Power', 'Marine Pumps', 'Navigation', 'Safety']
 
 function getEmptyForm(): BrandFormData {
-  return { name: '', slug: '', sectors: [], description: '', seoTitle: '', seoDescription: '', website: '', country: '', logo: '' }
+  return { name: '', slug: '', sectors: [], description: '', seoTitle: '', seoDescription: '', website: '', country: '', logo: '', isVisible: true }
 }
 
-interface BrandItem { id: string; name: string; slug: string; sectors: string[]; logo: string; description: string; website: string; country: string; productCount?: number }
+interface BrandItem {
+  id: string
+  name: string
+  slug: string
+  sectors: string[]
+  logo: string
+  description: string
+  seoTitle: string
+  seoDescription: string
+  website: string
+  country: string
+  productCount?: number
+  isVisible: boolean
+}
 
 export default function AdminBrands() {
   const { toast } = useToast()
@@ -48,6 +66,7 @@ export default function AdminBrands() {
   const [allBrands, setAllBrands] = useState<BrandItem[]>([])
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [logoUploading, setLogoUploading] = useState(false)
+  const [editingOriginalSlug, setEditingOriginalSlug] = useState('')
 
   const fetchBrands = useCallback(async () => {
     setLoading(true)
@@ -64,6 +83,7 @@ export default function AdminBrands() {
         website: b.website || '',
         country: b.country || '',
         productCount: b._count?.products ?? b.productCount ?? 0,
+        isVisible: b.isVisible ?? true,
       }))
       setAllBrands(items)
     } catch (err: any) {
@@ -87,6 +107,7 @@ export default function AdminBrands() {
 
   const openAddModal = () => {
     setEditingBrand(null)
+    setEditingOriginalSlug('')
     setForm(getEmptyForm())
     setShowModal(true)
   }
@@ -95,11 +116,28 @@ export default function AdminBrands() {
     const brand = allBrands.find((b) => b.id === brandId)
     if (!brand) return
     setEditingBrand(brandId)
-    setForm({ name: brand.name, slug: brand.slug, sectors: [...brand.sectors], description: brand.description, seoTitle: (brand as any).seoTitle || '', seoDescription: (brand as any).seoDescription || '', website: brand.website, country: brand.country, logo: brand.logo || '' })
+    setEditingOriginalSlug(brand.slug)
+    setForm({
+      name: brand.name,
+      slug: brand.slug,
+      sectors: [...brand.sectors],
+      description: brand.description,
+      seoTitle: brand.seoTitle,
+      seoDescription: brand.seoDescription,
+      website: brand.website,
+      country: brand.country,
+      logo: brand.logo || '',
+      isVisible: brand.isVisible,
+    })
     setShowModal(true)
   }
 
   const handleSave = async () => {
+    const slug = form.slug.trim()
+    if (slug && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      toast('URL slug must use lowercase letters, numbers and single hyphens', 'error')
+      return
+    }
     try {
       const payload = {
         name: form.name,
@@ -110,6 +148,7 @@ export default function AdminBrands() {
         website: form.website,
         country: form.country,
         logoUrl: form.logo,
+        isVisible: form.isVisible,
       }
       if (editingBrand) {
         await admin.brands.update(editingBrand, payload)
@@ -140,6 +179,19 @@ export default function AdminBrands() {
     setForm((prev) => ({ ...prev, sectors: prev.sectors.includes(sector) ? prev.sectors.filter((s) => s !== sector) : [...prev.sectors, sector] }))
   }
 
+  const toggleVisibility = async (brandId: string) => {
+    const brand = allBrands.find((item) => item.id === brandId)
+    if (!brand) return
+    const nextVisible = !brand.isVisible
+    setAllBrands((prev) => prev.map((item) => item.id === brandId ? { ...item, isVisible: nextVisible } : item))
+    try {
+      await admin.brands.update(brandId, { isVisible: nextVisible })
+    } catch (err: any) {
+      setAllBrands((prev) => prev.map((item) => item.id === brandId ? { ...item, isVisible: !nextVisible } : item))
+      toast(err.message || 'Failed to update visibility', 'error')
+    }
+  }
+
   const inputClass = 'w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all focus:border-[var(--accent-gold)]'
   const labelClass = 'mb-1.5 block text-[0.6875rem] font-bold uppercase tracking-wider text-[var(--text-muted)]'
 
@@ -168,27 +220,55 @@ export default function AdminBrands() {
           <div className="col-span-full text-center py-16">{loading ? <Loader2 size={40} className="mx-auto text-[var(--accent-gold)] animate-spin mb-3" /> : <Award size={40} className="mx-auto text-[var(--text-muted)] mb-3" />}<p className="text-sm font-semibold text-[var(--text-muted)]">{loading ? 'Loading brands...' : 'No brands found'}</p></div>
         ) : filteredBrands.map((brand) => {
           const realCount = brand.productCount || 0
+          const seoIssues = getHubSeoIssues({
+            description: brand.description,
+            seoTitle: brand.seoTitle,
+            seoDescription: brand.seoDescription,
+            productCount: realCount,
+            isVisible: brand.isVisible,
+          })
+          const seoWarnings = getHubSeoWarnings({
+            description: brand.description,
+            seoTitle: brand.seoTitle,
+            seoDescription: brand.seoDescription,
+          })
           return (
-            <div key={brand.id} className="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 transition-all hover:border-[var(--accent-gold)] hover:-translate-y-0.5 hover:shadow-lg">
+            <div key={brand.id} className={`group rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 transition-all hover:border-[var(--accent-gold)] hover:-translate-y-0.5 hover:shadow-lg ${brand.isVisible ? '' : 'opacity-60'}`}>
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-soft)] border border-[var(--border)]">
                     {brand.logo ? <OptimizedImage src={brand.logo} alt={brand.name} width={32} height={32} loading="lazy" className="h-8 w-8 object-contain" /> : <span className="font-display text-lg font-extrabold text-[var(--accent-blue)]">{brand.name.slice(0, 2).toUpperCase()}</span>}
                   </div>
                   <div>
-                    <h3 className="font-display text-sm font-bold text-[var(--text-primary)]">{brand.name}</h3>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <h3 className="font-display text-sm font-bold text-[var(--text-primary)]">{brand.name}</h3>
+                      {!brand.isVisible && <span className="rounded bg-[var(--surface-soft)] px-1.5 py-0.5 text-[0.5rem] font-bold uppercase tracking-wide text-[var(--text-muted)]">Hidden</span>}
+                    </div>
                     <p className="text-[0.625rem] text-[var(--text-muted)] font-mono">{brand.slug}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => toggleVisibility(brand.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors" title={brand.isVisible ? 'Hide from storefront' : 'Show on storefront'}>{brand.isVisible ? <EyeOff size={12} /> : <Eye size={12} />}</button>
                   <button onClick={() => openEditModal(brand.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-gold)] hover:bg-[var(--gold-muted)] transition-colors" title="Edit"><Pencil size={12} /></button>
-                  <a href={`/en/brands/${brand.slug}/`} target="_blank" rel="noopener noreferrer" className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors" title="View on storefront"><Eye size={12} /></a>
+                  {brand.isVisible && <a href={`/en/brands/${brand.slug}/`} target="_blank" rel="noopener noreferrer" className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors" title="View on storefront"><Eye size={12} /></a>}
                   <button onClick={() => setDeleteTarget(brand.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-danger/5 transition-colors" title="Delete"><Trash2 size={12} /></button>
                 </div>
               </div>
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {brand.sectors.map((sector) => <span key={sector} className="inline-block rounded-md bg-[var(--accent-blue)]/8 px-2 py-0.5 text-[0.5625rem] font-bold text-[var(--accent-blue)]">{sector}</span>)}
               </div>
+              {seoIssues.length === 0 ? (
+                <div className="mb-3 flex items-center gap-1 rounded-md bg-[var(--success)]/10 px-2 py-1 text-[0.5625rem] font-bold text-[var(--success)]" title={seoWarnings.join('\n') || undefined}>
+                  <ShieldCheck size={10} /> Indexable hub{seoWarnings.length > 0 ? ` · ${seoWarnings.length} warning${seoWarnings.length === 1 ? '' : 's'}` : ''}
+                </div>
+              ) : (
+                <div className="mb-3 rounded-md bg-[var(--accent-gold)]/10 px-2 py-1" title={[...seoIssues, ...seoWarnings].join('\n')}>
+                  <p className="flex items-center gap-1 text-[0.5625rem] font-bold text-[var(--accent-gold)]">
+                    <AlertTriangle size={10} /> {seoIssues.length} SEO gap{seoIssues.length === 1 ? '' : 's'}
+                  </p>
+                  <p className="mt-0.5 text-[0.5625rem] leading-snug text-[var(--text-muted)]">{seoIssues[0]}</p>
+                </div>
+              )}
               <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
                 <div className="flex items-center gap-1.5"><Package size={12} className="text-[var(--text-muted)]" /><span className="text-xs font-bold text-[var(--text-primary)]">{realCount}</span><span className="text-[0.625rem] text-[var(--text-muted)]">products</span></div>
                 {brand.logo ? <span className="text-[0.5625rem] font-bold text-[var(--success)] flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[var(--success)]" />Logo</span> : <span className="text-[0.5625rem] font-bold text-[var(--accent-gold)] flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-gold)]" />No Logo</span>}
@@ -237,7 +317,15 @@ export default function AdminBrands() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className={labelClass}>Brand Name *</label><input type="text" value={form.name} onChange={(e) => { const name = e.target.value; setForm((prev) => ({ ...prev, name, slug: prev.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') })) }} placeholder="e.g. ABB" className={inputClass} /></div>
-                <div><label className={labelClass}>Slug</label><input type="text" value={form.slug} onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))} placeholder="e.g. abb" className={`${inputClass} font-mono`} /></div>
+                <div>
+                  <label className={labelClass}>Slug</label>
+                  <input type="text" value={form.slug} onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))} placeholder="e.g. abb" maxLength={200} className={`${inputClass} font-mono`} />
+                  {editingBrand && editingOriginalSlug && form.slug !== editingOriginalSlug && (
+                    <p className="mt-1 text-[0.625rem] font-bold text-[var(--accent-gold)]">
+                      Changing this moves the live URL. /{editingOriginalSlug}/ will permanently redirect (301) to /{form.slug || editingOriginalSlug}/.
+                    </p>
+                  )}
+                </div>
               </div>
               <div>
                 <label className={labelClass}>Sectors</label>
@@ -245,9 +333,31 @@ export default function AdminBrands() {
                   {availableSectors.map((sector) => <button key={sector} onClick={() => toggleSector(sector)} className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-all ${form.sectors.includes(sector) ? 'border-[var(--accent-teal)] bg-[var(--accent-teal)]/10 text-[var(--accent-teal)]' : 'border-[var(--border)] bg-[var(--surface-soft)] text-[var(--text-secondary)] hover:border-[var(--accent-teal)]'}`}>{sector}</button>)}
                 </div>
               </div>
-              <div><label className={labelClass}>Description</label><textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Brand description for the storefront..." rows={3} className={`${inputClass} resize-y`} /></div>
-              <div><label className={labelClass}>SEO Title</label><input value={form.seoTitle} onChange={(e) => setForm((prev) => ({ ...prev, seoTitle: e.target.value }))} maxLength={70} placeholder="e.g. Alfa Laval Marine Spare Parts" className={inputClass} /></div>
-              <div><label className={labelClass}>SEO Description</label><textarea value={form.seoDescription} onChange={(e) => setForm((prev) => ({ ...prev, seoDescription: e.target.value }))} maxLength={160} rows={2} placeholder="Search result description, up to 160 characters" className={`${inputClass} resize-y`} /></div>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className={`${labelClass} mb-0`}>Description</label>
+                  <span className={`text-[0.625rem] font-bold ${form.description.trim().length >= 120 ? 'text-[var(--success)]' : 'text-[var(--accent-gold)]'}`}>{form.description.trim().length}/120 min</span>
+                </div>
+                <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Brand description for the storefront (at least 120 characters for an indexable hub)..." rows={3} className={`${inputClass} resize-y`} />
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className={`${labelClass} mb-0`}>SEO Title</label>
+                  <span className={`text-[0.625rem] font-bold ${form.seoTitle.trim() ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>{form.seoTitle.trim().length}/70</span>
+                </div>
+                <input value={form.seoTitle} onChange={(e) => setForm((prev) => ({ ...prev, seoTitle: e.target.value }))} maxLength={70} placeholder="e.g. Alfa Laval Marine Spare Parts" className={inputClass} />
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className={`${labelClass} mb-0`}>SEO Description</label>
+                  <span className={`text-[0.625rem] font-bold ${form.seoDescription.trim().length >= 80 ? 'text-[var(--success)]' : 'text-[var(--accent-gold)]'}`}>{form.seoDescription.trim().length}/80 min</span>
+                </div>
+                <textarea value={form.seoDescription} onChange={(e) => setForm((prev) => ({ ...prev, seoDescription: e.target.value }))} maxLength={160} rows={2} placeholder="Search result description, 80–160 characters" className={`${inputClass} resize-y`} />
+              </div>
+              <label className="flex items-center gap-2 text-xs font-bold text-[var(--text-secondary)]">
+                <input type="checkbox" checked={form.isVisible} onChange={(e) => setForm((prev) => ({ ...prev, isVisible: e.target.checked }))} />
+                Visible on the storefront (hidden brands are excluded from the sitemap)
+              </label>
               <div className="grid grid-cols-2 gap-4">
                 <div><label className={labelClass}>Website</label><input type="url" value={form.website} onChange={(e) => setForm((prev) => ({ ...prev, website: e.target.value }))} placeholder="https://..." className={inputClass} /></div>
                 <div><label className={labelClass}>Country</label><input type="text" value={form.country} onChange={(e) => setForm((prev) => ({ ...prev, country: e.target.value }))} placeholder="e.g. Switzerland" className={inputClass} /></div>

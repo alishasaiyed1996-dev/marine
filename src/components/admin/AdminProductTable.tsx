@@ -11,6 +11,7 @@ export type SortDir = 'asc' | 'desc'
 
 interface ProductTableItem {
   id: string
+  slug: string
   name: string
   sku: string
   brand: string | { name: string }
@@ -24,6 +25,7 @@ interface ProductTableItem {
   status: string
   isNewArrival: boolean
   images: { url: string; alt: string; label?: string }[]
+  seoIssues: string[]
   customLabel?: string
 }
 
@@ -160,13 +162,14 @@ export function AdminProductTable({
                 <th>Condition</th>
                 <th><button onClick={() => onSort('status')} className="flex items-center gap-1 hover:text-[var(--text-primary)]">Status <ArrowUpDown size={10} /></button></th>
                 <th>Availability</th>
+                <th>SEO</th>
                 <th className="w-20">Actions</th>
               </tr>
             </thead>
             <tbody>
               {paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-12">
+                  <td colSpan={12} className="text-center py-12">
                     <Package size={32} className="mx-auto text-[var(--text-muted)] mb-3" />
                     <p className="text-sm font-semibold text-[var(--text-muted)]">No products found</p>
                     <button onClick={onClearFilters} className="mt-2 text-xs font-bold text-[var(--accent-gold)] hover:underline">
@@ -262,6 +265,26 @@ export function AdminProductTable({
                     <td><span className={`admin-badge ${getStatusBadge(product.status)} capitalize`}>{product.status || 'draft'}</span></td>
                     <td><span className={`admin-badge ${getAvailabilityBadge(product.availability)}`}>{product.availability.replace(/-/g, ' ')}</span></td>
                     <td>
+                      {product.status !== 'published' ? (
+                        <span className="text-[0.625rem] font-bold text-[var(--text-muted)]" title="SEO publish requirements apply once the product is published">
+                          Not live
+                        </span>
+                      ) : product.seoIssues.length === 0 ? (
+                        <span className="admin-badge admin-badge-published" title="SEO fields and publish requirements are complete">
+                          Ready
+                        </span>
+                      ) : (
+                        <div title={product.seoIssues.join('\n')}>
+                          <span className="admin-badge admin-badge-danger">
+                            {product.seoIssues.length} issue{product.seoIssues.length === 1 ? '' : 's'}
+                          </span>
+                          <p className="mt-1 max-w-[120px] text-[0.5625rem] leading-tight text-[var(--danger)]">
+                            {product.seoIssues[0]}
+                          </p>
+                        </div>
+                      )}
+                    </td>
+                    <td>
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => onTogglePublish(product.id, product.status)}
@@ -286,7 +309,7 @@ export function AdminProductTable({
                         </Link>
                         {product.status === 'published' ? (
                           <a
-                            href={`/en/product/${product.id}/`}
+                            href={`/en/product/${product.slug || product.id}/`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors"

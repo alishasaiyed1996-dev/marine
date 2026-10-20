@@ -10,18 +10,17 @@
     <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM-friendly site summary" />
     <link rel="alternate" type="text/plain" href="/llms-full.txt" title="Full site content for LLMs" />
 
-    <title>Alka Traders | Global Marine & Industrial Procurement</title>
-    <meta name="description" content="Alka Traders — Trusted global supplier of marine spares, industrial equipment, surplus machinery, electrical automation, hydraulic systems, and emergency procurement. Based in Bhavnagar, Gujarat, India." />
-    <meta name="keywords" content="marine equipment, industrial spares, ship parts, hydraulic systems, electrical automation, surplus machinery, emergency procurement, marine pumps, engine parts, navigation equipment, ABB drives, Siemens PLC, Parker hydraulics" />
+    <title>Marine Spare Parts &amp; Ship Spares Supplier | Alka Traders</title>
+    <meta name="description" content="Global supplier of marine spares, ship machinery, surplus equipment, hydraulics, pneumatics, electrical automation, and emergency procurement parts from Bhavnagar, Gujarat, India." />
     <meta name="theme-color" content="#0c2d48" />
 
-    <!-- The build-time prerenderer injects an SEO shell (h1/p) inside #root
-         for crawlers. Hide it from humans so it never flashes before React
-         mounts; the shell class only exists in prerendered files.
-         The app-loading spinner is the visible pre-React state: it paints
-         immediately from the static HTML and is wiped by React on mount. -->
+    <!-- The build-time prerenderer injects a crawlable SEO shell inside #root.
+         Hide it only when JavaScript is active (html.js) so it never flashes
+         before React mounts, while no-JS visitors still get real content.
+         The app-loading spinner is the visible pre-React state in the raw
+         Vite shell and is wiped by React on mount. -->
     <style>
-      #root .seo-shell { display: none; }
+      html.js #root .seo-shell { display: none; }
       .app-loading {
         position: fixed;
         inset: 0;
@@ -52,6 +51,9 @@
          %VITE_DEFAULT_THEME% is replaced by Vite at build time. -->
     <script>
       (function () {
+        // Enables CSS that hides the prerendered SEO shell once JavaScript is
+        // available. Without JS the shell stays visible and readable.
+        document.documentElement.classList.add('js')
         try {
           var t = localStorage.getItem('alka-theme')
           if (t !== 'dark' && t !== 'light') {
@@ -74,54 +76,30 @@
     <!-- Page-specific robots, canonical, and social metadata are emitted by
          the prerendered document or the React SEO component. -->
 
-    <!-- Open Graph -->
-    <meta property="og:title" content="Alka Traders | Global Marine & Industrial Procurement" />
-    <meta property="og:description" content="Trusted global supplier of marine spares, industrial equipment, surplus machinery, and emergency procurement. Based in Bhavnagar, Gujarat, India." />
+    <!-- Open Graph (homepage defaults for the raw Vite shell) -->
+    <meta property="og:title" content="Marine Spare Parts &amp; Ship Spares Supplier | Alka Traders" />
+    <meta property="og:description" content="Global supplier of marine spares, ship machinery, surplus equipment, hydraulics, pneumatics, electrical automation, and emergency procurement parts from Bhavnagar, Gujarat, India." />
+    <meta property="og:url" content="https://alkatraders.co/en/" />
     <meta property="og:site_name" content="Alka Traders" />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://alkatraders.co/images/alka-traders-logo.png" />
     <meta property="og:image:width" content="1024" />
     <meta property="og:image:height" content="1024" />
+    <meta property="og:image:alt" content="Alka Traders marine and industrial equipment supplier" />
     <meta property="og:locale" content="en_US" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Alka Traders | Global Marine & Industrial Procurement" />
-    <meta name="twitter:description" content="Trusted global supplier of marine spares, industrial equipment, surplus machinery, and emergency procurement." />
+    <meta name="twitter:title" content="Marine Spare Parts &amp; Ship Spares Supplier | Alka Traders" />
+    <meta name="twitter:description" content="Global supplier of marine spares, ship machinery, surplus equipment, hydraulics, pneumatics, electrical automation, and emergency procurement parts." />
     <meta name="twitter:image" content="https://alkatraders.co/images/alka-traders-logo.png" />
+    <meta name="twitter:image:alt" content="Alka Traders marine and industrial equipment supplier" />
 
 
 
-    <!-- Organization JSON-LD -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "Organization",
-        "name": "Alka Traders",
-        "url": "https://alkatraders.co",
-        "logo": "https://alkatraders.co/images/alka-traders-logo.png",
-        "description": "Trusted global supplier of marine spares, industrial equipment, surplus machinery, and emergency procurement."
-      }
-    </script>
-
-    <!-- WebSite JSON-LD with SearchAction for AI + Google -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "Alka Traders",
-        "url": "https://alkatraders.co",
-        "description": "Global supplier of marine spares, industrial equipment, surplus machinery, and emergency procurement parts.",
-        "potentialAction": {
-          "@type": "SearchAction",
-          "target": {
-            "@type": "EntryPoint",
-            "urlTemplate": "https://alkatraders.co/products?search={search_term_string}"
-          },
-          "query-input": "required name=search_term_string"
-        }
-      }
-    </script>
+    <!-- Page-specific Organization, WebSite, breadcrumb, and Product JSON-LD
+         are emitted by the prerender step and the React SEO component. A
+         second template copy would duplicate the graph on every page. -->
 
     <!-- Preconnect to critical origins. Fonts are self-hosted (/fonts/fonts.css,
          roadmap D34), so no third-party font origins are needed. -->
@@ -153,6 +131,10 @@
     <div id="root">
       <div class="app-loading" role="status" aria-label="Loading"></div>
     </div>
+    <noscript>
+      <style>.app-loading { display: none !important; }</style>
+      <p>Alka Traders supplies marine spares, ship machinery, and industrial equipment. <a href="/en/products/">Browse the product catalog</a> or <a href="/en/contact/">contact us</a>.</p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

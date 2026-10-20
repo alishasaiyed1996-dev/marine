@@ -35,8 +35,20 @@ export function useLocalizedPath() {
     if (path.startsWith('/admin')) return path
     if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('mailto:') || path.startsWith('tel:')) return path
     if (path.startsWith('#')) return path
-    // Always prefix with locale
-    return `/${locale}${path === '/' ? '' : path}`
+
+    // Every public storefront URL is canonical with a trailing slash (the
+    // production host 301s directory-style URLs to that form). Emitting the
+    // final URL directly avoids a redirect hop for every internal link and
+    // keeps crawl-budget for real pages. Query strings and hashes are kept.
+    const suffixIndex = path.search(/[?#]/)
+    const pathname = suffixIndex === -1 ? path : path.slice(0, suffixIndex)
+    const suffix = suffixIndex === -1 ? '' : path.slice(suffixIndex)
+    const hasFileExtension = /\.[a-z0-9]{2,8}$/i.test(pathname)
+    const normalized = pathname.endsWith('/') || hasFileExtension
+      ? pathname
+      : `${pathname}/`
+
+    return `/${locale}${normalized === '/' ? '/' : normalized}${suffix}`
   }, [locale])
 }
 
@@ -57,6 +69,8 @@ export function switchLocalePath(
     // No locale prefix — prepend one
     segments.unshift(newLocale)
   }
-  // Keep filters, pagination, and anchors when switching language.
-  return '/' + segments.join('/') + search + hash
+  // Keep filters, pagination, anchors, and the canonical trailing slash when
+  // switching language.
+  const trailingSlash = currentPathname.endsWith('/') && segments.length > 0 ? '/' : ''
+  return '/' + segments.join('/') + trailingSlash + search + hash
 }

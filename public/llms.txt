@@ -1,53 +1,48 @@
 # Alka Traders
 
-> Alka Traders is a global supplier of marine spares, industrial equipment, surplus machinery, and emergency procurement parts. Based in Bhavnagar, Gujarat, India.
+> Alka Traders is a marine and industrial equipment supplier based in Bhavnagar, Gujarat, India. The company sources marine spares, ship machinery parts, industrial MRO equipment, surplus stock, and emergency procurement requirements for buyers worldwide.
 
-Alka Traders serves ship owners, fleet managers, procurement teams, and industrial buyers worldwide with fast delivery of OEM and aftermarket parts for marine, oil & gas, power generation, manufacturing, and chemical processing industries.
+Alka Traders has supplied marine and industrial equipment since 1990. Product availability changes with supplier stock, so the online catalog and a direct quotation are the authoritative sources for a specific part number, condition, price, and lead time.
 
-## Key Services
+## Main pages
 
-- [Marine Equipment & Ship Spares](https://alkatraders.co/shop) - GPS navigators, VHF radios, radar, ECDIS, hydraulic motors, lifeboat mechanisms, fire detection systems
-- [Electrical Automation](https://alkatraders.co/products?category=electrical) - VFDs, PLCs, contactors, circuit breakers from ABB, Siemens, Schneider
-- [Hydraulic Systems](https://alkatraders.co/products?category=hydraulic) - Axial piston pumps, cylinders, steering gear actuators from Parker, Bosch Rexroth
-- [Emergency Procurement](https://alkatraders.co/emergency) - 24/7 urgent parts sourcing with 18-hour delivery record
-- [Request for Quote](https://alkatraders.co/rfq) - Submit RFQ for any marine or industrial part
+- [Home](https://alkatraders.co/en/)
+- [Product catalog](https://alkatraders.co/en/products/)
+- [Brands](https://alkatraders.co/en/brands/)
+- [Industries served](https://alkatraders.co/en/industries/)
+- [About Alka Traders](https://alkatraders.co/en/about/)
+- [Global supplier network](https://alkatraders.co/en/network/)
+- [Market intelligence](https://alkatraders.co/en/intelligence/)
+- [Emergency procurement](https://alkatraders.co/en/emergency/)
+- [Request a quote](https://alkatraders.co/en/rfq/)
+- [Contact](https://alkatraders.co/en/contact/)
+- [Privacy policy](https://alkatraders.co/en/privacy-policy/)
+- [Terms and conditions](https://alkatraders.co/en/terms-of-service/)
+- [Return and refund policy](https://alkatraders.co/en/refund-policy/)
 
-## Company Information
+## Product scope
 
-- Website: https://alkatraders.co
+- Marine spare parts and ship machinery spares
+- Marine engine parts, pumps, separators, and filters
+- Hydraulic pumps, motors, valves, cylinders, and power units
+- Pneumatic valves, cylinders, and air preparation equipment
+- Electrical automation, drives, PLCs, switchgear, and instrumentation
+- Navigation and communication equipment spares
+- Deck machinery, rigging, lifting, and safety equipment
+- Surplus, discontinued, and hard-to-find industrial equipment
+
+## Procurement
+
+Buyers can search the catalog, request a quotation with a part number or nameplate photo, or use the emergency desk for time-critical requirements. The RFQ form accepts the manufacturer, model, part number, quantity, destination, and supporting photos.
+
+## Contact
+
+- Website: https://alkatraders.co/en/
 - Email: sales@alkatraders.co
 - Phone: +91 87990 95041
 - WhatsApp: +91 87990 95041
+- Headquarters: PLOT - 7 ALANG HOUSE, MOTITALAV ROAD, KHUMBHARWADA, BHAVNAGAR-364001, GUJARAT, INDIA
 
-## Office Location
+## Canonical URL policy
 
-- Bhavnagar, Gujarat, India (Headquarters)
-
-## Product Categories
-
-- Marine Equipment (ship spares, navigation, engine parts)
-- Electrical Automation (VFDs, PLCs, switchgear)
-- Hydraulic Systems (pumps, cylinders, motors)
-- Pneumatic Systems (valves, cylinders, air preparation)
-- Industrial Spare Parts (bearings, couplings, sensors)
-- Surplus Inventory (unused/refurbished equipment)
-- Lifting & Handling (cranes, hoists, rigging)
-- Tools & Equipment (industrial tools, power tools)
-- Safety Equipment (PPE, fall protection, fire safety)
-
-## Key Brands
-
-ABB, Siemens, Parker Hannifin, Bosch Rexroth, Schneider Electric, Danfoss, Honeywell, Emerson, Festo, SMC, Grundfos, Atlas Copco, Wärtsilä, Alfa Laval, Kongsberg, SKF, IFM, Pepperl+Fuchs
-
-## Pages
-
-- [Homepage](https://alkatraders.co/)
-- [Shop](https://alkatraders.co/shop)
-- [All Products](https://alkatraders.co/products)
-- [Brands](https://alkatraders.co/brands)
-- [Industries](https://alkatraders.co/industries)
-- [About Us](https://alkatraders.co/about)
-- [Contact](https://alkatraders.co/contact)
-- [Network](https://alkatraders.co/network)
-- [RFQ Form](https://alkatraders.co/rfq)
-- [Emergency Parts](https://alkatraders.co/emergency)
+English storefront URLs are canonical with a trailing slash. Arabic and Spanish route shells are not indexed until translated content is available. Account, checkout, search, password, and order-tracking pages are private and marked noindex.

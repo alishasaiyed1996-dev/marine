@@ -1,121 +1,77 @@
-# Alka Traders — Full Company Profile
+# Alka Traders — Company and Sourcing Profile
 
 ## About Alka Traders
 
-Alka Traders is a globally connected marine and industrial equipment supplier based in Bhavnagar, Gujarat, India. Founded in 1990, the company specializes in sourcing and supplying OEM spares, surplus machinery, electrical automation components, hydraulic systems, and emergency procurement parts for the maritime and industrial sectors.
+Alka Traders is a marine and industrial equipment supplier based in Bhavnagar, Gujarat, India. The company has supplied marine spares and industrial equipment since 1990 and works with manufacturers, distributors, surplus suppliers, and logistics partners to source current-production and hard-to-find parts.
 
-The company operates from its headquarters:
-- **Bhavnagar, Gujarat, India** — PLOT - 7 ALANG HOUSE, MOTITALAV ROAD, KHUMBHARWADA, BHAVNAGAR-364001
+Head office:
 
-## What We Sell
+PLOT - 7 ALANG HOUSE, MOTITALAV ROAD, KHUMBHARWADA, BHAVNAGAR-364001, GUJARAT, INDIA
 
-Alka Traders supplies 200+ product lines across 19 categories:
+## What Alka Traders supplies
 
-### Marine Equipment
-- GPS Navigation Systems (e.g., ABB Marine GPS Navigator)
-- VHF Marine Radios (e.g., Siemens VHF-7800)
-- Radar Antenna Units (e.g., Honeywell RAD-ANT-220)
-- ECDIS Navigation Displays (e.g., ABB ECDIS-9600)
-- Marine Diesel Engine Sensors
-- Lifeboat Release Mechanisms
-- Anchor Windlass Motors
-- Bilge Water Separators
-- Marine Fire Detection Systems
-- Hatch Cover Hydraulic Cylinders
-- Marine Ballast Pumps
-- Steering Gear Actuators
-- Marine Alarm Monitoring Systems
-- Marine Exhaust Gas Monitors
-- Bow Thruster Control Panels
+Alka Traders focuses on procurement rather than manufacturing. The catalog and quotation process cover:
 
-### Electrical Automation
-- Variable Speed Drives (ABB ACS880, ACS580)
-- PLC CPU Modules (Siemens S7-1500)
-- Contactors (Schneider LC1D40)
-- Circuit Breakers (MCCB, ACB)
-- Frequency Inverters
+- Marine spare parts, ship spares, and engine room equipment
+- Marine pumps, separators, filters, and heat-exchange components
+- Hydraulic pumps, motors, valves, cylinders, and power units
+- Pneumatic valves, cylinders, and air preparation equipment
+- Electrical automation, variable-speed drives, PLCs, contactors, breakers, and instrumentation
+- Navigation, communication, and bridge equipment spares
+- Deck machinery, mooring, rigging, lifting, and safety equipment
+- Surplus, refurbished, discontinued, and obsolete industrial equipment
 
-### Hydraulic Systems
-- Axial Piston Pumps (Bosch Rexroth A10VSO)
-- Hydraulic Cylinders (Parker HCR series)
-- Hydraulic Motors
-- Steering Gear Actuators
+Specific brands, models, conditions, prices, and stock levels depend on the live catalog and supplier confirmation. The website does not guarantee that every brand or part family is in stock at a given time.
 
-### Pneumatic Systems
-- Pneumatic Cylinders (Festo DSBC series)
-- Air Solenoid Valves (SMC VFA series)
+## Industries served
 
-### Industrial Spare Parts
-- 3-Phase Induction Motors (ABB M3AA series)
-- Deep Groove Ball Bearings (SKF 6205)
-- Flexible Couplings
-- Inductive Proximity Sensors (IFM)
-- Industrial Encoders
+- Marine shipping and fleet management
+- Shipyards, drydocks, and repair facilities
+- Oil and gas, including offshore operations
+- Power generation
+- Manufacturing and industrial MRO
+- Chemical processing
+- Shipbuilding and heavy engineering
+- Mining and material handling
 
-### Surplus Inventory
-- Unused VFDs and drives
-- Refurbished industrial equipment
+## Brand coverage
 
-### Lifting & Handling
-- Overhead Bridge Cranes (up to 50 ton)
-- Electric Hoists (Demag, Kito)
-- Wire Rope Slings (Crosby)
-- Chain Blocks (Toyota, Southworth)
+Brand coverage varies by requirement and available stock. The brand directory includes major industrial and marine manufacturers such as ABB, Siemens, Parker Hannifin, Bosch Rexroth, Schneider Electric, Danfoss, Honeywell, Emerson, Festo, SMC, SKF, and IFM, among others. Always confirm the exact manufacturer and part number in the quotation.
 
-### Tools & Equipment
-- Industrial Heat Guns (Bosch)
-- Power Tools (Makita, DeWalt)
-- Measurement Instruments (Fluke, Flir)
+## How procurement works
 
-### Safety Equipment
-- Full Body Fall Arrest Harnesses
-- Fire Extinguishers (Amerex)
-- Hard Hats & Safety Helmets (MSA, Uvex)
-- Welding Helmets (Optrel)
+1. Search the catalog for a listed part, or open the request-for-quote form.
+2. Send the manufacturer, model, part number, quantity, destination, and any nameplate or serial plate photos.
+3. Alka Traders checks supplier availability and confirms the part identity, condition, price, and expected dispatch window.
+4. The buyer approves the quotation and the order proceeds with the agreed payment, packing, and shipping method.
 
-## Industries We Serve
+For urgent requirements, use the phone or WhatsApp contact details so the request can be triaged outside normal desk hours.
 
-1. **Marine Shipping** — Vessel fleet operators, ship managers, chief engineers
-2. **Shipyards & Drydocks** — Repair facilities, drydock projects
-3. **Oil & Gas** — Upstream/downstream operators, offshore platforms
-4. **Power Generation** — Power plant procurement teams
-5. **Manufacturing** — Production line managers, MRO teams
-6. **Chemical Processing** — Plant procurement, compliance teams
+## Contact
 
-## Key Brands We Carry
+- General inquiries and quotations: sales@alkatraders.co
+- Phone: +91 87990 95041
+- WhatsApp: +91 87990 95041
+- Website: https://alkatraders.co/en/
+- Emergency procurement: https://alkatraders.co/en/emergency/
+- Request a quote: https://alkatraders.co/en/rfq/
 
-ABB, Siemens, Parker Hannifin, Bosch Rexroth, Schneider Electric, Danfoss, Honeywell, Emerson, Festo, SMC, Grundfos, Atlas Copco, Wärtsilä, Alfa Laval, Kongsberg, SKF, IFM, Pepperl+Fuchs, Sick AG, Omron, Phoenix Contact, Rittal, Caterpillar, Cummins, Holset, Bosch, NTN, Gates, Lapp, Interroll, Demag, Kito, Toyota, Southworth, Crosby, Schmalz, Spanco, Caldwell, Fluke, Makita, Flir, Ridgid, Olympus, Klingspor, 3M, Amerex, MSA, Uvex, Snap-On, Proto, Bahco, Stanley, Klein, Wiha, Simrad, Furuno, Comnav, Sestrel, Garmin, Raymarine, Rule, Jabsco, Shurflo, Flojet, Katadyn
+## Canonical pages
 
-## Company Values
+- https://alkatraders.co/en/
+- https://alkatraders.co/en/products/
+- https://alkatraders.co/en/brands/
+- https://alkatraders.co/en/industries/
+- https://alkatraders.co/en/about/
+- https://alkatraders.co/en/network/
+- https://alkatraders.co/en/intelligence/
+- https://alkatraders.co/en/emergency/
+- https://alkatraders.co/en/rfq/
+- https://alkatraders.co/en/contact/
+- https://alkatraders.co/en/privacy-policy/
+- https://alkatraders.co/en/terms-of-service/
+- https://alkatraders.co/en/refund-policy/
 
-- **Fast Delivery** — Emergency parts delivered in as fast as 18 hours
-- **Quality Assured** — All units fully tested before dispatch
-- **Global Reach** — Serving customers in 50+ countries
-- **24/7 Support** — Round-the-clock emergency procurement line
-- **Free Shipping** — On orders above $100
-- **30-Day Returns** — Hassle-free return policy
+## Indexing notes
 
-## Customer Testimonials
-
-"Record 91 ½ C Pipe Vise received as pictured on eBay. Shipping was very fast and FREE, with unexpectedly quick delivery from India. Packaging could have been better. Item shipped in corrugated cardboard box completely wrapped in duck tape. Vise itself was heavily covered in bubble wrap. Box was padded with pieces of Styrofoam on the sides and top, but not the bottom. As a result, the front mounting pad wore through the box, resulting in scraped paint. Nothing broken, so not an issue." — fuegocat77
-
-"Very helpful seller. They investigated the issue I had when the delivery company delivered my parcel to the wrong person. Was very quick to address the situation, keep me informed and get the parcel delivered to me. Would recommend." — noraedward
-
-"Five star transaction. Good shipping. Good packaging. Item as described. Good quality product in good condition. Good appearance. Thank you for the good transaction! All five stars. At B2E Surplus (aka Back to Earth Surplus), we buy and sell a lot of similar merchandise. We are always interested in bulk lots and/or good deals on industrial supplies. Look us up anytime!" — b2esurplus
-
-## Contact Information
-
-- **General Inquiries:** sales@alkatraders.co
-- **Request for Quote:** sales@alkatraders.co
-- **Emergency Parts:** sales@alkatraders.co
-- **Phone:** +91 87990 95041
-- **WhatsApp:** +91 87990 95041
-- **Website:** https://alkatraders.co
-
-## Ordering Process
-
-1. Browse products at https://alkatraders.co/products or https://alkatraders.co/shop
-2. Add items to cart and checkout, or submit a Request for Quote (RFQ)
-3. For emergency parts, call +91 87990 95041 or use WhatsApp for instant response
-4. Payment accepted via PayPal, bank transfer, and wire transfer
-5. Shipping via FedEx, DHL, and local carriers with tracking
+Only English storefront pages are indexed. Product URLs follow `https://alkatraders.co/en/product/{slug}/`. Eligible brand and category hubs are indexed only when they contain substantive editorial copy and at least one published product. Search results, checkout, order tracking, password flows, account pages, and administrative routes are private and noindex.

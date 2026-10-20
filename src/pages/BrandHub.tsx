@@ -22,11 +22,14 @@ export default function BrandHub() {
   const brand = data as any
   const products = apiProductsToFrontend(brand?.products || [])
   const description = brand?.description || ''
-  const indexable = Boolean(description.trim().length >= 120 && (brand?._count?.products || 0) > 0)
+  // The API computes this with backend/src/utils/hubSeo.ts, the same function
+  // the sitemap and the server-rendered robots meta use. Never re-implement
+  // the rule here or a hidden/thin hub can diverge from the sitemap.
+  const indexable = brand?.indexable === true
   const title = brand?.seoTitle || `${brand?.name || 'Marine parts'} spare parts | Alka Traders`
   const metaDescription = brand?.seoDescription || description.slice(0, 160)
 
-  if (isError) return <main className="mx-auto max-w-5xl px-4 py-20"><h1>Brand not found</h1><Link to={`/${language}/brands/`}>Browse brands</Link></main>
+  if (isError) return <main className="mx-auto max-w-5xl px-4 py-20"><SEO title="Brand not found | Alka Traders" description="The requested brand page is not available. Browse the Alka Traders brand directory." noindex /><h1>Brand not found</h1><Link to={`/${language}/brands/`}>Browse brands</Link></main>
   return <main className="mx-auto max-w-[1280px] px-4 py-12 sm:px-6">
     {brand && <>
       <SEO title={title} description={metaDescription} canonical={`/brands/${brand.slug}/`} noindex={!indexable} />

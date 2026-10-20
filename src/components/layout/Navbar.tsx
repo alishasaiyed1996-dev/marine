@@ -16,7 +16,6 @@ import type { Language } from '../../types'
 const STATIC_NAV_LINKS = [
   { path: '/', labelKey: 'home' },
   { path: '/products', labelKey: 'products' },
-  { path: '/shop', labelKey: 'shop' },
   { path: '/industries', labelKey: 'industries' },
   { path: '/brands', labelKey: 'brands' },
   { path: '/about', labelKey: 'about' },
@@ -43,7 +42,7 @@ function BrandLockup() {
   const locale = useLocale()
   return (
     <Link
-      to={`/${locale}`}
+      to={`/${locale}/`}
       className="flex items-center gap-3 no-underline transition-opacity hover:opacity-90"
     >
       <img

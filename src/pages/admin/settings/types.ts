@@ -69,8 +69,8 @@ export const defaultSite: SiteConfig = {
   country: 'India',
   currency: 'USD',
   timezone: 'Asia/Dubai',
-  seoTitle: 'Alka Traders | Marine Equipment Supplier',
-  seoDescription: 'Leading supplier and exporter of used and unbranded marine equipment. Parts for engines, hydraulics, electronics, and more.',
+  seoTitle: 'Marine Spare Parts & Ship Spares Supplier',
+  seoDescription: 'Shop marine spare parts, ship spares, engine parts, hydraulic pumps, electrical automation and surplus industrial equipment from Bhavnagar and Alang, India.',
   googleAnalyticsId: '',
   maintenanceMode: false,
 }

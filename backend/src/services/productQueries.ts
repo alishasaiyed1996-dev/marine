@@ -19,6 +19,8 @@ export interface ProductFilters {
   onSaleAdmin?: boolean
   /** Admin dashboard deep-link filters (low stock / out of stock / no images). */
   filter?: string
+  /** Admin SEO audit: `attention` returns published products with incomplete SEO. */
+  seo?: string
   priceMin?: number
   priceMax?: number
   sort?: string
@@ -70,6 +72,48 @@ export async function listProducts(params: ProductFilters) {
   } else if (params.filter === 'missing-images') {
     where.images = { none: {} }
     if (!where.status) where.status = 'published'
+  }
+
+  // "Needs SEO attention" mirrors the publish gate and the Product JSON-LD
+  // inputs: a published product is flagged when its title/description are
+  // missing or out of range, its copy is too thin, it has no category, no
+  // verified identifier, or no main image with alt text. Length comparisons are not
+  // expressible in the Prisma query API, so resolve the ids in SQL first.
+  if (params.seo === 'attention') {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT p.id
+      FROM products p
+      WHERE p.status = 'published'
+        AND (
+          COALESCE(btrim(p.seo_title), '') = ''
+          OR char_length(btrim(p.seo_title)) > 70
+          OR COALESCE(btrim(p.seo_description), '') = ''
+          OR char_length(btrim(p.seo_description)) < 80
+          OR char_length(btrim(p.seo_description)) > 160
+          OR (
+            COALESCE(char_length(btrim(p.description)), 0) < 300
+            AND COALESCE(array_length(regexp_split_to_array(btrim(p.description), '[[:space:]]+'), 1), 0) < 50
+          )
+          OR p.category_id IS NULL
+          OR (
+            COALESCE(btrim(p.model_number), '') = ''
+            AND COALESCE(btrim(p.mpn), '') = ''
+            AND COALESCE(btrim(p.impa_code), '') = ''
+          )
+          OR COALESCE((
+            SELECT btrim(pi.alt_text)
+            FROM product_images pi
+            WHERE pi.product_id = p.id
+            ORDER BY pi.is_main DESC, pi.sort_order ASC, pi.id ASC
+            LIMIT 1
+          ), '') = ''
+        )
+    `
+    const seoIds = rows.map((row) => row.id)
+    const existingIds = Array.isArray(where.id?.in) ? where.id.in as string[] : null
+    where.id = {
+      in: existingIds ? seoIds.filter((id) => existingIds.includes(id)) : seoIds,
+    }
   }
 
   // Server-side sorting so ordering is correct across the whole result set,

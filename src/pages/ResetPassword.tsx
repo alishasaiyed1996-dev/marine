@@ -56,7 +56,7 @@ export default function ResetPassword() {
 
   return (
     <>
-      <SEO title="Reset Password — Alka Traders" description="Set a new password for your Alka Traders account." />
+      <SEO title="Reset Password — Alka Traders" description="Set a new password for your Alka Traders account." noindex />
       <div className="min-h-screen flex items-center justify-center bg-[var(--primary-bg)] px-4 py-16">
       <div className="w-full max-w-[420px]">
         <div className="text-center mb-8">

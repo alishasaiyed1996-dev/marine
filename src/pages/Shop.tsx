@@ -81,9 +81,9 @@ export default function Shop() {
       <SEO
         title="Shop — Marine & Industrial Equipment"
         description="Browse our catalog of marine spares, ship machinery, surplus equipment, hydraulics, pneumatics, and electrical automation components."
-        canonical="/shop"
+        canonical="/products/"
       />
-      <BreadcrumbJsonLd items={[{ name: 'Home', url: '/' }, { name: 'Shop', url: '/shop' }]} />
+      <BreadcrumbJsonLd items={[{ name: 'Home', url: '/' }, { name: 'Products', url: '/products/' }]} />
       {catalogError && (
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 pt-6">
           <CatalogOfflineNotice onRetry={retryCatalog} retrying={newArrivalsQuery.isFetching || featuredQuery.isFetching || latestQuery.isFetching || categoriesQuery.isFetching} />

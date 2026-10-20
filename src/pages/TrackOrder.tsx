@@ -85,6 +85,7 @@ export default function TrackOrder() {
         title="Track Your Order — Alka Traders"
         description="Track your marine and industrial equipment order. Enter your order number to see the current shipping status and delivery updates."
         canonical="/track-order"
+        noindex
       />
       {/* Header */}
       <section className="bg-[var(--secondary-bg)] py-12">

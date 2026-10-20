@@ -144,6 +144,9 @@ export default function ProductDetail() {
   const parsedDesc = parseDescription(product.description)
   const specRows = buildSpecTable(parsedDesc, product)
   const readableCategory = product.category.replace(/-/g, ' ')
+  // Hidden category/brand hubs return 404, so never link to them from a live
+  // product page. The names still render as plain text.
+  const categoryLinkVisible = product.categoryVisible !== false
   // Structured specs saved through the admin form (name/value pairs with
   // i18n-able labels). Falls back to Brand/Category/Condition when empty.
   const formSpecs = product.specs && Object.keys(product.specs).length > 0
@@ -168,16 +171,19 @@ export default function ProductDetail() {
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
     price: product.price,
+    currency: product.currency,
     onSale: product.onSale,
     salePrice: product.salePrice,
     inStock: product.inStock,
     stockCount: product.stockCount,
     images: (product.images || []).map((img) => ({ url: img.url, alt: img.alt })),
+    ogImageUrl: product.ogImageUrl,
     makeOffer: product.makeOffer,
     // Structured identity wins over description-parsed values
     manufacturer: product.manufacturer,
     modelNumber: product.modelNumber,
     mpn: product.mpn,
+    gtin: product.gtin,
     impaCode: product.impaCode,
   })
 
@@ -216,9 +222,11 @@ export default function ProductDetail() {
       />
       <BreadcrumbJsonLd items={[
         { name: 'Home', url: '/' },
-        { name: 'Products', url: '/products' },
-        { name: product.category.replace(/-/g, ' '), url: `/products?category=${product.category}` },
-        { name: product.name, url: `/product/${id}` },
+        { name: 'Products', url: '/products/' },
+        ...(categoryLinkVisible
+          ? [{ name: product.categoryName || readableCategory, url: `/categories/${product.category}/` }]
+          : []),
+        { name: product.name, url: `/product/${product.slug || id}/` },
       ]} />
       <div className="max-w-[1280px] mx-auto px-4 sm:px-6">
         {/* Back button */}
@@ -236,16 +244,30 @@ export default function ProductDetail() {
           {/* RIGHT COLUMN: Details */}
           <div className="space-y-6 text-left">
             <div>
-              <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] font-mono mb-2">
-                <Link to={lp('/shop')} className="hover:text-[var(--accent-primary)]">{t('nav.shop')}</Link>
-                <span>/</span>
-                <span className="capitalize">{readableCategory}</span>
-              </div>
-              <h1 className="font-display font-bold text-2xl lg:text-[2rem] tracking-tight text-[var(--text-primary)] leading-snug">{product.name}</h1>
+              <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-muted)] font-mono mb-2">
+                <Link to={lp('/')} className="hover:text-[var(--accent-primary)]">{t('nav.home')}</Link>
+                <span aria-hidden="true">/</span>
+                <Link to={lp('/products')} className="hover:text-[var(--accent-primary)]">{t('nav.products')}</Link>
+                <span aria-hidden="true">/</span>
+                {categoryLinkVisible ? (
+                  <Link to={lp(`/categories/${product.category}`)} className="capitalize hover:text-[var(--accent-primary)]">{readableCategory}</Link>
+                ) : (
+                  <span className="capitalize">{readableCategory}</span>
+                )}
+              </nav>
+              {/* H1 mirrors the fact-grounded schema name so the visible
+                  heading and Product JSON-LD agree (Google checks this). */}
+              <h1 className="font-display font-bold text-2xl lg:text-[2rem] tracking-tight text-[var(--text-primary)] leading-snug">{productSeo.h1 || product.name}</h1>
               <div className="flex items-center gap-3 mt-3 flex-wrap">
-                <span className="text-xs font-semibold px-2.5 py-0.5 border text-[var(--accent-primary)] border-[var(--info-border)] bg-[var(--surface)] rounded">
-                  {t('product.brandPrefix', { brand: product.brand })}
-                </span>
+                {product.brandSlug ? (
+                  <Link to={lp(`/brands/${product.brandSlug}`)} className="text-xs font-semibold px-2.5 py-0.5 border text-[var(--accent-primary)] border-[var(--info-border)] bg-[var(--surface)] rounded no-underline hover:underline">
+                    {t('product.brandPrefix', { brand: product.brand })}
+                  </Link>
+                ) : (
+                  <span className="text-xs font-semibold px-2.5 py-0.5 border text-[var(--accent-primary)] border-[var(--info-border)] bg-[var(--surface)] rounded">
+                    {t('product.brandPrefix', { brand: product.brand })}
+                  </span>
+                )}
                 <span className="text-xs font-mono text-[var(--text-muted)]">{t('product.skuPrefix', { sku: product.sku })}</span>
                 <span className="text-xs font-semibold px-2.5 py-0.5 border text-[var(--text-secondary)] border-[var(--border)] rounded">
                   {t('product.conditionLabel', { condition: product.condition.charAt(0).toUpperCase() + product.condition.slice(1) })}
@@ -529,6 +551,28 @@ export default function ProductDetail() {
             })}
           </div>
         </section>
+
+        {/* Internal link graph: product → category hub → brand hub → catalog.
+            These crawlable backlinks are what distribute authority from each
+            product page into the hub pages that can rank for broader terms. */}
+        <nav aria-label="Related catalog pages" className="mt-12 flex flex-wrap gap-3 border-t border-[var(--border)] pt-8 text-sm">
+          {categoryLinkVisible && (
+            <Link to={lp(`/categories/${product.category}`)} className="rounded-full border border-[var(--border)] px-4 py-2 font-semibold text-[var(--text-primary)] no-underline hover:border-[var(--accent-primary)]">
+              More {readableCategory} parts
+            </Link>
+          )}
+          {product.brandSlug && (
+            <Link to={lp(`/brands/${product.brandSlug}`)} className="rounded-full border border-[var(--border)] px-4 py-2 font-semibold text-[var(--text-primary)] no-underline hover:border-[var(--accent-primary)]">
+              More {product.brand} parts
+            </Link>
+          )}
+          <Link to={lp('/products')} className="rounded-full border border-[var(--border)] px-4 py-2 font-semibold text-[var(--text-primary)] no-underline hover:border-[var(--accent-primary)]">
+            Browse all products
+          </Link>
+          <Link to={lp('/rfq')} className="rounded-full border border-[var(--accent-primary)] px-4 py-2 font-semibold text-[var(--accent-primary)] no-underline hover:bg-[var(--accent-primary)] hover:text-[var(--btn-blue-text)]">
+            Request a quote
+          </Link>
+        </nav>
 
         {/* RELATED PRODUCTS */}
         <RelatedProducts products={related} />

@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
 /**
- * SEO Audit CLI — Phase 51/52 of the product-search architecture.
+ * SEO Audit CLI for the built frontend.
  *
- * Validates the built output (frontend/dist) against the live catalog:
+ * Validates frontend/dist against the route policy and the live catalog:
  *
- *   PRODUCTS   prerendered pages, titles, uniqueness, fabricated-field scan
- *   SITEMAP    every product present, loc == canonical, lastmod sane
- *   SCHEMA     Product JSON-LD present, no fake priceValidUntil, IMPA not in GTIN
- *   CONTENT    keyword-stuffing candidates, invisible-character scan
+ *   STATIC     every canonical English page exists, with one H1/canonical
+ *   TITLES     unique titles and descriptions, sane lengths
+ *   PRODUCTS   prerendered pages, Product JSON-LD, no fabricated fields
+ *   LINKS      crawlable internal anchors, canonical trailing slashes
+ *   SITEMAP    every prerendered URL represented when a sitemap is bundled
+ *   CONTENT    keyword stuffing and invisible-character scan
  *
  * Usage:
  *   node scripts/seo-audit.mjs [--dist frontend/dist]
@@ -16,16 +18,20 @@
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs'
-import { join } from 'path'
+import { join, relative } from 'path'
 import { fetchPublishedProducts } from './fetch-products.mjs'
+import { getStaticRoutes } from './prerender-routes.mjs'
 
 const distArgIndex = process.argv.indexOf('--dist')
 const DIST = distArgIndex !== -1 && process.argv[distArgIndex + 1] ? process.argv[distArgIndex + 1] : 'frontend/dist'
 const BASE_URL = 'https://alkatraders.co'
+const STATIC_ROUTES = getStaticRoutes()
+const STATIC_URLS = new Set(STATIC_ROUTES.map((route) => `${BASE_URL}${route.path}`))
 
 const issues = { error: [], warn: [], info: [] }
 const fail = (m) => issues.error.push(m)
 const warn = (m) => issues.warn.push(m)
+const info = (m) => issues.info.push(m)
 
 /** Recursively list prerendered index.html files under dist. */
 function walkHtml(dir, acc = []) {
@@ -38,22 +44,95 @@ function walkHtml(dir, acc = []) {
   return acc
 }
 
-function extractMeta(html, pattern) {
+function extract(html, pattern) {
   const m = html.match(pattern)
-  return m ? m[1] : null
+  return m ? m[1].trim() : null
 }
 
-function extractJsonLd(html) {
+function extractTitle(html) {
+  return extract(html, /<title[^>]*>([\s\S]*?)<\/title>/i)
+}
+
+function extractDescription(html) {
+  return extract(html, /<meta[^>]*name="description"[^>]*content="([^"]*)"/i)
+    || extract(html, /<meta[^>]*content="([^"]*)"[^>]*name="description"/i)
+}
+
+function extractCanonical(html) {
+  return extract(html, /<link[^>]*rel="canonical"[^>]*href="([^"]*)"/i)
+    || extract(html, /<link[^>]*href="([^"]*)"[^>]*rel="canonical"/i)
+}
+
+function extractRobots(html) {
+  return extract(html, /<meta[^>]*name="robots"[^>]*content="([^"]*)"/i)
+    || extract(html, /<meta[^>]*content="([^"]*)"[^>]*name="robots"/i)
+}
+
+function extractOgUrl(html) {
+  return extract(html, /<meta[^>]*property="og:url"[^>]*content="([^"]*)"/i)
+}
+
+function extractH1(html) {
+  return extract(html, /<h1[^>]*>([\s\S]*?)<\/h1>/i)
+}
+
+function extractJsonLd(html, file = '') {
   const blocks = []
-  const re = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g
+  const re = /<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi
   let m
   while ((m = re.exec(html))) {
-    try { blocks.push(JSON.parse(m[1])) } catch { warn(`Unparseable JSON-LD in ${html.slice(0, 0) || 'a page'}`) }
+    try {
+      blocks.push(JSON.parse(m[1]))
+    } catch {
+      warn(`Unparseable JSON-LD in ${file || 'a page'}`)
+    }
   }
   return blocks
 }
 
-// Invisible / suspicious Unicode
+function decodeHtml(value = '') {
+  return String(value)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_m, code) => String.fromCodePoint(Number(code)))
+}
+
+/** Canonical URL represented by an index.html file. */
+function urlForFile(file) {
+  const rel = relative(DIST, file).replace(/\\/g, '/')
+  if (rel === 'index.html') return '/en/'
+  if (!rel.endsWith('/index.html')) return null
+  return `/${rel.slice(0, -'index.html'.length)}`
+}
+
+function isRedirectAlias(html) {
+  return /<meta\s+http-equiv="refresh"/i.test(html)
+}
+
+function collectAnchors(html) {
+  const links = []
+  const re = /<a\b[^>]*href="([^"]+)"/gi
+  let m
+  while ((m = re.exec(html))) links.push(decodeHtml(m[1]))
+  return [...new Set(links)]
+}
+
+function isInternal(link) {
+  return link.startsWith('/') && !link.startsWith('//')
+}
+
+function pathOf(link) {
+  return link.split(/[?#]/)[0]
+}
+
+function isFileLike(path) {
+  return /\.[a-z0-9]{2,8}$/i.test(path)
+}
+
+// Invisible / suspicious Unicode.
 const INVISIBLE_RE = /[\u200B\u200C\u200D\u2060\uFEFF\u00AD]/g
 
 async function main() {
@@ -67,105 +146,212 @@ async function main() {
   const products = await fetchPublishedProducts()
   console.log(`📦 Live catalog: ${products.length} published products\n`)
 
-  // ── 1. Prerendered pages ─────────────────────────────────────
-  const htmlFiles = walkHtml(DIST).map((f) => f.replace(/\\/g, '/'))
-  const productPages = htmlFiles.filter((f) => f.includes(`${DIST}/en/product/`))
-  console.log(`HTML SHELLS: ${htmlFiles.length} total, ${productPages.length} en product pages`)
+  // ── 1. Route inventory ───────────────────────────────────────
+  const htmlFiles = walkHtml(DIST).map((file) => file.replace(/\\/g, '/'))
+  const pageFiles = htmlFiles.filter((file) => relative(DIST, file).replace(/\\/g, '/') !== 'index.html')
+  const productPages = pageFiles.filter((file) => file.includes('/en/product/'))
+  console.log(`HTML SHELLS: ${htmlFiles.length} total, ${pageFiles.length} route documents, ${productPages.length} en product URLs`)
 
   if (products.length > 0 && productPages.length < products.length) {
     warn(`${products.length - productPages.length} product page(s) not prerendered`)
   }
 
-  const titles = new Map()
-  for (const file of productPages) {
-    const html = readFileSync(file, 'utf-8')
-    const title = extractMeta(html, /<title>([^<]*)<\/title>/)
-    const canonical = extractMeta(html, /<link rel="canonical" href="([^"]*)"/)
-    const desc = extractMeta(html, /<meta name="description" content="([^"]*)"/)
+  // Every intended static route must have a generated document.
+  for (const route of STATIC_ROUTES) {
+    const file = join(DIST, route.path, 'index.html')
+    if (!existsSync(file)) fail(`missing prerendered static route: ${route.path}`)
+  }
 
-    if (!title) fail(`${file}: missing <title>`)
-    if (!desc) warn(`${file}: missing meta description`)
-    if (!canonical) fail(`${file}: missing canonical`)
-
-    if (title) {
-      if (titles.has(title)) warn(`duplicate title: "${title.slice(0, 60)}" (${titles.get(title)} + ${file})`)
-      titles.set(title, file)
-    }
-    // Stuffed-title heuristic: same token repeated 3+ times
-    const tokens = (title || '').toLowerCase().split(/\s+/)
-    const counts = {}
-    for (const tok of tokens) counts[tok] = (counts[tok] || 0) + 1
-    const stuffed = Object.entries(counts).find(([t, c]) => c >= 3 && t.length > 3)
-    if (stuffed) warn(`${file}: title token "${stuffed[0]}" repeats ${stuffed[1]}x — check for stuffing`)
-
-    if (canonical && !canonical.startsWith(`${BASE_URL}/en/product/`)) {
-      fail(`${file}: canonical not a product URL — ${canonical}`)
-    }
-
-    // ── 2. Product JSON-LD ─────────────────────────────────────
-    const blocks = extractJsonLd(html)
-    const productLd = blocks.find((b) => b['@type'] === 'Product')
-    if (!productLd) {
-      fail(`${file}: no Product JSON-LD`)
-      continue
-    }
-    const offers = productLd.offers || {}
-    if (!offers.price || !offers.priceCurrency) fail(`${file}: Offer without price`)
-    if (offers.priceValidUntil) fail(`${file}: fabricated priceValidUntil present (policy risk)`)
-    if (productLd.brand?.name === 'Alka Traders') {
-      warn(`${file}: brand asserted as Alka Traders (seller, not manufacturer)`)
-    }
-    const gtin = productLd.gtin
-    if (gtin && !/^\d{8}$|^\d{12,14}$/.test(String(gtin))) {
-      fail(`${file}: gtin is not a valid GS1 format — IMPA code in gtin? value=${gtin}`)
-    }
-    // JSON-LD name must appear in visible content (H1)
-    const h1 = extractMeta(html, /<h1>([^<]*)<\/h1>/)
-    if (productLd.name && h1 && productLd.name !== h1) {
-      warn(`${file}: JSON-LD name != H1 ("${productLd.name}" vs "${h1}")`)
+  // The root index.html is the home alias used as the SPA fallback template.
+  const rootIndex = join(DIST, 'index.html')
+  if (existsSync(rootIndex)) {
+    const rootHtml = readFileSync(rootIndex, 'utf-8')
+    const rootCanonical = extractCanonical(rootHtml)
+    if (rootCanonical !== `${BASE_URL}/en/`) {
+      warn(`dist/index.html home alias canonical is ${rootCanonical || 'missing'} (expected ${BASE_URL}/en/)`)
     }
   }
 
-  // ── 3. Sitemap agreement ─────────────────────────────────────
+  // ── 2. Per-page metadata, content, and links ─────────────────
+  const titles = new Map()
+  const canonicals = new Map()
+  let aliasCount = 0
+
+  for (const file of pageFiles) {
+    const html = readFileSync(file, 'utf-8')
+    const urlPath = urlForFile(file)
+    if (!urlPath) continue
+
+    if (isRedirectAlias(html)) {
+      aliasCount++
+      const canonical = extractCanonical(html)
+      const robots = extractRobots(html) || ''
+      if (!/noindex/i.test(robots)) fail(`${file}: redirect alias is not noindex`)
+      if (!canonical?.startsWith(`${BASE_URL}/en/product/`)) fail(`${file}: redirect alias has bad canonical ${canonical || '(missing)'}`)
+      continue
+    }
+
+    const title = extractTitle(html)
+    const description = extractDescription(html)
+    const canonical = extractCanonical(html)
+    const robots = extractRobots(html)
+    const h1 = extractH1(html)
+    const expectedCanonical = `${BASE_URL}${urlPath}`
+    const isProduct = urlPath.startsWith('/en/product/')
+
+    if (!title) fail(`${file}: missing <title>`)
+    if (!description) fail(`${file}: missing meta description`)
+    if (!canonical) fail(`${file}: missing canonical`)
+    if (!robots) fail(`${file}: missing meta robots`)
+    if (!h1) fail(`${file}: missing H1`)
+
+    if (title) {
+      const decodedTitle = decodeHtml(title)
+      if (titles.has(decodedTitle)) warn(`duplicate title: "${decodedTitle.slice(0, 70)}" (${titles.get(decodedTitle)} + ${file})`)
+      titles.set(decodedTitle, file)
+      if (decodedTitle.length < 15) warn(`${file}: title is very short (${decodedTitle.length} chars)`)
+      if (decodedTitle.length > 70) warn(`${file}: title is ${decodedTitle.length} chars (may truncate in SERPs)`)
+      const tokens = decodedTitle.toLowerCase().split(/\s+/)
+      const counts = {}
+      for (const token of tokens) counts[token] = (counts[token] || 0) + 1
+      const stuffed = Object.entries(counts).find(([token, count]) => count >= 3 && token.length > 3)
+      if (stuffed) warn(`${file}: title token "${stuffed[0]}" repeats ${stuffed[1]}x — check for stuffing`)
+    }
+
+    if (description) {
+      const decodedDescription = decodeHtml(description)
+      if (decodedDescription.length < 50) warn(`${file}: meta description is short (${decodedDescription.length} chars)`)
+      if (decodedDescription.length > 165) warn(`${file}: meta description is ${decodedDescription.length} chars (may truncate)`)
+    }
+
+    if (canonical) {
+      if (canonical !== expectedCanonical) fail(`${file}: canonical ${canonical} != expected ${expectedCanonical}`)
+      if (canonicals.has(canonical)) warn(`duplicate canonical: ${canonical} (${canonicals.get(canonical)} + ${file})`)
+      canonicals.set(canonical, file)
+    }
+
+    if (robots && /noindex/i.test(robots)) {
+      fail(`${file}: indexable English page contains noindex`)
+    }
+
+    const ogUrl = extractOgUrl(html)
+    if (canonical && ogUrl && ogUrl !== canonical) warn(`${file}: og:url ${ogUrl} != canonical ${canonical}`)
+
+    if (!/<div class="seo-shell">/i.test(html)) fail(`${file}: missing crawlable seo-shell body`)
+    if (!/<p[\s>]/i.test(html)) fail(`${file}: no paragraph copy in body`)
+
+    const h1Count = (html.match(/<h1\b/gi) || []).length
+    if (h1Count !== 1) fail(`${file}: expected exactly one H1, found ${h1Count}`)
+
+    const robotsCount = (html.match(/<meta[^>]*name="robots"/gi) || []).length
+    if (robotsCount > 1) fail(`${file}: ${robotsCount} robots meta tags (body meta must not duplicate head)`)
+
+    // JSON-LD graph sanity.
+    const blocks = extractJsonLd(html, file)
+    const types = blocks.map((block) => block?.['@type']).filter(Boolean)
+    if (!types.includes('Organization')) fail(`${file}: no Organization JSON-LD`)
+    if (!types.includes('WebSite')) fail(`${file}: no WebSite JSON-LD`)
+    if (urlPath !== '/en/' && !types.includes('BreadcrumbList')) fail(`${file}: no BreadcrumbList JSON-LD`)
+
+    // Internal link graph.
+    const anchors = collectAnchors(html)
+    const internal = anchors.filter(isInternal)
+    if (internal.length < 3) fail(`${file}: only ${internal.length} internal anchors`)
+    for (const link of internal) {
+      const path = pathOf(link)
+      if (path === '/en/categories/' || path === '/en/categories') fail(`${file}: links to non-existent category directory ${link}`)
+      if (path === '/') warn(`${file}: links to redirecting root /`)
+      if (path.startsWith('/en/') && !path.endsWith('/') && !isFileLike(path)) {
+        warn(`${file}: non-canonical internal link ${link}`)
+      }
+    }
+
+    // Product-specific checks.
+    if (isProduct) {
+      const productLd = blocks.find((block) => block?.['@type'] === 'Product')
+      if (!productLd) {
+        fail(`${file}: no Product JSON-LD`)
+        continue
+      }
+      const offers = productLd.offers || {}
+      if (!offers.price || !offers.priceCurrency) fail(`${file}: Offer without price/currency`)
+      if (offers.priceValidUntil) fail(`${file}: fabricated priceValidUntil present`)
+      if (productLd.brand?.name === 'Alka Traders') warn(`${file}: brand asserted as Alka Traders (seller, not manufacturer)`)
+      if (productLd.gtin && !/^\d{8}$|^\d{12,14}$/.test(String(productLd.gtin))) {
+        fail(`${file}: invalid gtin — IMPA code in gtin? value=${productLd.gtin}`)
+      }
+      if (productLd.url && productLd.url !== expectedCanonical) fail(`${file}: Product url ${productLd.url} != canonical`)
+      if (productLd.name && h1 && decodeHtml(productLd.name) !== decodeHtml(h1)) {
+        warn(`${file}: JSON-LD name != H1 ("${productLd.name}" vs "${decodeHtml(h1)}")`)
+      }
+    }
+  }
+
+  if (aliasCount > 0) console.log(`ALIASES: ${aliasCount} legacy UUID redirect document(s)`)
+
+  // ── 3. Sitemap agreement (when a static sitemap is bundled) ──
   const sitemapPath = join(DIST, 'sitemap.xml')
   if (!existsSync(sitemapPath)) {
-    console.log('SITEMAP: runtime endpoint only (expected; no static sitemap is bundled)')
+    info('SITEMAP: runtime endpoint only (no static sitemap bundled)')
   } else {
     const sitemap = readFileSync(sitemapPath, 'utf-8')
     const locs = new Set([...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]))
     console.log(`SITEMAP: ${locs.size} URLs`)
-    for (const p of products) {
-      const url = `${BASE_URL}/en/product/${p.slug}/`
-      if (!locs.has(url)) fail(`product missing from sitemap: ${url}`)
+    if (/<(?:priority|changefreq)>/i.test(sitemap)) fail('sitemap contains deprecated priority/changefreq')
+    for (const url of STATIC_URLS) {
+      if (!locs.has(url)) fail(`static route missing from sitemap: ${url}`)
     }
-    // Sitemap loc must equal canonical for each prerendered page
-    for (const file of productPages) {
-      const html = readFileSync(file, 'utf-8')
-      const canonical = extractMeta(html, /<link rel="canonical" href="([^"]*)"/)
-      if (canonical && !locs.has(canonical)) fail(`canonical not in sitemap: ${canonical}`)
+    for (const [canonical, file] of canonicals) {
+      if (!locs.has(canonical)) fail(`prerendered canonical missing from sitemap: ${canonical} (${file})`)
+    }
+    for (const product of products) {
+      const url = `${BASE_URL}/en/product/${product.slug}/`
+      if (!locs.has(url)) fail(`product missing from sitemap: ${url}`)
     }
   }
 
   // ── 4. Content hygiene over catalog data ─────────────────────
   let invisibleCount = 0
-  for (const p of products) {
-    for (const [field, value] of [['name', p.name], ['description', p.description]]) {
+  for (const product of products) {
+    for (const [field, value] of [['name', product.name], ['description', product.description]]) {
       const matches = String(value || '').match(INVISIBLE_RE)
       if (matches) {
         invisibleCount++
-        warn(`${field} of ${p.sku || p.id} contains ${matches.length} invisible character(s) (U+${matches[0].codePointAt(0).toString(16)})`)
+        warn(`${field} of ${product.sku || product.id} contains ${matches.length} invisible character(s) (U+${matches[0].codePointAt(0).toString(16)})`)
       }
     }
   }
   if (invisibleCount === 0) console.log('CONTENT: no invisible characters detected')
 
+  // ── 5. Crawler policy files ──────────────────────────────────
+  const robotsPath = join(DIST, 'robots.txt')
+  if (existsSync(robotsPath)) {
+    const robots = readFileSync(robotsPath, 'utf-8')
+    if (!/Sitemap:\s*https:\/\/alkatraders\.co\/sitemap\.xml/i.test(robots)) fail('robots.txt is missing the sitemap directive')
+    if (/^\s*Disallow:\s*\/\s*$/im.test(robots)) fail('robots.txt blocks the entire site')
+  } else {
+    warn('robots.txt not found in dist')
+  }
+
+  const notFoundPath = join(DIST, '404.html')
+  if (existsSync(notFoundPath)) {
+    const notFound = readFileSync(notFoundPath, 'utf-8')
+    if (!/noindex/i.test(notFound)) warn('404.html is not noindex')
+    if (/http-equiv="refresh"|location\.replace/i.test(notFound)) fail('404.html still redirects instead of returning a 404 page')
+  }
+
   // ── Report ───────────────────────────────────────────────────
   console.log(`\n${'═'.repeat(50)}`)
   console.log(`ERRORS: ${issues.error.length}`)
-  for (const e of issues.error.slice(0, 30)) console.log(`  ✗ ${e}`)
+  for (const error of issues.error.slice(0, 40)) console.log(`  ✗ ${error}`)
+  if (issues.error.length > 40) console.log(`  … and ${issues.error.length - 40} more`)
   console.log(`WARNINGS: ${issues.warn.length}`)
-  for (const w of issues.warn.slice(0, 30)) console.log(`  ⚠ ${w}`)
-  if (issues.error.length > 30) console.log(`  … and ${issues.error.length - 30} more`)
+  for (const warning of issues.warn.slice(0, 40)) console.log(`  ⚠ ${warning}`)
+  if (issues.warn.length > 40) console.log(`  … and ${issues.warn.length - 40} more`)
+  if (issues.info.length) {
+    console.log('INFO:')
+    for (const line of issues.info) console.log(`  ℹ ${line}`)
+  }
   console.log('═'.repeat(50))
   process.exitCode = issues.error.length > 0 ? 1 : 0
 }

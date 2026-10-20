@@ -8,6 +8,32 @@
 const API = process.env.SEO_API_BASE || 'https://api.alkatraders.co'
 
 /**
+ * Fetch the admin-configured site title/description so the prerendered
+ * homepage matches what server.js injects at request time. Returns null when
+ * the API is unreachable or the settings are empty — the caller keeps the
+ * route defaults in that case.
+ */
+export async function fetchSiteSeoSettings() {
+  try {
+    const res = await fetch(`${API}/api/v1/storefront/settings`, {
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) {
+      console.warn(`  ⚠️  Settings API returned ${res.status} — using default homepage metadata.`)
+      return null
+    }
+    const payload = await res.json()
+    const settings = payload?.settings || {}
+    const title = String(settings['site.seoTitle'] || '').replace(/\s+/g, ' ').trim()
+    const description = String(settings['site.seoDescription'] || '').replace(/\s+/g, ' ').trim().slice(0, 160)
+    return title || description ? { title, description } : null
+  } catch (err) {
+    console.warn(`  ⚠️  Settings API unreachable (${err.message}) — using default homepage metadata.`)
+    return null
+  }
+}
+
+/**
  * @param {number} maxPages Safety cap so a broken `totalPages` can't loop forever.
  * @returns {Promise<Array<{id,name,slug,sku,brand,category,condition,price,salePrice,onSale,inStock,description,shortDescription,images,updatedAt}>>}
  */
@@ -42,7 +68,10 @@ export async function fetchPublishedProducts({ maxPages = 50, pageSize = 100 } =
         seoTitle: p.seoTitle || '',
         seoDescription: p.seoDescription || '',
         brand: p.brand?.name || 'Unknown',
+        brandSlug: p.brand?.slug || '',
         category: p.category?.slug || 'other-business',
+        categorySlug: p.category?.slug || '',
+        categoryName: p.category?.name || '',
         condition: p.condition || 'used',
         price: Number(p.regularPrice) || 0,
         salePrice: p.salePrice != null ? Number(p.salePrice) : null,

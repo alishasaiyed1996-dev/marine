@@ -12,6 +12,7 @@
  */
 
 import { parseDescription } from '../description'
+import { isValidGtin } from './productContent'
 
 export interface ProductSeoInput {
   id: string
@@ -25,19 +26,26 @@ export interface ProductSeoInput {
   condition: string
   description?: string
   price: number
+  currency?: string
   onSale?: boolean
   salePrice?: number
   inStock: boolean
   stockCount: number
   images?: Array<{ url: string; alt?: string }>
+  /** Optional social-share override; the product image remains the default. */
+  ogImageUrl?: string | null
   makeOffer?: boolean
   // Structured identity from the admin (DB columns). When present these WIN
   // over values parsed out of the free-text description.
   manufacturer?: string | null
   modelNumber?: string | null
   mpn?: string | null
+  gtin?: string | null
   impaCode?: string | null
 }
+
+const BASE_URL = (import.meta.env.VITE_SITE_URL || 'https://alkatraders.co').replace(/\/+$/, '')
+const VALID_CURRENCY = /^[A-Z]{3}$/
 
 export interface ProductSeoResult {
   /** Page title WITHOUT the "| Alka Traders" suffix (SEO.tsx appends it). */
@@ -234,7 +242,13 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
   const effectivePrice = input.onSale && input.salePrice ? input.salePrice : input.price
   const hasRealPrice = Number.isFinite(effectivePrice) && effectivePrice > 0
   const mainImage = input.images?.[0]?.url
+  const ogImage = input.ogImageUrl?.trim() || mainImage
   const ogImageAlt = `${h1}${identity.size ? ` — ${identity.size}` : ''}`
+  const currency = VALID_CURRENCY.test(String(input.currency || '').toUpperCase())
+    ? String(input.currency).toUpperCase()
+    : 'USD'
+  const gtin = input.gtin?.replace(/\s+/g, '') || undefined
+  const canonicalUrl = `${BASE_URL}/en/product/${encodeURIComponent(input.slug || input.id)}/`
 
   const jsonLd: Record<string, unknown>[] = []
 
@@ -262,7 +276,12 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
     name: h1,
     description: schemaDescription,
     sku: input.sku,
+    url: canonicalUrl,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
     ...(identity.mpn ? { mpn: identity.mpn } : {}),
+    ...(gtin && isValidGtin(gtin) ? { gtin } : {}),
+    ...(identity.model ? { model: identity.model } : {}),
+    ...(identity.manufacturer ? { manufacturer: { '@type': 'Organization', name: identity.manufacturer } } : {}),
     ...(isUsable(input.brand) && input.brand !== 'Unknown' ? { brand: { '@type': 'Brand', name: tidy(input.brand) } } : {}),
     ...(mainImage ? { image: [mainImage] } : {}),
     ...(identity.impa
@@ -279,8 +298,8 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
     ...(hasRealPrice ? { offers: {
       '@type': 'Offer',
       // Canonical URL uses the stable public slug (UUID remains a redirect alias).
-      url: `https://alkatraders.co/en/product/${input.slug || input.id}/`,
-      priceCurrency: 'USD',
+      url: canonicalUrl,
+      priceCurrency: currency,
       price: effectivePrice.toFixed(2),
       availability: input.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
       itemCondition: mapCondition(input.condition),
@@ -299,9 +318,9 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
     productSku: input.sku,
     productCategory: input.category.replace(/-/g, ' '),
     productPrice: effectivePrice,
-    productCurrency: 'USD',
+    productCurrency: currency,
     productAvailability: input.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-    ogImage: mainImage,
+    ogImage,
     ogImageAlt,
     jsonLd,
   }

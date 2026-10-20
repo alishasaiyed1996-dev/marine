@@ -22,11 +22,13 @@ export default function CategoryHub() {
   const category = data as any
   const products = apiProductsToFrontend(category?.products || [])
   const description = category?.description || ''
-  const indexable = Boolean(description.trim().length >= 120 && (category?._count?.products || 0) > 0)
+  // The API computes this with backend/src/utils/hubSeo.ts, the same function
+  // the sitemap and the server-rendered robots meta use.
+  const indexable = category?.indexable === true
   const title = category?.seoTitle || `${category?.name || 'Marine spare parts'} | Alka Traders`
   const metaDescription = category?.seoDescription || description.slice(0, 160)
 
-  if (isError) return <main className="mx-auto max-w-5xl px-4 py-20"><h1>Category not found</h1><Link to={`/${language}/products/`}>Browse products</Link></main>
+  if (isError) return <main className="mx-auto max-w-5xl px-4 py-20"><SEO title="Category not found | Alka Traders" description="The requested category page is not available. Browse the Alka Traders product catalog." noindex /><h1>Category not found</h1><Link to={`/${language}/products/`}>Browse products</Link></main>
   return <main className="mx-auto max-w-[1280px] px-4 py-12 sm:px-6">
     {category && <>
       <SEO title={title} description={metaDescription} canonical={`/categories/${category.slug}/`} noindex={!indexable} />

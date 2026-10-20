@@ -236,10 +236,25 @@ model Category {
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[] @relation("CategoryTree")
   products Product[]
+  slugHistory CategorySlugHistory[]
 
   @@index([parentId])
   @@index([slug])
   @@map("categories")
+}
+
+// Previous category URLs. A deliberate slug change stores the old slug here so
+// the public route can answer it with a permanent redirect instead of a 404.
+model CategorySlugHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  categoryId String   @map("category_id") @db.Uuid
+  slug       String   @unique @db.VarChar(255)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@map("category_slug_history")
 }
 
 // ─── Brands ────────────────────────────────────────────────────
@@ -260,9 +275,23 @@ model Brand {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   products Product[]
+  slugHistory BrandSlugHistory[]
 
   @@index([slug])
   @@map("brands")
+}
+
+// Previous brand URLs, mirroring category_slug_history.
+model BrandSlugHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  brandId   String   @map("brand_id") @db.Uuid
+  slug      String   @unique @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+  @@map("brand_slug_history")
 }
 
 // ─── Industries ────────────────────────────────────────────────
@@ -281,8 +310,22 @@ model Industry {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   products ProductIndustry[]
+  slugHistory IndustrySlugHistory[]
 
   @@map("industries")
+}
+
+// Previous industry URLs, mirroring category_slug_history.
+model IndustrySlugHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  industryId String   @map("industry_id") @db.Uuid
+  slug       String   @unique @db.VarChar(255)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  industry Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+
+  @@index([industryId])
+  @@map("industry_slug_history")
 }
 
 // ─── Orders ────────────────────────────────────────────────────

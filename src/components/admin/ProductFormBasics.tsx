@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { AlertCircle, Wand2 } from 'lucide-react'
 import { isLightColor, buildProductSkuBase, generateProductSku } from '../../lib/utils'
+import { MIN_PRODUCT_DESCRIPTION_WORDS, countWords, meetsProductDescriptionMinimum } from '../../lib/seo/productContent'
 import { BrandCombobox } from './BrandCombobox'
 import type { ProductFormData } from '../../hooks/useProductForm'
 
@@ -15,7 +16,7 @@ interface ProductFormBasicsProps {
   errorClass: string
   errors: Record<string, string>
   brandList: { id: string; name: string }[]
-  categoryList: { id: string; name: string }[]
+  categoryList: { id: string; name: string; parentId?: string | null }[]
   industryList: { id: string; name: string }[]
   toggleIndustry: (id: string) => void
 }
@@ -32,6 +33,9 @@ export function ProductFormBasics({
     // Focus the SKU input so the admin can immediately edit the generated value.
     skuInputRef.current?.focus()
   }
+
+  const descriptionLength = form.description.trim().length
+  const descriptionWords = countWords(form.description)
 
   return (
     <div className="space-y-5">
@@ -100,7 +104,7 @@ export function ProductFormBasics({
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label className={labelClass}>Category <span className="normal-case font-semibold text-[var(--text-muted)]">(optional)</span></label>
+          <label className={labelClass}>Category <span className="normal-case font-semibold text-[var(--text-muted)]">(required to publish)</span></label>
           <select
             value={form.category}
             onChange={(e) => updateField('category', e.target.value)}
@@ -109,7 +113,7 @@ export function ProductFormBasics({
           >
             <option value="">Select category</option>
             {categoryList.map((cat) => (
-              <option key={cat.id} value={cat.id}>{cat.name}</option>
+              <option key={cat.id} value={cat.id}>{cat.parentId ? `— ${cat.name}` : cat.name}</option>
             ))}
           </select>
           {showError('category') && <p className={errorClass}><AlertCircle size={10} />{errors.category}</p>}
@@ -184,10 +188,18 @@ export function ProductFormBasics({
         <textarea
           value={form.description}
           onChange={(e) => updateField('description', e.target.value)}
-          placeholder="Detailed product description..."
+          onBlur={() => markTouched('description')}
+          placeholder="Detailed product description (at least 50 words or about 300 characters to publish)..."
           rows={5}
           className={`${getFieldClass('description')} resize-y`}
         />
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p className="text-[0.625rem] text-[var(--text-muted)]">Write product-specific copy; 50 words (about 300 characters) are needed to publish.</p>
+          <span className={`shrink-0 text-[0.625rem] font-bold ${meetsProductDescriptionMinimum(form.description) ? 'text-[var(--success)]' : 'text-[var(--accent-gold)]'}`}>
+            {descriptionLength} chars · {descriptionWords}/{MIN_PRODUCT_DESCRIPTION_WORDS} words
+          </span>
+        </div>
+        {showError('description') && <p className={errorClass}><AlertCircle size={10} />{errors.description}</p>}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

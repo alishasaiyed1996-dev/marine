@@ -11,6 +11,21 @@ export function generateSlug(text: string): string {
     .replace(/^-|-$/g, '')
 }
 
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/** Normalize an admin-entered URL slug and reject values that cannot be used. */
+export function assertValidSlug(value: string): string {
+  const slug = generateSlug(String(value || '')).slice(0, 200).replace(/-+$/g, '')
+  if (!slug || !SLUG_PATTERN.test(slug)) {
+    throw Object.assign(
+      new Error('URL slug must contain lowercase letters, numbers and single hyphens (for example: caterpillar-3512b).'),
+      { status: 400 },
+    )
+  }
+  return slug
+}
+
+
 // ─── Order Number Generation (DB-backed) ──────────────────────
 export async function generateOrderNumber(): Promise<string> {
   // Use UUID-based prefix for uniqueness across multi-instance deployments

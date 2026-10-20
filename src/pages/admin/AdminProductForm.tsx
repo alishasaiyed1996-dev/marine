@@ -16,6 +16,8 @@ export default function AdminProductForm() {
   const [showPreview, setShowPreview] = useState(false)
 
   const isPublished = hook.form.status === 'published'
+  const brandName = hook.brandList.find((brand) => brand.id === hook.form.brand)?.name || ''
+  const categoryName = hook.categoryList.find((category) => category.id === hook.form.category)?.name || ''
   const saveDisabled = hook.saving || (!hook.isValid && hook.attempted)
   const saveLabel = hook.saving ? 'Saving...' : hook.saved ? 'Saved!' : isPublished ? 'Save & Publish' : 'Save as Draft'
 
@@ -195,6 +197,11 @@ export default function AdminProductForm() {
                 updateField={hook.updateField}
                 getFieldClass={hook.getFieldClass}
                 labelClass={hook.labelClass}
+                isEditing={hook.isEditing}
+                publicSlug={hook.publicSlug}
+                slugError={hook.errors.slug}
+                brandName={brandName}
+                categoryName={categoryName}
               />
             )}
             {hook.activeTab === 'notes' && (

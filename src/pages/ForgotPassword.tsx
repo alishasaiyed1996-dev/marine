@@ -30,7 +30,7 @@ export default function ForgotPassword() {
 
   return (
     <>
-      <SEO title="Forgot Password — Alka Traders" description="Reset your Alka Traders account password. Enter your email to receive a password reset link." />
+      <SEO title="Forgot Password — Alka Traders" description="Reset your Alka Traders account password. Enter your email to receive a password reset link." noindex />
       <div className="min-h-screen flex items-center justify-center bg-[var(--primary-bg)] px-4 py-16">
       <div className="w-full max-w-[420px]">
         {/* Brand */}

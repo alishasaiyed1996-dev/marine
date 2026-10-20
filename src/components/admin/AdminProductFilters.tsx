@@ -1,4 +1,4 @@
-import { Search, Filter, Download, X, Tag, Package } from 'lucide-react'
+import { Search, Filter, Download, X, Tag, Package, SearchCheck } from 'lucide-react'
 
 interface AdminProductFiltersProps {
   search: string
@@ -25,6 +25,8 @@ interface AdminProductFiltersProps {
   onFilterOnSaleToggle: () => void
   filterNewArrival: boolean
   onFilterNewArrivalToggle: () => void
+  filterSeo: boolean
+  onFilterSeoToggle: () => void
 
   // Dropdown data
   uniqueBrands: string[]
@@ -44,6 +46,7 @@ export function AdminProductFilters({
   filterStatus, onFilterStatusChange,
   filterOnSale, onFilterOnSaleToggle,
   filterNewArrival, onFilterNewArrivalToggle,
+  filterSeo, onFilterSeoToggle,
   uniqueBrands, uniqueCategories,
   onClearFilters,
 }: AdminProductFiltersProps) {
@@ -87,7 +90,7 @@ export function AdminProductFilters({
 
       {/* ── Filter dropdowns ── */}
       {showFilters && (
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 border-t border-[var(--border)] pt-4">
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3 border-t border-[var(--border)] pt-4">
           <div>
             <label className="mb-1 block text-[0.625rem] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</label>
             <select
@@ -169,6 +172,19 @@ export function AdminProductFilters({
               <Package size={12} className="inline mr-1" /> New Arrivals
             </button>
           </div>
+          <div className="flex items-end">
+            <button
+              onClick={() => { onFilterSeoToggle(); onPageReset() }}
+              className={`w-full rounded-lg border px-3 py-2 text-xs font-bold transition-all ${
+                filterSeo
+                  ? 'border-[var(--danger)] bg-[var(--danger)] text-[var(--btn-danger-text)]'
+                  : 'border-[var(--border)] bg-[var(--surface-soft)] text-[var(--text-secondary)]'
+              }`}
+              title="Published products missing SEO title/description, verified identifiers, category, or image alt text"
+            >
+              <SearchCheck size={12} className="inline mr-1" /> Needs SEO
+            </button>
+          </div>
         </div>
       )}
 
@@ -224,6 +240,12 @@ export function AdminProductFilters({
             <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-teal)]/10 px-2 py-1 text-[0.625rem] font-bold text-[var(--accent-teal)]">
               New
               <button onClick={() => { onFilterNewArrivalToggle(); onPageReset() }}><X size={10} /></button>
+            </span>
+          )}
+          {filterSeo && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-[var(--danger)]/10 px-2 py-1 text-[0.625rem] font-bold text-[var(--danger)]">
+              Needs SEO attention
+              <button onClick={() => { onFilterSeoToggle(); onPageReset() }}><X size={10} /></button>
             </span>
           )}
           <button onClick={onClearFilters} className="text-[0.625rem] font-bold text-[var(--danger)] hover:underline ml-1">

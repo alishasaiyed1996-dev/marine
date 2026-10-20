@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useLocation } from 'react-router-dom'
+import { reconcilePrerenderedHead } from './reconcileHead'
 import { useStore } from '../../store/useStore'
 import { VALID_LOCALES, LOCALE_TO_OG } from '../../lib/locale'
 import { getCspNonce } from '../../lib/csp'
@@ -19,7 +21,6 @@ interface SEOProps {
   productCategory?: string
   productCondition?: string
   ogImageAlt?: string
-  keywords?: string
   /** Emit <meta name="robots" content="noindex, follow"> — used for search
    *  results, junk filter combinations, and unavailable products (B18/B20). */
   noindex?: boolean
@@ -52,13 +53,19 @@ export function SEO({
   productCategory,
   productCondition,
   ogImageAlt,
-  keywords,
   noindex,
   jsonLd,
   alternateLocales = ['en'],
 }: SEOProps) {
   const { pathname } = useLocation()
   const language = useStore((s) => s.language)
+
+  // React 19 renders head tags natively instead of replacing data-rh tags.
+  // Once this page's live metadata is committed, drop the prerendered
+  // duplicates while keeping server-only schemas.
+  useEffect(() => {
+    reconcilePrerenderedHead()
+  }, [pathname])
 
   // Derive the path without locale prefix
   const segments = pathname.split('/').filter(Boolean)
@@ -68,7 +75,14 @@ export function SEO({
     ? '/' + segments.slice(1).join('/')
     : pathname
 
-  const fullTitle = `${title} | ${SITE_NAME}`
+  // Some callers already pass a title containing the brand name (e.g.
+  // "Track Your Order — Alka Traders" or the admin's site SEO title
+  // "Alka Traders | Marine Equipment Supplier"). Appending the suffix
+  // unconditionally produced "... | Alka Traders | Alka Traders" and
+  // duplicated the brand in the most visible SERP element.
+  const hasBrand = /(?:^|[|\-–—])\s*Alka Traders\s*(?:$|[|\-–—])/i.test(title.trim())
+  const fullTitle = hasBrand ? title.trim() : `${title} | ${SITE_NAME}`
+  const metaDescription = (description || DEFAULT_DESCRIPTION).replace(/\s+/g, ' ').trim().slice(0, 160)
   const normalizeCanonical = (value: string) => {
     const absolute = /^https?:\/\//i.test(value) ? value : `${BASE_URL}${value}`
     const parsed = new URL(absolute)
@@ -119,10 +133,12 @@ export function SEO({
   const organizationJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Organization',
+    '@id': `${BASE_URL}/#organization`,
     name: 'Alka Traders',
-    url: BASE_URL,
+    url: `${BASE_URL}/`,
     logo: DEFAULT_OG_IMAGE,
     description: 'Alka Traders is a globally connected marine and industrial equipment supplier. We supply OEM spares, surplus machinery, electrical automation components, hydraulic systems, and emergency procurement parts for the maritime and industrial sectors worldwide.',
+    sameAs: ['https://www.linkedin.com/company/alka-traders'],
     // NOTE: no foundingDate / numberOfEmployees — the About page says "since
     // 1990" while an earlier schema claimed 2000; unverifiable facts are
     // omitted rather than guessed.
@@ -189,7 +205,8 @@ export function SEO({
         '@context': 'https://schema.org',
         '@type': 'Product',
         name: title,
-        description: description,
+        description: metaDescription,
+        url: canonicalUrl,
         ...(productSku ? { sku: productSku } : {}),
         ...(productCategory ? { category: productCategory } : {}),
         image: ogImageUrl,
@@ -231,11 +248,12 @@ export function SEO({
     ...(jsonLd || []),
   ]
 
+  // Deliberately no meta keywords: Google ignores them and internal search
+  // terms must never be exposed as hidden page copy.
   return (
     <Helmet>
       <title>{fullTitle}</title>
-      <meta name="description" content={description || DEFAULT_DESCRIPTION} />
-      {keywords && <meta name="keywords" content={keywords} />}
+      <meta name="description" content={metaDescription} />
       <link rel="canonical" href={canonicalUrl} />
       {(noindex || (isLocalePrefixed && firstSegment !== 'en')) && <meta name="robots" content="noindex, follow" />}
 
@@ -244,19 +262,24 @@ export function SEO({
       ))}
 
       <meta property="og:title" content={fullTitle} />
-      <meta property="og:description" content={description || DEFAULT_DESCRIPTION} />
+      <meta property="og:description" content={metaDescription} />
       <meta property="og:url" content={canonicalUrl} />
       <meta property="og:site_name" content={SITE_NAME} />
       <meta property="og:type" content={ogType} />
       <meta property="og:image" content={ogImageUrl} />
-      <meta property="og:image:width" content="1200" />
-      <meta property="og:image:height" content="630" />
+      {!ogImage && (
+        <>
+          <meta property="og:image:width" content="1024" />
+          <meta property="og:image:height" content="1024" />
+        </>
+      )}
       <meta property="og:image:alt" content={ogImageAlt || `${SITE_NAME} — Marine & Industrial Equipment`} />
       <meta property="og:locale" content={ogLocale} />
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={fullTitle} />
-      <meta name="twitter:description" content={description || DEFAULT_DESCRIPTION} />
+      <meta name="twitter:description" content={metaDescription} />
       <meta name="twitter:image" content={ogImageUrl} />
+      <meta name="twitter:image:alt" content={ogImageAlt || `${SITE_NAME} — Marine & Industrial Equipment`} />
 
       {ogType === 'product' && productPrice && (
         <>

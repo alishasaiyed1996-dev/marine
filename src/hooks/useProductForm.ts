@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { admin } from '../lib/api'
 import { useToast } from '../components/admin/toast-context'
 import { toLocalInputValue, fromLocalInputValue, isSaleWindowValid, generateProductSku } from '../lib/utils'
+import { isValidGtin, meetsProductDescriptionMinimum } from '../lib/seo/productContent'
 import type { ApiProduct, ApiBrand, ApiCategory, ApiIndustry } from '../lib/api-types'
 
 export interface SpecRow {
@@ -41,8 +42,10 @@ export interface ProductFormData {
   conditionNotes: string
   includedItems: string[]
   excludedItems: string[]
+  slug: string
   seoTitle: string
   seoDescription: string
+  ogImageUrl: string
   searchKeywords: string
   // Verified product identity — empty string means unknown (stored as NULL).
   manufacturer: string
@@ -103,8 +106,10 @@ function getEmptyForm(): ProductFormData {
     conditionNotes: '',
     includedItems: [''],
     excludedItems: [''],
+    slug: '',
     seoTitle: '',
     seoDescription: '',
+    ogImageUrl: '',
     searchKeywords: '',
     manufacturer: '',
     modelNumber: '',
@@ -164,9 +169,13 @@ function getFormFromProduct(product: ApiProduct): ProductFormData {
     conditionNotes: product.conditionNotes || '',
     includedItems: Array.isArray(product.includedItems) && product.includedItems.length > 0 ? product.includedItems : [''],
     excludedItems: Array.isArray(product.excludedItems) && product.excludedItems.length > 0 ? product.excludedItems : [''],
+    slug: product.slug || '',
     seoTitle: product.seoTitle || product.name || '',
     seoDescription: product.seoDescription || product.description?.slice(0, 160) || '',
-    searchKeywords: (Array.isArray(product.seoKeywords) ? product.seoKeywords.join(', ') : (product.seoKeywords || product.searchKeywords || '')) as string,
+    ogImageUrl: product.ogImageUrl || '',
+    searchKeywords: Array.isArray(product.seoKeywords)
+      ? product.seoKeywords.join(', ')
+      : (product.seoKeywords || (Array.isArray(product.searchKeywords) ? product.searchKeywords.join(', ') : product.searchKeywords) || ''),
     manufacturer: product.manufacturer || '',
     modelNumber: product.modelNumber || '',
     mpn: product.mpn || '',
@@ -202,7 +211,7 @@ export function useProductForm() {
   const suppressNextDirtyRef = useRef(false)
 
   const [brandList, setBrandList] = useState<{ id: string; name: string }[]>([])
-  const [categoryList, setCategoryList] = useState<{ id: string; name: string }[]>([])
+  const [categoryList, setCategoryList] = useState<{ id: string; name: string; parentId?: string | null }[]>([])
   const [industryList, setIndustryList] = useState<{ id: string; name: string }[]>([])
   const [uploadingImage, setUploadingImage] = useState(false)
   const pendingUploadsRef = useRef(0)
@@ -223,8 +232,15 @@ export function useProductForm() {
         setBrandList((val?.brands || []).map((x) => ({ id: x.id, name: x.name })))
       }
       if (catsRes.status === 'fulfilled') {
-        const val = catsRes.value as { categories?: ApiCategory[] }
-        setCategoryList((val?.categories || []).map((x) => ({ id: x.id || x.slug, name: x.name })))
+        const val = catsRes.value as { categories?: (ApiCategory & { children?: ApiCategory[] })[] }
+        // The admin endpoint returns top-level categories with nested children.
+        // Flatten them so products can be assigned to a subcategory instead of
+        // silently keeping an option that is not in the dropdown.
+        const flat = (val?.categories || []).flatMap((category) => [
+          category,
+          ...(category.children || []),
+        ])
+        setCategoryList(flat.map((x) => ({ id: x.id || x.slug, name: x.name, parentId: x.parentId || null })))
       }
       if (indsRes.status === 'fulfilled') {
         const val = indsRes.value as { industries?: ApiIndustry[] }
@@ -303,7 +319,8 @@ export function useProductForm() {
     inventory: false,
     specs: false,
     details: false,
-    seo: !!(form.gtin && !/^(\d{8}|\d{12,14})$/.test(form.gtin)),
+    seo: !!(form.gtin && !isValidGtin(form.gtin))
+      || !!(form.slug.trim() && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug.trim())),
     notes: false,
   }
 
@@ -367,8 +384,15 @@ export function useProductForm() {
     }
     // Identity truth rule: a GTIN must be a real GS1 barcode or left empty —
     // IMPA codes and internal SKUs are the classic wrong values here.
-    if (form.gtin && !/^(\d{8}|\d{12,14})$/.test(form.gtin)) {
+    if (form.gtin && !isValidGtin(form.gtin)) {
       e.gtin = 'GTIN must be 8 or 12–14 digits (leave blank if unknown)'
+    }
+    // The slug is the permanent public URL. Reject characters the backend
+    // would silently rewrite so the admin sees the final URL before saving.
+    if (form.slug.trim() && form.slug.trim().length > 200) {
+      e.slug = 'URL slug must be 200 characters or fewer.'
+    } else if (form.slug.trim() && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug.trim())) {
+      e.slug = 'Use lowercase letters, numbers and single hyphens (example: caterpillar-3512b).'
     }
     // Published products must belong to a category: storefront category
     // browsing and filters count by categoryId, so an uncategorized product
@@ -378,7 +402,7 @@ export function useProductForm() {
       if (!form.name.trim()) e.name = 'Add a product name before publishing.'
       if (!form.sku.trim()) e.sku = 'Add a unique SKU or part number before publishing.'
       if (!form.category) e.category = 'Select a category before publishing.'
-      if (form.description.trim().length < 120) e.description = 'Write at least 120 characters of product-specific description.'
+      if (!meetsProductDescriptionMinimum(form.description)) e.description = 'Write at least 50 words (about 300 characters) of product-specific description.'
       if (!form.seoTitle.trim() || form.seoTitle.trim().length > 70) e.seoTitle = 'Add an SEO title between 1 and 70 characters.'
       if (form.seoDescription.trim().length < 80 || form.seoDescription.trim().length > 160) e.seoDescription = 'Add an SEO description between 80 and 160 characters.'
       if (![form.modelNumber, form.mpn, form.impaCode].some((value) => value.trim())) e.mpn = 'Add a verified model number, manufacturer part number, or IMPA code.'
@@ -387,7 +411,7 @@ export function useProductForm() {
       else if (!images[0].alt.trim()) e.images = 'Add descriptive alt text to the main product image.'
     }
     return e
-  }, [form.salePrice, form.regularPrice, form.saleStartsAt, form.saleEndsAt, form.makeOfferEnabled, form.minimumOfferPrice, form.category, form.status, form.gtin, form.name, form.sku, form.description, form.seoTitle, form.seoDescription, form.modelNumber, form.mpn, form.impaCode, form.images])
+  }, [form.salePrice, form.regularPrice, form.saleStartsAt, form.saleEndsAt, form.makeOfferEnabled, form.minimumOfferPrice, form.category, form.status, form.gtin, form.slug, form.name, form.sku, form.description, form.seoTitle, form.seoDescription, form.modelNumber, form.mpn, form.impaCode, form.images])
 
   const isValid = Object.keys(validate()).length === 0
 
@@ -465,7 +489,9 @@ export function useProductForm() {
     setAttempted(true)
     if (Object.keys(validationErrors).length > 0) {
       const firstField = Object.keys(validationErrors)[0]
-      setActiveTab(firstField === 'images' ? 'images' : firstField === 'description' ? 'details' : ['seoTitle', 'seoDescription', 'mpn'].includes(firstField) ? 'seo' : 'basics')
+      // `description` is edited on the Basics tab, not Details — routing it to
+      // Details hid the error and left the field off screen.
+      setActiveTab(firstField === 'images' ? 'images' : ['slug', 'seoTitle', 'seoDescription', 'mpn', 'gtin'].includes(firstField) ? 'seo' : 'basics')
       return
     }
 
@@ -533,15 +559,19 @@ export function useProductForm() {
         warehouseLocation: form.warehouseLocation,
         leadTime: form.leadTime,
         specs: form.specs.filter((s) => s.name.trim()),
+        // Empty on create means "generate from the name"; on edit the loaded
+        // slug is sent unchanged, so renaming never moves the URL.
+        slug: form.slug.trim() || undefined,
         seoTitle: form.seoTitle,
         seoDescription: form.seoDescription,
+        ogImageUrl: form.ogImageUrl.trim() || null,
         keyFeatures: form.keyFeatures.filter((f: string) => f.trim()),
         compatibilityNotes: form.compatibilityNotes,
         warrantyNotes: form.warrantyNotes,
         conditionNotes: form.conditionNotes,
         includedItems: form.includedItems.filter((i: string) => i.trim()),
         excludedItems: form.excludedItems.filter((i: string) => i.trim()),
-        seoKeywords: form.searchKeywords ? form.searchKeywords.split(',').map(s => s.trim()).filter(Boolean) : [],
+        seoKeywords: form.searchKeywords.trim() || null,
         // Identity fields: empty → null so unknown stays unknown in the DB
         // (never guessed, never fabricated for the Merchant feed or schema).
         manufacturer: form.manufacturer.trim() || null,
@@ -563,6 +593,11 @@ export function useProductForm() {
         : await admin.products.create(payload)
       const product = response.product
       setPublicSlug(product.slug)
+      // Show the real generated/current URL in the form after the first save,
+      // without treating it as a second slug change on the next save.
+      if (product.slug && product.slug !== form.slug) {
+        setForm((prev) => ({ ...prev, slug: product.slug }))
+      }
 
       if (finalStatus === 'published') {
         const liveUrl = `/en/product/${encodeURIComponent(product.slug || '')}/`
@@ -609,7 +644,7 @@ export function useProductForm() {
         details.forEach((d) => { fieldErrors[d.field] = d.message })
         setErrors(fieldErrors)
         const firstField = details[0]?.field
-        setActiveTab(firstField === 'images' ? 'images' : firstField === 'description' ? 'details' : ['seoTitle', 'seoDescription', 'mpn'].includes(firstField) ? 'seo' : 'basics')
+        setActiveTab(firstField === 'images' ? 'images' : ['slug', 'seoTitle', 'seoDescription', 'mpn', 'gtin'].includes(firstField) ? 'seo' : 'basics')
         toast('Please fix the highlighted field errors', 'error')
       } else {
         toast(msg, 'error')

@@ -7,7 +7,7 @@ import { useStore, type SkippedCartItem } from '../store/useStore'
 import { storefront } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
 import { calcShippingCost } from '../lib/shipping'
-import { useLocalizedPath, useLocale } from '../lib/locale'
+import { useLocalizedPath } from '../lib/locale'
 import { usePayPalAvailability } from '../hooks/usePayPalAvailability'
 import { SEO } from '../components/seo/SEO'
 import { CheckoutSuccess } from './checkout/CheckoutSuccess'
@@ -20,7 +20,6 @@ export default function Checkout() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const lp = useLocalizedPath()
-  const locale = useLocale()
   const stepLabels = [t('checkout.shippingLabel'), t('checkout.paymentLabel'), t('checkout.reviewLabel')]
   const {
     cart, user, isSessionLoading, getCartTotal, clearCart, getCartCount,
@@ -169,9 +168,9 @@ export default function Checkout() {
   // is being captured the order may already be placed and the cart cleared.
   useEffect(() => {
     if (!orderPlaced && !paypalReturnRestoring && cart.length === 0) {
-      navigate(`/${locale}/products`)
+      navigate(lp('/products'))
     }
-  }, [cart.length, orderPlaced, paypalReturnRestoring, navigate, locale])
+  }, [cart.length, orderPlaced, paypalReturnRestoring, navigate, lp])
 
   const settings = useStoreSettings()
   const subtotal = getCartTotal()
@@ -451,6 +450,7 @@ export default function Checkout() {
         title="Checkout — Secure Payment"
         description="Complete your order for marine and industrial equipment. Secure checkout with credit card, PayPal, or bank transfer."
         canonical="/checkout"
+        noindex
       />
       {/* Header */}
       <section className="bg-[var(--secondary-bg)] py-8 sm:py-16">

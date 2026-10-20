@@ -15,6 +15,13 @@ router.get('/', asyncHandler(async (_req, res) => {
   sendSuccess(res, await brandService.listStorefrontBrands())
 }))
 
+// ─── Previous Brand Slug (301) ─────────────────────────────────
+router.get('/slug-history/:slug', validateParams(slugParamsSchema), asyncHandler(async (req, res) => {
+  const old = await brandService.getBrandByOldSlug(req.params.slug as string)
+  if (!old) return sendError(res, 'Brand not found', 404)
+  res.redirect(301, `/en/brands/${encodeURIComponent(old.slug)}/`)
+}))
+
 // ─── Get Brand by Slug ─────────────────────────────────────────
 router.get('/:slug', validateParams(slugParamsSchema), asyncHandler(async (req, res) => {
   try {

@@ -11,8 +11,8 @@ interface ApiProduct {
   name: string
   sku: string
   slug: string
-  brand?: { id: string; name: string; slug: string } | null
-  category?: { id: string; name: string; slug: string; icon?: string } | null
+  brand?: { id: string; name: string; slug: string; isVisible?: boolean } | null
+  category?: { id: string; name: string; slug: string; icon?: string; isVisible?: boolean } | null
   status: string
   availability: string
   condition: string
@@ -37,6 +37,15 @@ interface ApiProduct {
   sortPriority: number
   seoTitle?: string | null
   seoDescription?: string | null
+  seoKeywords?: string | string[] | null
+  ogImageUrl?: string | null
+  manufacturer?: string | null
+  modelNumber?: string | null
+  mpn?: string | null
+  gtin?: string | null
+  impaCode?: string | null
+  sourceUrl?: string | null
+  lastVerifiedAt?: string | null
   images: { id: string; url: string; altText?: string | null; label?: string | null; isMain: boolean; sortOrder: number }[]
   specs: { name: string; value: string }[]
   industries: { industry: { id: string; name: string; slug: string } }[]
@@ -83,11 +92,27 @@ export function apiProductToFrontend(api: ApiProduct): Product {
     slug: api.slug,
     seoTitle: api.seoTitle,
     seoDescription: api.seoDescription,
+    seoKeywords: Array.isArray(api.seoKeywords)
+      ? api.seoKeywords
+      : String(api.seoKeywords || '').split(',').map((value) => value.trim()).filter(Boolean),
+    currency: api.currency,
+    ogImageUrl: api.ogImageUrl,
+    manufacturer: api.manufacturer,
+    modelNumber: api.modelNumber,
+    mpn: api.mpn,
+    gtin: api.gtin,
+    impaCode: api.impaCode,
+    sourceUrl: api.sourceUrl,
+    lastVerifiedAt: api.lastVerifiedAt,
     filename,
     name: api.name,
     brand: api.brand?.name || 'Unknown',
+    // Hidden hubs return 404 by design, so never link to them.
+    brandSlug: api.brand && api.brand.isVisible !== false ? api.brand.slug : undefined,
     sku: api.sku,
     category: (api.category?.slug || 'other-business') as Product['category'],
+    categoryName: api.category?.name || undefined,
+    categoryVisible: api.category ? api.category.isVisible !== false : false,
     industry: api.industries?.map((i) => i.industry.slug) || [],
     availability: api.availability as Product['availability'],
     // Filter out empty spec values — admins sometimes save a name with no

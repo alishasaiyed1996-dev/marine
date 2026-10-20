@@ -1,5 +1,5 @@
 import { prisma } from '../server.js'
-import { generateSlug } from '../utils/helpers.js'
+import { generateSlug, assertValidSlug } from '../utils/helpers.js'
 import { productAdminInclude } from '../utils/prisma-helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { setStock } from './centralInventory.js'
@@ -7,11 +7,73 @@ import type { AuthUser } from '../middleware/auth.js'
 
 // ─── Helpers ──────────────────────────────────────────────────
 
+/**
+ * Keep these values in sync with src/lib/seo/productContent.ts. The server is
+ * authoritative: the admin form only mirrors the same publish rule.
+ */
+const MIN_DESCRIPTION_CHARS = 300
+const MIN_DESCRIPTION_WORDS = 50
+
+function countWords(value: string): number {
+  const text = value.trim()
+  return text ? text.split(/\s+/).filter(Boolean).length : 0
+}
+
+function hasSubstantiveDescription(value: string): boolean {
+  const text = value.trim()
+  return text.length >= MIN_DESCRIPTION_CHARS || countWords(text) >= MIN_DESCRIPTION_WORDS
+}
+
 function validateId(id: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     throw Object.assign(new Error('Invalid product ID format'), { status: 400 })
   }
 }
+
+async function slugInUse(candidate: string, excludeId?: string) {
+  const [current, historical] = await Promise.all([
+    prisma.product.findFirst({
+      where: { slug: candidate, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      select: { id: true },
+    }),
+    prisma.productSlugHistory.findUnique({
+      where: { slug: candidate },
+      select: { id: true, productId: true },
+    }),
+  ])
+  return { current, historical }
+}
+
+/**
+ * A public URL is never silently reused:
+ *  - explicit admin edit: reject with a field-level 409 instead of appending a
+ *    timestamp that nobody can predict;
+ *  - automatic name-based slug: append -2, -3, ... without a timestamp.
+ */
+async function resolveProductSlug(base: string, explicit: boolean, excludeId?: string): Promise<string> {
+  const clean = assertValidSlug(base)
+  const { current, historical } = await slugInUse(clean, excludeId)
+  const ownHistory = historical && historical.productId === excludeId
+  if (!current && (!historical || ownHistory)) {
+    // Returning to a previous URL makes the old redirect redundant.
+    if (ownHistory && historical) {
+      await prisma.productSlugHistory.delete({ where: { id: historical.id } }).catch(() => {})
+    }
+    return clean
+  }
+  if (explicit) {
+    const message = 'That URL slug is already used by another product or an old product URL. Choose a different one.'
+    throw Object.assign(new Error(message), { status: 409, details: [{ field: 'slug', message }] })
+  }
+  let suffix = 2
+  while (true) {
+    const candidate = `${clean}-${suffix}`
+    const conflict = await slugInUse(candidate)
+    if (!conflict.current && !conflict.historical) return candidate
+    suffix += 1
+  }
+}
+
 
 /**
  * Preserve the media-library relationship for Cloudinary assets selected in a
@@ -50,7 +112,7 @@ async function assertPublishableProduct(data: any, productId?: string) {
   if (!name) add('name', 'Add a product name before publishing.')
   if (!sku) add('sku', 'Add a unique SKU or part number before publishing.')
   if (!data.categoryId) add('categoryId', 'Assign a category before publishing.')
-  if (description.length < 120) add('description', 'Write at least 120 characters of product-specific description.')
+  if (!hasSubstantiveDescription(description)) add('description', 'Write at least 50 words (about 300 characters) of product-specific description.')
   if (!seoTitle || seoTitle.length > 70) add('seoTitle', 'Add an SEO title between 1 and 70 characters.')
   if (seoDescription.length < 80 || seoDescription.length > 160) add('seoDescription', 'Add an SEO description between 80 and 160 characters.')
   if (![data.modelNumber, data.mpn, data.impaCode].some((value) => String(value || '').trim())) {
@@ -67,7 +129,7 @@ async function assertPublishableProduct(data: any, productId?: string) {
     if (!String(mainImage.altText || '').trim()) add('images', 'Add descriptive alt text to the main product image.')
   }
 
-  if (description.length >= 120 && data.allowDuplicateDescription !== true) {
+  if (hasSubstantiveDescription(description) && data.allowDuplicateDescription !== true) {
     const duplicateRows = await prisma.$queryRaw<{ id: string; name: string }[]>`
       SELECT id, name
       FROM products
@@ -89,12 +151,13 @@ async function assertPublishableProduct(data: any, productId?: string) {
 // ─── Create Product ────────────────────────────────────────────
 
 export async function createProduct(data: any, actor: AuthUser, ipAddress = '') {
-  const { specs, images, industryIds, allowDuplicateDescription, ...fields } = data
+  const { specs, images, industryIds, allowDuplicateDescription, slug: requestedSlug, ...fields } = data
   if (fields.status === 'published') await assertPublishableProduct({ ...fields, images, allowDuplicateDescription })
 
-  let slug = generateSlug(fields.name)
-  const existing = await prisma.product.findUnique({ where: { slug } })
-  if (existing) slug = `${slug}-${Date.now()}`
+  const explicitSlug = String(requestedSlug || '').trim()
+  const slug = explicitSlug
+    ? await resolveProductSlug(explicitSlug, true)
+    : await resolveProductSlug(generateSlug(fields.name), false)
 
   const existingSku = await prisma.product.findUnique({ where: { sku: fields.sku } })
   if (existingSku) {
@@ -155,17 +218,15 @@ export async function updateProduct(id: string, data: any, actor: AuthUser, ipAd
     throw Object.assign(new Error('Product not found'), { status: 404 })
   }
 
-  const { specs, images, industryIds, allowDuplicateDescription, ...fields } = data
+  const { specs, images, industryIds, allowDuplicateDescription, slug: requestedSlug, ...fields } = data
 
   if (fields.status === 'published') {
     await assertPublishableProduct({ ...existing, ...fields, images, allowDuplicateDescription }, id)
   }
 
-  if (fields.name && fields.name !== existing.name) {
-    let slug = generateSlug(fields.name)
-    const slugExists = await prisma.product.findFirst({ where: { slug, id: { not: id } } })
-    if (slugExists) slug = `${slug}-${Date.now()}`
-    fields.slug = slug
+  if (requestedSlug !== undefined && requestedSlug !== null && String(requestedSlug).trim() !== '') {
+    const nextSlug = await resolveProductSlug(String(requestedSlug), true, id)
+    if (nextSlug !== existing.slug) fields.slug = nextSlug
   }
 
   if (fields.sku && fields.sku !== existing.sku) {
@@ -214,7 +275,13 @@ export async function updateProduct(id: string, data: any, actor: AuthUser, ipAd
     },
   })
   if (fields.slug && fields.slug !== existing.slug) {
-    await prisma.productSlugHistory.create({ data: { productId: id, slug: existing.slug } })
+    // Upsert because a product may return to a URL it used before; the old
+    // redirect row is then redundant, not a second history entry.
+    await prisma.productSlugHistory.upsert({
+      where: { slug: existing.slug },
+      update: {},
+      create: { productId: id, slug: existing.slug },
+    })
   }
   if (requestedStock !== undefined && requestedStock !== null && Number(requestedStock) !== existing.stockCount) {
     const res = await setStock(id, Number(requestedStock), `product form update by ${actor.id}`)

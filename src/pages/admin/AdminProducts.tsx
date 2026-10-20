@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { meetsProductDescriptionMinimum } from '../../lib/seo/productContent'
 import { useToast } from '../../components/admin/toast-context'
 import { useOptimisticMutation } from '../../hooks/useOptimisticMutation'
 import { ConfirmDialog } from '../../components/admin/ConfirmDialog'
@@ -24,10 +25,14 @@ const STOCK_FILTER_LABELS: Record<string, string> = {
 
 interface AdminProduct {
   id: string
+  slug: string
   name: string
   sku: string
   brand: string | { name: string }
   category: string | { name: string }
+  description: string
+  seoTitle: string
+  seoDescription: string
   price: number
   salePrice?: number | null
   onSale: boolean
@@ -36,8 +41,45 @@ interface AdminProduct {
   availability: string
   status: string
   isNewArrival: boolean
-  images: { url: string; alt: string; label?: string }[]
+  images: { url: string; alt: string; label?: string; isMain?: boolean }[]
+  seoIssues: string[]
   customLabel?: string
+}
+
+/** Mirrors the publish gate and the server-side `seo=attention` filter. */
+function getProductSeoIssues(product: {
+  description?: string | null
+  seoTitle?: string | null
+  seoDescription?: string | null
+  category?: unknown
+  modelNumber?: string | null
+  mpn?: string | null
+  impaCode?: string | null
+  images?: { url?: string; alt?: string; altText?: string | null; isMain?: boolean }[]
+}): string[] {
+  const issues: string[] = []
+  const description = String(product.description || '').trim()
+  const title = String(product.seoTitle || '').trim()
+  const metaDescription = String(product.seoDescription || '').trim()
+
+  if (!meetsProductDescriptionMinimum(description)) issues.push('Description under 50 words (300 characters)')
+  if (!title) issues.push('Missing SEO title')
+  else if (title.length > 70) issues.push('SEO title over 70 characters')
+  if (!metaDescription) issues.push('Missing SEO description')
+  else if (metaDescription.length < 80) issues.push('SEO description under 80 characters')
+  else if (metaDescription.length > 160) issues.push('SEO description over 160 characters')
+  if (!product.category) issues.push('No category')
+  if (![product.modelNumber, product.mpn, product.impaCode].some((value) => String(value || '').trim())) {
+    issues.push('No verified identifier')
+  }
+  // The publish gate requires at least one image and alt text on the main
+  // image, not merely on some secondary image.
+  const usableImages = (product.images || []).filter((image) => String(image.url || '').trim())
+  const mainImage = usableImages.find((image) => image.isMain) || usableImages[0]
+  if (!mainImage) issues.push('No product image')
+  else if (!String(mainImage.altText || mainImage.alt || '').trim()) issues.push('Main image missing alt text')
+
+  return issues
 }
 
 function getBrandName(brand: string | { name: string }): string {
@@ -74,6 +116,7 @@ export default function AdminProducts() {
   const [filterStatus, setFilterStatus] = useState(searchParams.get('status') || '')
   const [filterOnSale, setFilterOnSale] = useState(searchParams.get('sale') === 'true')
   const [filterNewArrival, setFilterNewArrival] = useState(searchParams.get('new') === 'true')
+  const [filterSeo, setFilterSeo] = useState(searchParams.get('seo') === 'attention')
   // Deep-link filter from dashboard alerts (low-stock / out-of-stock /
   // missing-images).
   const [stockFilter, setStockFilter] = useState(() => {
@@ -127,6 +170,7 @@ export default function AdminProducts() {
       if (filterStatus) params.status = filterStatus
       if (filterOnSale) params.onSale = 'true'
       if (filterNewArrival) params.isNewArrival = 'true'
+      if (filterSeo) params.seo = 'attention'
       if (stockFilter) params.filter = stockFilter
       params.sort = sortKey
       params.order = sortDir
@@ -136,29 +180,52 @@ export default function AdminProducts() {
       const res = await admin.products.list(params)
       setPagination(res.pagination || null)
       setProductList((res.products || []).map((p: {
-        id: string; name: string; sku: string; brand?: string | { name: string } | null;
+        id: string; slug?: string; name: string; sku: string; brand?: string | { name: string } | null;
         category?: string | { name: string } | null; regularPrice?: number | null; price?: number | null;
         salePrice?: number | null; onSale?: boolean | null; stockCount?: number | null;
         condition?: string | null; availability?: string | null; status?: string | null;
-        isNewArrival?: boolean | null; images?: { url?: string; alt?: string; label?: string }[];
+        isNewArrival?: boolean | null; images?: { url?: string; alt?: string; altText?: string | null; label?: string; isMain?: boolean }[];
+        description?: string | null; seoTitle?: string | null; seoDescription?: string | null;
+        modelNumber?: string | null; mpn?: string | null; impaCode?: string | null;
         customLabel?: string | null;
-      }) => ({
-        id: p.id,
-        name: p.name || '',
-        sku: p.sku || '',
-        brand: p.brand || 'Unknown',
-        category: p.category || 'Unknown',
-        price: p.regularPrice ?? p.price ?? 0,
-        salePrice: p.salePrice ?? null,
-        onSale: p.onSale ?? false,
-        stockCount: p.stockCount ?? 0,
-        condition: p.condition || 'used',
-        availability: p.availability || 'in-stock',
-        status: p.status || 'draft',
-        isNewArrival: p.isNewArrival ?? false,
-        images: (p.images || []).map((i) => ({ url: i.url || '', alt: i.alt || i.label || '' })),
-        customLabel: p.customLabel || '',
-      })))
+      }) => {
+        const images = (p.images || []).map((i) => ({ url: i.url || '', alt: i.alt || i.altText || i.label || '', isMain: i.isMain }))
+        const hasCategory = Boolean(typeof p.category === 'string' ? p.category : p.category?.name)
+        return {
+          id: p.id,
+          slug: p.slug || '',
+          name: p.name || '',
+          sku: p.sku || '',
+          brand: p.brand || 'Unknown',
+          category: p.category || 'Unknown',
+          description: p.description || '',
+          seoTitle: p.seoTitle || '',
+          seoDescription: p.seoDescription || '',
+          price: p.regularPrice ?? p.price ?? 0,
+          salePrice: p.salePrice ?? null,
+          onSale: p.onSale ?? false,
+          stockCount: p.stockCount ?? 0,
+          condition: p.condition || 'used',
+          availability: p.availability || 'in-stock',
+          status: p.status || 'draft',
+          isNewArrival: p.isNewArrival ?? false,
+          images,
+          seoIssues: getProductSeoIssues({
+            description: p.description,
+            seoTitle: p.seoTitle,
+            seoDescription: p.seoDescription,
+            category: hasCategory ? p.category : null,
+            modelNumber: p.modelNumber,
+            mpn: p.mpn,
+            impaCode: p.impaCode,
+            // Audit the real alt text only. The table's display `alt` above
+            // falls back to the image label, but a label is not alt text and
+            // must not hide a product from the server-side SEO filter.
+            images: p.images?.map((image) => ({ url: image.url, altText: image.altText, alt: image.alt, isMain: image.isMain })),
+          }),
+          customLabel: p.customLabel || '',
+        }
+      }))
     } catch (err: unknown) {
       console.error('Failed to load products:', err)
       setPagination(null)
@@ -166,7 +233,7 @@ export default function AdminProducts() {
     } finally {
       setLoading(false)
     }
-  }, [search, filterCategory, filterBrand, categoryIdMap, brandIdMap, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, stockFilter, sortKey, sortDir, page, toast])
+  }, [search, filterCategory, filterBrand, categoryIdMap, brandIdMap, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, filterSeo, stockFilter, sortKey, sortDir, page, toast])
 
   useEffect(() => {
     const timer = setTimeout(() => fetchProducts(), 300)
@@ -187,12 +254,13 @@ export default function AdminProducts() {
     if (filterStatus) result = result.filter((p) => (p.status || 'draft') === filterStatus)
     if (filterOnSale) result = result.filter((p) => p.salePrice != null)
     if (filterNewArrival) result = result.filter((p) => p.isNewArrival)
+    if (filterSeo) result = result.filter((p) => p.seoIssues.length > 0)
 
     // Sorting is authoritative on the server (productQueries.listProducts) so the
     // order is correct across the whole catalog, not just this page. Re-sorting
     // here would only reorder the current page and break that global order.
     return result
-  }, [productList, search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival])
+  }, [productList, search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, filterSeo])
 
   const totalPages = pagination?.totalPages || Math.ceil(filteredProducts.length / ITEMS_PER_PAGE)
   const totalItems = pagination?.total ?? filteredProducts.length
@@ -224,14 +292,15 @@ export default function AdminProducts() {
     if (filterStatus) params.status = filterStatus
     if (filterOnSale) params.sale = 'true'
     if (filterNewArrival) params.new = 'true'
+    if (filterSeo) params.seo = 'attention'
     if (stockFilter) params.filter = stockFilter
     if (page > 1) params.page = String(page)
     setSearchParams(params, { replace: true })
-  }, [search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, stockFilter, page, setSearchParams])
+  }, [search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, filterSeo, stockFilter, page, setSearchParams])
 
   useEffect(() => {
     setSelectedIds(new Set())
-  }, [search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, stockFilter, page])
+  }, [search, filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, filterSeo, stockFilter, page])
 
   const toggleSelectAll = () => {
     if (selectedIds.size === paginatedProducts.length) {
@@ -255,11 +324,11 @@ export default function AdminProducts() {
     else { setSortKey(key); setSortDir('asc') }
   }
 
-  const activeFilterCount = [filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, stockFilter].filter(Boolean).length
+  const activeFilterCount = [filterCategory, filterBrand, filterCondition, filterAvailability, filterStatus, filterOnSale, filterNewArrival, filterSeo, stockFilter].filter(Boolean).length
 
   const clearFilters = () => {
     setFilterCategory(''); setFilterBrand(''); setFilterCondition('')
-    setFilterAvailability(''); setFilterStatus(''); setFilterOnSale(false); setFilterNewArrival(false)
+    setFilterAvailability(''); setFilterStatus(''); setFilterOnSale(false); setFilterNewArrival(false); setFilterSeo(false)
     setStockFilter('')
     setSearch(''); setPage(1); setSearchParams({})
   }
@@ -521,6 +590,8 @@ export default function AdminProducts() {
         onFilterOnSaleToggle={() => setFilterOnSale((v) => !v)}
         filterNewArrival={filterNewArrival}
         onFilterNewArrivalToggle={() => setFilterNewArrival((v) => !v)}
+        filterSeo={filterSeo}
+        onFilterSeoToggle={() => setFilterSeo((v) => !v)}
         uniqueBrands={uniqueBrands}
         uniqueCategories={uniqueCategories}
         onClearFilters={clearFilters}

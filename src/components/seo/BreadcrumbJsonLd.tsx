@@ -16,10 +16,14 @@ export function BreadcrumbJsonLd({ items }: BreadcrumbJsonLdProps) {
   const locale = useLocale()
   // Breadcrumb URLs are written as storefront paths ("/products"). Keep them
   // in the locale being viewed unless a locale prefix is already present.
+  // Public URLs are canonical with a trailing slash.
   const localizedUrl = (url: string) => {
     if (url.startsWith('http://') || url.startsWith('https://')) return url
-    if (/^\/(en|ar|es)(\/|$)/.test(url)) return url
-    return `/${locale}${url === '/' ? '/' : url}`
+    const [pathname, suffix = ''] = url.split(/(?=[?#])/, 2)
+    const hasFileExtension = /\.[a-z0-9]{2,8}$/i.test(pathname)
+    const normalized = pathname.endsWith('/') || hasFileExtension ? pathname : `${pathname}/`
+    if (/^\/(en|ar|es)(\/|$)/.test(normalized)) return `${normalized}${suffix}`
+    return `/${locale}${normalized === '/' ? '/' : normalized}${suffix}`
   }
   const breadcrumbs = items.map((item, index) => ({
     '@type': 'ListItem',

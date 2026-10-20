@@ -304,8 +304,8 @@ export default function Products() {
   ].reduce<number>((a, b) => a + b, 0)
   const hasJunkFilters = activeFacets > 1 || currentPage > 1
   const productsSeoTitle = seoQueryLabel
-    ? `${seoQueryLabel} marine spare parts and ship spares`
-    : 'Marine spare parts catalog | ship spares, engine parts and industrial equipment'
+    ? `${seoQueryLabel} Marine Spare Parts & Ship Spares`
+    : 'Marine Spare Parts & Ship Spares Catalog'
   const productsSeoDescription = seoQueryLabel
     ? `Browse ${seoQueryLabel} marine spare parts, ship spares, industrial MRO equipment, hydraulic, electrical, pump, safety, and surplus stock from Alka Traders.`
     : 'Browse marine spare parts, ship spares, marine engine parts, hydraulic pumps, electrical automation, navigation equipment, safety gear, rigging, and industrial surplus stock.'

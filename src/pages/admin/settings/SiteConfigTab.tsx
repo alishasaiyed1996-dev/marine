@@ -80,12 +80,14 @@ export function SiteConfigTab({ site, updateSite }: SiteConfigTabProps) {
         <div className="space-y-4">
           <div>
             <label className={labelClass}>SEO Title</label>
-            <input value={site.seoTitle} onChange={(e) => updateSite('seoTitle', e.target.value)} className={inputClass} />
-            <p className="text-[0.625rem] text-[var(--text-muted)] mt-1">{site.seoTitle.length}/60 characters</p>
+            <input value={site.seoTitle} onChange={(e) => updateSite('seoTitle', e.target.value)} maxLength={70} className={inputClass} />
+            <p className="text-[0.625rem] text-[var(--text-muted)] mt-1">
+              {site.seoTitle.length}/70 characters. “Alka Traders” is appended automatically — keep this under 60 so the full title fits in search results.
+            </p>
           </div>
           <div>
             <label className={labelClass}>Meta Description</label>
-            <textarea value={site.seoDescription} onChange={(e) => updateSite('seoDescription', e.target.value)} rows={3} className={`${inputClass} resize-y`} />
+            <textarea value={site.seoDescription} onChange={(e) => updateSite('seoDescription', e.target.value)} maxLength={160} rows={3} className={`${inputClass} resize-y`} />
             <p className="text-[0.625rem] text-[var(--text-muted)] mt-1">{site.seoDescription.length}/160 characters</p>
           </div>
           <div>

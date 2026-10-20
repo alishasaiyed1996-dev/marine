@@ -17,6 +17,9 @@ import { getEffectivePrice, isOnSale } from '../utils/helpers.js'
 
 const BASE_URL = process.env.FRONTEND_URL || 'https://alkatraders.co'
 
+/** GS1 GTIN-8/12/13/14. Anything else must not reach Google as g:gtin. */
+const VALID_GTIN_PATTERN = /^(\d{8}|\d{12,14})$/
+
 // 1-hour cache — Merchant Center refetches at most every 30 min.
 let cachedXml: string | null = null
 let cacheTime = 0
@@ -119,6 +122,10 @@ async function buildFeed(): Promise<string> {
     const price = Number(p.regularPrice)
     const salePrice = getEffectivePrice(p)
     const brand = p.brand?.name && p.brand.name !== 'Unknown' ? p.brand.name : null
+    // A malformed legacy GTIN must never be emitted; Google rejects the whole
+    // item for structured-data errors. Empty is always safer than wrong.
+    const gtin = String(p.gtin || '').replace(/\s+/g, '')
+    const validGtin = VALID_GTIN_PATTERN.test(gtin) ? gtin : ''
 
     const lines: string[] = []
     lines.push('    <item>')
@@ -147,10 +154,10 @@ async function buildFeed(): Promise<string> {
     if (brand) lines.push(`      <g:brand>${escapeXml(brand)}</g:brand>`)
     // GTIN only when a verified manufacturer GTIN is stored — never a guessed
     // value, never the IMPA code, never the internal SKU.
-    if (p.gtin) lines.push(`      <g:gtin>${escapeXml(p.gtin)}</g:gtin>`)
+    if (validGtin) lines.push(`      <g:gtin>${escapeXml(validGtin)}</g:gtin>`)
     if (mpn) lines.push(`      <g:mpn>${escapeXml(mpn)}</g:mpn>`)
     lines.push(`      <g:condition>${p.condition === 'new' || p.condition === 'unused' ? 'new' : p.condition === 'refurbished' || p.condition === 'reconditioned' ? 'refurbished' : 'used'}</g:condition>`)
-    lines.push(`      <g:identifier_exists>${p.gtin || mpn ? 'yes' : 'no'}</g:identifier_exists>`)
+    lines.push(`      <g:identifier_exists>${validGtin || mpn ? 'yes' : 'no'}</g:identifier_exists>`)
     if (p.category?.slug) {
       lines.push(`      <g:product_type>${escapeXml(p.category.slug.replace(/-/g, ' > '))}</g:product_type>`)
     }

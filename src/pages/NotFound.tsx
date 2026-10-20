@@ -9,7 +9,7 @@ export default function NotFound() {
   const lp = useLocalizedPath()
   return (
     <>
-      <SEO title="Page Not Found — Alka Traders" description="The page you are looking for does not exist. Browse our marine and industrial equipment catalog or return home." />
+      <SEO title="Page Not Found — Alka Traders" description="The page you are looking for does not exist. Browse our marine and industrial equipment catalog or return home." noindex />
       <div className="min-h-[60vh] flex items-center justify-center">
       <div className="text-center max-w-[480px] mx-auto px-4 sm:px-6">
         <div className="font-mono text-8xl text-[var(--text-muted)] mb-6">404</div>

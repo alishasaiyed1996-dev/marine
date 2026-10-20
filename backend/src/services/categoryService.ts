@@ -1,8 +1,44 @@
 import { prisma } from '../server.js'
-import { generateSlug } from '../utils/helpers.js'
+import { isHubIndexable } from '../utils/hubSeo.js'
+import { generateSlug, assertValidSlug } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { invalidateCachePath } from '../middleware/cacheGet.js'
 import type { AuthUser } from '../middleware/auth.js'
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+async function resolveCategorySlug(base: string, explicit: boolean, excludeId?: string): Promise<string> {
+  const clean = assertValidSlug(base)
+  const [current, historical] = await Promise.all([
+    prisma.category.findFirst({
+      where: { slug: clean, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      select: { id: true },
+    }),
+    prisma.categorySlugHistory.findUnique({
+      where: { slug: clean },
+      select: { id: true, categoryId: true },
+    }),
+  ])
+  const ownHistory = historical && historical.categoryId === excludeId
+  if (!current && (!historical || ownHistory)) {
+    if (ownHistory && historical) {
+      await prisma.categorySlugHistory.delete({ where: { id: historical.id } }).catch(() => {})
+    }
+    return clean
+  }
+  if (explicit) {
+    const message = 'That URL slug is already used by another category or an old category URL.'
+    throw Object.assign(new Error(message), { status: 409, details: [{ field: 'slug', message }] })
+  }
+  let suffix = 2
+  while (true) {
+    const candidate = `${clean}-${suffix}`
+    const clash = await prisma.category.findUnique({ where: { slug: candidate }, select: { id: true } })
+    const oldClash = await prisma.categorySlugHistory.findUnique({ where: { slug: candidate }, select: { id: true } })
+    if (!clash && !oldClash) return candidate
+    suffix += 1
+  }
+}
 
 // ─── Queries ──────────────────────────────────────────────────
 
@@ -55,17 +91,39 @@ export async function getCategoryBySlug(slug: string) {
     },
   })
   if (!category) throw Object.assign(new Error('Category not found'), { status: 404 })
-  return { category }
+  // Computed once here so the server-rendered robots meta, the React page and
+  // the sitemap all read the same decision (backend/src/utils/hubSeo.ts).
+  const indexable = isHubIndexable({
+    description: category.description,
+    seoTitle: category.seoTitle,
+    seoDescription: category.seoDescription,
+    productCount: category._count.products,
+    isVisible: category.isVisible,
+  })
+  return { category: { ...category, indexable } }
+}
+
+/** Resolve a previous category URL to its current slug for a 301. */
+export async function getCategoryByOldSlug(slug: string) {
+  const row = await prisma.categorySlugHistory.findUnique({
+    where: { slug },
+    include: { category: { select: { slug: true, isVisible: true } } },
+  })
+  if (!row || !row.category.isVisible) return null
+  return { slug: row.category.slug }
 }
 
 // ─── Mutations ────────────────────────────────────────────────
 
 export async function createCategory(data: Record<string, unknown>, actor: AuthUser, ipAddress = '') {
-  const slug = generateSlug(data.name as string)
-  const existing = await prisma.category.findUnique({ where: { slug } })
-  if (existing) throw Object.assign(new Error('Category with this name already exists'), { status: 400 })
+  const { slug: requestedSlug, ...fields } = data
+  const explicit = typeof requestedSlug === 'string' && requestedSlug.trim() !== ''
+  const slug = await resolveCategorySlug(
+    explicit ? String(requestedSlug) : generateSlug(fields.name as string),
+    explicit,
+  )
 
-  const category = await prisma.category.create({ data: { ...data, slug } as never })
+  const category = await prisma.category.create({ data: { ...fields, slug } as never })
   invalidateCachePath('/storefront/categories')
   await logAudit({ actor, action: 'category.create', entityType: 'category', entityId: category.id, entityName: category.name, newValue: category, ipAddress })
   return { category }
@@ -101,14 +159,23 @@ export async function updateCategory(id: string, data: Record<string, unknown>, 
     }
   }
 
+  // Renaming a category keeps its URL. Only an explicit slug edit changes it,
+  // and the previous slug is stored so it can 301 instead of 404.
+  const { slug: requestedSlug, ...fields } = data
   let slug = existing.slug
-  if (data.name && data.name !== existing.name) {
-    slug = generateSlug(data.name as string)
-    const slugExists = await prisma.category.findFirst({ where: { slug, id: { not: id } } })
-    if (slugExists) slug = `${slug}-${Date.now()}`
+  if (requestedSlug !== undefined && requestedSlug !== null && String(requestedSlug).trim() !== '') {
+    const nextSlug = await resolveCategorySlug(String(requestedSlug), true, id)
+    if (nextSlug !== existing.slug) slug = nextSlug
   }
 
-  const category = await prisma.category.update({ where: { id }, data: { ...data, slug } })
+  const category = await prisma.category.update({ where: { id }, data: { ...fields, slug } })
+  if (slug !== existing.slug) {
+    await prisma.categorySlugHistory.upsert({
+      where: { slug: existing.slug },
+      update: {},
+      create: { categoryId: id, slug: existing.slug },
+    })
+  }
   invalidateCachePath('/storefront/categories')
   await logAudit({ actor, action: 'category.update', entityType: 'category', entityId: category.id, entityName: category.name, previousValue: existing, newValue: category, ipAddress })
   return { category }

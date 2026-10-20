@@ -26,10 +26,13 @@ import {
   BarChart3,
   Database,
   Loader2,
+  EyeOff,
+  ShieldCheck,
 } from 'lucide-react'
 import { admin } from '../../lib/api'
 import { useToast } from '../../components/admin/toast-context'
 import { ConfirmDialog } from '../../components/admin/ConfirmDialog'
+import { getHubSeoIssues, getHubSeoWarnings } from '../../lib/seo/hubSeo'
 
 interface IndustryFormData {
   name: string
@@ -37,6 +40,9 @@ interface IndustryFormData {
   icon: string
   description: string
   painPoints: string[]
+  seoTitle: string
+  seoDescription: string
+  isVisible: boolean
 }
 
 const availableIcons = [
@@ -59,10 +65,21 @@ const availableIcons = [
 ]
 
 function getEmptyForm(): IndustryFormData {
-  return { name: '', slug: '', icon: 'Factory', description: '', painPoints: [''] }
+  return { name: '', slug: '', icon: 'Factory', description: '', painPoints: [''], seoTitle: '', seoDescription: '', isVisible: true }
 }
 
-interface IndustryItem { id: string; name: string; slug?: string; icon: string; description: string; painPoints: string[]; productCount?: number }
+interface IndustryItem {
+  id: string
+  name: string
+  slug?: string
+  icon: string
+  description: string
+  painPoints: string[]
+  seoTitle: string
+  seoDescription: string
+  isVisible: boolean
+  productCount?: number
+}
 
 export default function AdminIndustries() {
   const { toast } = useToast()
@@ -73,6 +90,7 @@ export default function AdminIndustries() {
   const [loading, setLoading] = useState(true)
   const [allIndustries, setAllIndustries] = useState<IndustryItem[]>([])
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [editingOriginalSlug, setEditingOriginalSlug] = useState('')
 
   const fetchIndustries = useCallback(async () => {
     setLoading(true)
@@ -85,6 +103,9 @@ export default function AdminIndustries() {
         icon: ind.icon || 'Factory',
         description: ind.description || '',
         painPoints: ind.painPoints || [],
+        seoTitle: ind.seoTitle || '',
+        seoDescription: ind.seoDescription || '',
+        isVisible: ind.isVisible ?? true,
         productCount: ind._count?.products ?? ind.productCount ?? 0,
       }))
       setAllIndustries(items)
@@ -109,6 +130,7 @@ export default function AdminIndustries() {
 
   const openAddModal = () => {
     setEditingIndustry(null)
+    setEditingOriginalSlug('')
     setForm(getEmptyForm())
     setShowModal(true)
   }
@@ -117,18 +139,38 @@ export default function AdminIndustries() {
     const ind = allIndustries.find((i) => i.id === industryId)
     if (!ind) return
     setEditingIndustry(industryId)
-    setForm({ name: ind.name, slug: ind.slug || ind.id, icon: ind.icon, description: ind.description, painPoints: [...ind.painPoints] })
+    setEditingOriginalSlug(ind.slug || ind.id)
+    setForm({
+      name: ind.name,
+      slug: ind.slug || ind.id,
+      icon: ind.icon,
+      description: ind.description,
+      painPoints: [...ind.painPoints],
+      seoTitle: ind.seoTitle,
+      seoDescription: ind.seoDescription,
+      isVisible: ind.isVisible,
+    })
     setShowModal(true)
   }
 
   const handleSave = async () => {
+    const slug = form.slug.trim()
+    if (slug && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      toast('URL slug must use lowercase letters, numbers and single hyphens', 'error')
+      return
+    }
     try {
       const payload = {
         name: form.name,
-        slug: form.slug || form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        // Blank means "keep the current URL" on edit and "generate from the
+        // name" on create — never silently move an existing URL.
+        slug: form.slug.trim(),
         icon: form.icon,
         description: form.description,
         painPoints: form.painPoints,
+        seoTitle: form.seoTitle,
+        seoDescription: form.seoDescription,
+        isVisible: form.isVisible,
       }
       if (editingIndustry) {
         await admin.industries.update(editingIndustry, payload)
@@ -152,6 +194,19 @@ export default function AdminIndustries() {
       fetchIndustries()
     } catch (err: any) {
       toast(err.message || 'Failed to delete industry', 'error')
+    }
+  }
+
+  const toggleVisibility = async (industryId: string) => {
+    const industry = allIndustries.find((item) => item.id === industryId)
+    if (!industry) return
+    const nextVisible = !industry.isVisible
+    setAllIndustries((prev) => prev.map((item) => item.id === industryId ? { ...item, isVisible: nextVisible } : item))
+    try {
+      await admin.industries.update(industryId, { isVisible: nextVisible })
+    } catch (err: any) {
+      setAllIndustries((prev) => prev.map((item) => item.id === industryId ? { ...item, isVisible: !nextVisible } : item))
+      toast(err.message || 'Failed to update visibility', 'error')
     }
   }
 
@@ -234,10 +289,22 @@ export default function AdminIndustries() {
         ) : (
           filteredIndustries.map((ind) => {
             const realCount = ind.productCount || 0
+            const seoIssues = getHubSeoIssues({
+              description: ind.description,
+              seoTitle: ind.seoTitle,
+              seoDescription: ind.seoDescription,
+              productCount: realCount,
+              isVisible: ind.isVisible,
+            })
+            const seoWarnings = getHubSeoWarnings({
+              description: ind.description,
+              seoTitle: ind.seoTitle,
+              seoDescription: ind.seoDescription,
+            })
             return (
               <div
                 key={ind.id}
-                className="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 transition-all hover:border-[var(--accent-gold)] hover:-translate-y-0.5 hover:shadow-lg"
+                className={`group rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 transition-all hover:border-[var(--accent-gold)] hover:-translate-y-0.5 hover:shadow-lg ${ind.isVisible ? '' : 'opacity-60'}`}
               >
                 {/* Header */}
                 <div className="flex items-start justify-between mb-3">
@@ -246,13 +313,23 @@ export default function AdminIndustries() {
                       {renderIcon(ind.icon)}
                     </div>
                     <div>
-                      <h3 className="font-display text-sm font-bold text-[var(--text-primary)]">
-                        {ind.name}
-                      </h3>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <h3 className="font-display text-sm font-bold text-[var(--text-primary)]">
+                          {ind.name}
+                        </h3>
+                        {!ind.isVisible && <span className="rounded bg-[var(--surface-soft)] px-1.5 py-0.5 text-[0.5rem] font-bold uppercase tracking-wide text-[var(--text-muted)]">Hidden</span>}
+                      </div>
                       <p className="text-[0.625rem] text-[var(--text-muted)] font-mono">{ind.slug || ind.id}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => toggleVisibility(ind.id)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors"
+                      title={ind.isVisible ? 'Hide from storefront' : 'Show on storefront'}
+                    >
+                      {ind.isVisible ? <EyeOff size={12} /> : <Eye size={12} />}
+                    </button>
                     <button
                       onClick={() => openEditModal(ind.id)}
                       className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-gold)] hover:bg-[var(--gold-muted)] transition-colors"
@@ -283,6 +360,19 @@ export default function AdminIndustries() {
                 <p className="text-xs text-[var(--text-secondary)] line-clamp-2 mb-3">
                   {ind.description}
                 </p>
+
+                {seoIssues.length === 0 ? (
+                  <div className="mb-3 flex items-center gap-1 rounded-md bg-[var(--success)]/10 px-2 py-1 text-[0.5625rem] font-bold text-[var(--success)]" title={seoWarnings.join('\n') || undefined}>
+                    <ShieldCheck size={10} /> SEO content ready{seoWarnings.length > 0 ? ` · ${seoWarnings.length} warning${seoWarnings.length === 1 ? '' : 's'}` : ''}
+                  </div>
+                ) : (
+                  <div className="mb-3 rounded-md bg-[var(--accent-gold)]/10 px-2 py-1" title={[...seoIssues, ...seoWarnings].join('\n')}>
+                    <p className="flex items-center gap-1 text-[0.5625rem] font-bold text-[var(--accent-gold)]">
+                      <AlertTriangle size={10} /> {seoIssues.length} SEO gap{seoIssues.length === 1 ? '' : 's'}
+                    </p>
+                    <p className="mt-0.5 text-[0.5625rem] leading-snug text-[var(--text-muted)]">{seoIssues[0]}</p>
+                  </div>
+                )}
 
                 {/* Pain Points */}
                 {ind.painPoints.length > 0 && (
@@ -364,8 +454,14 @@ export default function AdminIndustries() {
                     value={form.slug}
                     onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))}
                     placeholder="e.g. marine-shipping"
+                    maxLength={200}
                     className={`${inputClass} font-mono`}
                   />
+                  {editingIndustry && editingOriginalSlug && form.slug !== editingOriginalSlug && (
+                    <p className="mt-1 text-[0.625rem] font-bold text-[var(--accent-gold)]">
+                      The old identifier will permanently redirect (301) to the industries directory anchor. There is no standalone industry URL yet.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -392,12 +488,50 @@ export default function AdminIndustries() {
 
               {/* Description */}
               <div>
-                <label className={labelClass}>Description</label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className={`${labelClass} mb-0`}>Description</label>
+                  <span className={`text-[0.625rem] font-bold ${form.description.trim().length >= 120 ? 'text-[var(--success)]' : 'text-[var(--accent-gold)]'}`}>
+                    {form.description.trim().length}/120 min
+                  </span>
+                </div>
                 <textarea
                   value={form.description}
                   onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                  placeholder="Industry description for the storefront..."
+                  placeholder="Industry description for the storefront directory (at least 120 characters)..."
                   rows={3}
+                  className={`${inputClass} resize-y`}
+                />
+              </div>
+
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className={`${labelClass} mb-0`}>SEO Title</label>
+                  <span className={`text-[0.625rem] font-bold ${form.seoTitle.trim() ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+                    {form.seoTitle.trim().length}/70
+                  </span>
+                </div>
+                <input
+                  value={form.seoTitle}
+                  onChange={(e) => setForm((prev) => ({ ...prev, seoTitle: e.target.value }))}
+                  maxLength={70}
+                  placeholder="e.g. Marine Shipping Spare Parts"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className={`${labelClass} mb-0`}>SEO Description</label>
+                  <span className={`text-[0.625rem] font-bold ${form.seoDescription.trim().length >= 80 ? 'text-[var(--success)]' : 'text-[var(--accent-gold)]'}`}>
+                    {form.seoDescription.trim().length}/80 min
+                  </span>
+                </div>
+                <textarea
+                  value={form.seoDescription}
+                  onChange={(e) => setForm((prev) => ({ ...prev, seoDescription: e.target.value }))}
+                  maxLength={160}
+                  rows={2}
+                  placeholder="Search result description, 80–160 characters"
                   className={`${inputClass} resize-y`}
                 />
               </div>
@@ -436,6 +570,14 @@ export default function AdminIndustries() {
                   ))}
                 </div>
               </div>
+
+              <label className="flex items-center gap-2 text-xs font-bold text-[var(--text-secondary)]">
+                <input type="checkbox" checked={form.isVisible} onChange={(e) => setForm((prev) => ({ ...prev, isVisible: e.target.checked }))} />
+                Visible in the industries directory
+              </label>
+              <p className="text-[0.625rem] text-[var(--text-muted)]">
+                Industries currently appear as cards on /industries/. There is no standalone industry URL yet; the description and SEO fields are stored and validated now so the page is ready when it launches.
+              </p>
             </div>
 
             {/* Footer */}

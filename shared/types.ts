@@ -71,7 +71,8 @@ export interface Product {
   conditionNotes?: string
   includedItems?: string[]
   excludedItems?: string[]
-  seoKeywords?: string[]
+  /** Comma-separated in the database/API; split by the client when needed. */
+  seoKeywords?: string | null
   searchKeywords?: string[]
   internalNotes?: string
   // ── Product identity (SEO / Merchant Center truth model) ──
@@ -117,6 +118,8 @@ export interface Brand {
   createdAt?: string | null
   _count?: { products: number }
   productCount?: number
+  /** Server-computed hub indexability (backend/src/utils/hubSeo.ts). */
+  indexable?: boolean
 }
 
 // ─── Category ──────────────────────────────────────────────────
@@ -135,6 +138,8 @@ export interface Category {
   createdAt?: string | null
   _count?: { products: number }
   productCount?: number
+  /** Server-computed hub indexability (backend/src/utils/hubSeo.ts). */
+  indexable?: boolean
 }
 
 // ─── Industry ──────────────────────────────────────────────────

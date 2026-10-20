@@ -3,10 +3,12 @@ import { Prisma } from '@prisma/client'
 // ─── Product Include Shape (Storefront) ────────────────────────
 export const productInclude = {
   brand: {
-    select: { id: true, name: true, slug: true, logoUrl: true },
+    // isVisible lets product pages avoid linking to a hidden brand hub (which
+    // intentionally 404s) while still showing the brand name.
+    select: { id: true, name: true, slug: true, logoUrl: true, isVisible: true },
   },
   category: {
-    select: { id: true, name: true, slug: true, icon: true },
+    select: { id: true, name: true, slug: true, icon: true, isVisible: true },
   },
   images: {
     orderBy: { sortOrder: 'asc' as const },

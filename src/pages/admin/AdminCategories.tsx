@@ -13,9 +13,12 @@ import {
   CheckCircle,
   ArrowUp,
   ArrowDown,
+  ShieldCheck,
+  AlertTriangle,
 } from 'lucide-react'
 import { admin } from '../../lib/api'
 import { useToast } from '../../components/admin/toast-context'
+import { getHubSeoIssues, getHubSeoWarnings } from '../../lib/seo/hubSeo'
 import type { ApiCategory } from '../../lib/api-types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────────
@@ -30,6 +33,7 @@ interface Category {
   parentId: string | null
   sortOrder: number
   isVisible: boolean
+  productCount?: number
 }
 
 
@@ -80,6 +84,7 @@ export default function AdminCategories() {
   const [newCategoryOpen, setNewCategoryOpen] = useState(false)
   const [newParentId, setNewParentId] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [editingOriginalSlug, setEditingOriginalSlug] = useState('')
 
   const fetchCategories = useCallback(async () => {
     setLoading(true)
@@ -147,9 +152,14 @@ export default function AdminCategories() {
   }
 
   const handleSave = async (cat: Partial<Category>) => {
+    const slug = String(cat.slug || '').trim()
+    if (slug && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      toast('URL slug must use lowercase letters, numbers and single hyphens', 'error')
+      return
+    }
     try {
       if (editingCategory) {
-        await admin.categories.update(editingCategory, { name: cat.name, slug: cat.slug, description: cat.description, seoTitle: cat.seoTitle, seoDescription: cat.seoDescription, parentId: cat.parentId, sortOrder: cat.sortOrder })
+        await admin.categories.update(editingCategory, { name: cat.name, slug: cat.slug, description: cat.description, seoTitle: cat.seoTitle, seoDescription: cat.seoDescription, parentId: cat.parentId, sortOrder: cat.sortOrder, isVisible: cat.isVisible })
         toast('Category updated', 'success')
         setEditingCategory(null)
       } else {
@@ -223,6 +233,18 @@ export default function AdminCategories() {
     const productCount = getCategoryProductCount(node.id, categories)
     const isEditing = editingCategory === node.id
     const isDeleting = deleteConfirmId === node.id
+    const seoIssues = getHubSeoIssues({
+      description: node.description,
+      seoTitle: node.seoTitle,
+      seoDescription: node.seoDescription,
+      productCount,
+      isVisible: node.isVisible,
+    })
+    const seoWarnings = getHubSeoWarnings({
+      description: node.description,
+      seoTitle: node.seoTitle,
+      seoDescription: node.seoDescription,
+    })
 
     return (
       <div key={node.id}>
@@ -255,6 +277,15 @@ export default function AdminCategories() {
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-[var(--text-primary)] truncate">{node.name}</span>
               <span className="text-[0.625rem] text-[var(--text-muted)] font-mono truncate hidden sm:inline">/{node.slug}</span>
+              {seoIssues.length === 0 ? (
+                <span className="inline-flex items-center gap-0.5 rounded-md bg-[var(--success)]/10 px-1.5 py-0.5 text-[0.5625rem] font-bold text-[var(--success)]" title={seoWarnings.length ? `Indexable. Warnings (not blocking):\n${seoWarnings.join('\n')}` : 'Hub page is indexable and sitemap-eligible'}>
+                  <ShieldCheck size={8} /> Indexable{seoWarnings.length > 0 ? ` · ${seoWarnings.length} warning${seoWarnings.length === 1 ? '' : 's'}` : ''}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 rounded-md bg-[var(--accent-gold)]/10 px-1.5 py-0.5 text-[0.5625rem] font-bold text-[var(--accent-gold)]" title={seoIssues.join('\n')}>
+                  <AlertTriangle size={8} /> {seoIssues.length} SEO gap{seoIssues.length === 1 ? '' : 's'}
+                </span>
+              )}
             </div>
             {node.description && (
               <p className="text-[0.625rem] text-[var(--text-muted)] truncate mt-0.5 max-w-xs">{node.description}</p>
@@ -293,7 +324,11 @@ export default function AdminCategories() {
               <Plus size={10} />
             </button>
             <button
-              onClick={() => { setEditingCategory(isEditing ? null : node.id); setNewCategoryOpen(false) }}
+              onClick={() => {
+                setEditingCategory(isEditing ? null : node.id)
+                setEditingOriginalSlug(isEditing ? '' : node.slug)
+                setNewCategoryOpen(false)
+              }}
               className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:text-[var(--accent-gold)] hover:bg-[var(--gold-muted)] transition-colors"
               title="Edit"
             >
@@ -348,29 +383,73 @@ export default function AdminCategories() {
               </div>
               <div>
                 <label className={labelClass}>Slug</label>
-                <input value={node.slug} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, slug: e.target.value } : c))} className={inputClass} />
+                <input value={node.slug} maxLength={200} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, slug: e.target.value } : c))} className={`${inputClass} font-mono`} />
+                {editingOriginalSlug && node.slug !== editingOriginalSlug && (
+                  <p className="mt-1 text-[0.625rem] font-bold text-[var(--accent-gold)]">
+                    This changes the live URL. /{editingOriginalSlug}/ will permanently redirect (301) to /{node.slug || editingOriginalSlug}/.
+                  </p>
+                )}
               </div>
               <div className="sm:col-span-2">
-                <label className={labelClass}>Description</label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className={`${labelClass} mb-0`}>Description</label>
+                  <span className={`text-[0.625rem] font-bold ${node.description.trim().length >= 120 ? 'text-[var(--success)]' : 'text-[var(--accent-gold)]'}`}>
+                    {node.description.trim().length}/120 min
+                  </span>
+                </div>
                 <textarea value={node.description} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, description: e.target.value } : c))} rows={3} className={inputClass} />
               </div>
               <div>
-                <label className={labelClass}>SEO Title (max 70)</label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className={`${labelClass} mb-0`}>SEO Title</label>
+                  <span className={`text-[0.625rem] font-bold ${node.seoTitle.trim() ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+                    {node.seoTitle.trim().length}/70
+                  </span>
+                </div>
                 <input value={node.seoTitle} maxLength={70} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, seoTitle: e.target.value } : c))} className={inputClass} />
               </div>
               <div>
-                <label className={labelClass}>SEO Description (max 160)</label>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className={`${labelClass} mb-0`}>SEO Description</label>
+                  <span className={`text-[0.625rem] font-bold ${node.seoDescription.trim().length >= 80 ? 'text-[var(--success)]' : 'text-[var(--accent-gold)]'}`}>
+                    {node.seoDescription.trim().length}/80 min
+                  </span>
+                </div>
                 <textarea value={node.seoDescription} maxLength={160} rows={2} onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, seoDescription: e.target.value } : c))} className={inputClass} />
               </div>
+              <label className="flex items-center gap-2 text-xs font-bold text-[var(--text-secondary)] sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={node.isVisible}
+                  onChange={(e) => setCategories((prev) => prev.map((c) => c.id === node.id ? { ...c, isVisible: e.target.checked } : c))}
+                />
+                Visible on the storefront (hidden categories are excluded from the sitemap)
+              </label>
             </div>
+            {seoIssues.length > 0 && (
+              <div className="rounded-lg border border-[var(--accent-gold)]/30 bg-[var(--gold-muted)] px-3 py-2">
+                <p className="text-[0.625rem] font-bold text-[var(--accent-gold)]">Not indexable yet:</p>
+                <ul className="mt-1 list-disc pl-4 text-[0.625rem] text-[var(--text-secondary)]">
+                  {seoIssues.map((issue) => <li key={issue}>{issue}</li>)}
+                </ul>
+              </div>
+            )}
+            {seoWarnings.length > 0 && (
+              <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2">
+                <p className="text-[0.625rem] font-bold text-[var(--accent-gold)]">SEO warnings (not blocking):</p>
+                <ul className="mt-1 list-disc pl-4 text-[0.625rem] text-[var(--text-secondary)]">
+                  {seoWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+                </ul>
+              </div>
+            )}
             <div className="flex gap-2">
               <button
-                onClick={() => handleSave({ id: node.id, name: node.name, slug: node.slug, description: node.description, seoTitle: node.seoTitle, seoDescription: node.seoDescription })}
+                onClick={() => handleSave({ id: node.id, name: node.name, slug: node.slug, description: node.description, seoTitle: node.seoTitle, seoDescription: node.seoDescription, isVisible: node.isVisible })}
                 className="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-gold)] px-3 py-1.5 text-[0.625rem] font-bold text-[var(--btn-blue-text)]"
               >
                 <CheckCircle size={10} /> Save
               </button>
-              <button onClick={() => { fetchCategories(); setEditingCategory(null) }} className="text-[0.625rem] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Cancel</button>
+              <button onClick={() => { fetchCategories(); setEditingCategory(null); setEditingOriginalSlug('') }} className="text-[0.625rem] text-[var(--text-muted)] hover:text-[var(--text-primary)]">Cancel</button>
             </div>
           </div>
         )}
@@ -470,20 +549,38 @@ function NewCategoryForm({ parentId, categories, onAdd, onCancel }: { parentId: 
         </div>
         <div>
           <label className={labelClass}>Slug</label>
-          <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="propellers" className={inputClass} />
+          <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="propellers" maxLength={200} className={inputClass} />
         </div>
         <div className="sm:col-span-2">
-          <label className={labelClass}>Description</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Write original category copy for shoppers" className={inputClass} />
+          <div className="mb-1 flex items-center justify-between">
+            <label className={`${labelClass} mb-0`}>Description</label>
+            <span className={`text-[0.625rem] font-bold ${description.trim().length >= 120 ? 'text-[var(--success)]' : 'text-[var(--accent-gold)]'}`}>
+              {description.trim().length}/120 min
+            </span>
+          </div>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Write original category copy for shoppers (at least 120 characters for an indexable hub)" className={inputClass} />
         </div>
         <div>
-          <label className={labelClass}>SEO Title (max 70)</label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className={`${labelClass} mb-0`}>SEO Title</label>
+            <span className={`text-[0.625rem] font-bold ${seoTitle.trim() ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+              {seoTitle.trim().length}/70
+            </span>
+          </div>
           <input value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} maxLength={70} className={inputClass} />
         </div>
         <div>
-          <label className={labelClass}>SEO Description (max 160)</label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className={`${labelClass} mb-0`}>SEO Description</label>
+            <span className={`text-[0.625rem] font-bold ${seoDescription.trim().length >= 80 ? 'text-[var(--success)]' : 'text-[var(--accent-gold)]'}`}>
+              {seoDescription.trim().length}/80 min
+            </span>
+          </div>
           <textarea value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} maxLength={160} rows={2} className={inputClass} />
         </div>
+        <p className="text-[0.625rem] text-[var(--text-muted)] sm:col-span-2">
+          The hub is only indexable when it has at least 120 characters of description, an SEO title, 80+ characters of SEO description, a visible page and at least one published product.
+        </p>
       </div>
       <div className="flex gap-2">
         <button

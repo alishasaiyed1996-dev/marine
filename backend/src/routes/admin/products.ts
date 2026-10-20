@@ -10,6 +10,7 @@ router.use(authenticateAdmin)
 
 const productSchema = z.object({
   name: z.string().max(500).optional(),
+  slug: z.string().max(255).optional().nullable(),
   sku: z.string().max(100).optional(),
   brandId: z.string().uuid().optional().nullable(),
   categoryId: z.string().uuid().optional().nullable(),
@@ -46,7 +47,8 @@ const productSchema = z.object({
     .nullable()
     .transform((v) => Array.isArray(v) ? v.join(', ') : v),
   ogImageUrl: z.string().optional().nullable(),
-  canonicalUrl: z.string().optional().nullable(),
+  // canonicalUrl is deliberately not editable — the stable product slug is the
+  // canonical URL, and a second override would create conflicting signals.
   internalNotes: z.string().optional().nullable(),
   purchaseCost: z.number().min(0).optional().nullable(),
   supplierReference: z.string().optional().nullable(),
@@ -111,6 +113,7 @@ router.get('/', asyncHandler(async (req, res) => {
     isFeatured: (req.query.isFeatured as string) === 'true' ? true : undefined,
     onSaleAdmin: (req.query.onSale as string) === 'true' ? true : undefined,
     filter: req.query.filter as string,
+    seo: req.query.seo as string,
     sort: req.query.sort as string,
     order: req.query.order as string,
     page: Number(req.query.page),

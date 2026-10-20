@@ -20,6 +20,8 @@ interface StoreSettings {
   emergencyEmail: string
   phoneNumber: string
   googleAnalyticsId: string
+  seoTitle: string
+  seoDescription: string
   maintenanceMode: boolean
   shippingZones: ShippingZone[]
   paymentMethods: PaymentMethodSetting[]
@@ -34,6 +36,9 @@ const DEFAULTS: StoreSettings = {
   emergencyEmail: 'sales@alkatraders.co',
   phoneNumber: '+918799095041',
   googleAnalyticsId: '',
+  // Empty means "not configured"; pages fall back to their own default copy.
+  seoTitle: '',
+  seoDescription: '',
   maintenanceMode: false,
   shippingZones: [],
   paymentMethods: [],
@@ -88,6 +93,8 @@ async function fetchSettingsAndNotify(): Promise<StoreSettings> {
         // only exists for legacy rows.
         phoneNumber: String(s['site.phone'] || s['site.phoneNumber'] || DEFAULTS.phoneNumber),
         googleAnalyticsId: String(s['site.googleAnalyticsId'] || DEFAULTS.googleAnalyticsId),
+        seoTitle: String(s['site.seoTitle'] || DEFAULTS.seoTitle),
+        seoDescription: String(s['site.seoDescription'] || DEFAULTS.seoDescription),
         maintenanceMode: s['site.maintenanceMode'] === true || s['site.maintenanceMode'] === 'true',
         shippingZones: parseShippingZones(s['store.shippingZones']),
         paymentMethods: parsePaymentMethods(s['store.paymentMethods']),
