@@ -106,7 +106,7 @@ export function apiProductToFrontend(api: ApiProduct): Product {
     lastVerifiedAt: api.lastVerifiedAt,
     filename,
     name: api.name,
-    brand: api.brand?.name || 'Unknown',
+    brand: api.brand?.name || api.manufacturer?.trim() || 'Unknown',
     // Hidden hubs return 404 by design, so never link to them.
     brandSlug: api.brand && api.brand.isVisible !== false ? api.brand.slug : undefined,
     sku: api.sku,
