@@ -19,7 +19,7 @@ import { useStoreSettings } from '../hooks/useStoreSettings'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { useProductDetail } from '../hooks/useApiQuery'
-import { parseDescription, buildSpecTable, sectionTitle } from '../lib/description'
+import { parseDescription, buildProductSpecRows, sectionTitle } from '../lib/description'
 import { buildProductSeo } from '../lib/seo/productSeo'
 import { ProductImageGallery } from '../components/product/ProductImageGallery'
 import { OfferModal } from '../components/product/OfferModal'
@@ -142,18 +142,33 @@ export default function ProductDetail() {
   // once so each kind of content renders in its proper place instead of one
   // wall-of-text paragraph.
   const parsedDesc = parseDescription(product.description)
-  const specRows = buildSpecTable(parsedDesc, product)
+  const specRows = buildProductSpecRows(parsedDesc, product, product.specs)
   const readableCategory = product.category.replace(/-/g, ' ')
   // Hidden category/brand hubs return 404, so never link to them from a live
   // product page. The names still render as plain text.
   const categoryLinkVisible = product.categoryVisible !== false
-  // Structured specs saved through the admin form (name/value pairs with
-  // i18n-able labels). Falls back to Brand/Category/Condition when empty.
-  const formSpecs = product.specs && Object.keys(product.specs).length > 0
-    ? product.specs
-    : { Brand: product.brand, Category: readableCategory, Condition: product.condition }
+  // A short, fact-based overview above the fold. Imported products get this
+  // from the normalized short description; older products fall back to their
+  // first description paragraph.
+  const overview = (product.shortDescription || parsedDesc.paragraphs[0] || '').trim()
+  const overviewKey = overview.toLowerCase().replace(/\s+/g, ' ')
+  const descriptionParagraphs = parsedDesc.paragraphs.filter((paragraph) => {
+    if (!overviewKey) return true
+    const key = paragraph.trim().toLowerCase().replace(/\s+/g, ' ')
+    if (!key) return false
+    return !(
+      key === overviewKey ||
+      overviewKey.startsWith(key.slice(0, Math.min(80, key.length))) ||
+      key.startsWith(overviewKey.slice(0, Math.min(80, overviewKey.length)))
+    )
+  })
   const hasDescriptionContent =
-    parsedDesc.paragraphs.length > 0 || parsedDesc.features.length > 0 || parsedDesc.sections.length > 0
+    descriptionParagraphs.length > 0 || parsedDesc.features.length > 0 || parsedDesc.sections.length > 0
+  const hasParsedCondition = parsedDesc.sections.some((section) => section.key === 'condition')
+  const conditionDetail =
+    !hasParsedCondition && product.conditionNotes && product.conditionNotes.trim().length > 12
+      ? product.conditionNotes.trim()
+      : null
   // ── SEO generation — deterministic, fact-grounded ──
   // Titles/meta/JSON-LD derive from real product identity (structured fields +
   // Item Specifics parsed from the admin description). No fabricated attributes:
@@ -185,6 +200,7 @@ export default function ProductDetail() {
     mpn: product.mpn,
     gtin: product.gtin,
     impaCode: product.impaCode,
+    specs: product.specs,
   })
 
   const handleAddToCart = () => {
@@ -272,7 +288,22 @@ export default function ProductDetail() {
                 <span className="text-xs font-semibold px-2.5 py-0.5 border text-[var(--text-secondary)] border-[var(--border)] rounded">
                   {t('product.conditionLabel', { condition: product.condition.charAt(0).toUpperCase() + product.condition.slice(1) })}
                 </span>
+                {product.modelNumber && (
+                  <span className="text-xs font-mono text-[var(--text-muted)]">
+                    {t('product.modelPrefix', { model: product.modelNumber, defaultValue: `Model: ${product.modelNumber}` })}
+                  </span>
+                )}
+                {product.mpn && product.mpn !== product.modelNumber && (
+                  <span className="text-xs font-mono text-[var(--text-muted)]">
+                    {t('product.mpnPrefix', { mpn: product.mpn, defaultValue: `MPN: ${product.mpn}` })}
+                  </span>
+                )}
               </div>
+              {overview && (
+                <p className="mt-4 text-sm leading-relaxed text-[var(--text-secondary)] max-w-[62ch]">
+                  {overview}
+                </p>
+              )}
             </div>
 
             {/* Price */}
@@ -313,48 +344,16 @@ export default function ProductDetail() {
               </div>
             </div>
 
-            {/* Item Specifics — parsed from the description blob + product fields.
-                This is the categorized "Label: value" table (Brand, Model, IMPA,
-                Size, Material...); it replaces the old junk spec list and the
-                wall-of-text description paragraph above the buy box. */}
-            {specRows.length > 0 && (
-              <div className="border border-[var(--border)] rounded-xl overflow-hidden">
-                <div className="px-4 py-2.5 bg-[var(--secondary-bg)] border-b border-[var(--border)] font-bold text-sm text-[var(--text-primary)] uppercase tracking-wide">
-                  {t('product.itemSpecifics')}
-                </div>
-                <dl className="divide-y divide-[var(--border)]/60">
-                  {specRows.map((row, idx) => (
-                    <div key={`${row.label}-${idx}`} className="grid grid-cols-[minmax(96px,38%)_1fr]">
-                      <dt className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)] bg-[var(--secondary-bg)]/40 flex items-start">
-                        {row.label}
-                      </dt>
-                      <dd className="px-4 py-2 text-xs text-[var(--text-primary)] min-w-0 break-words flex items-start">{row.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-                {/* Structured specs saved in the admin form (when any exist) */}
-                {product.specs && Object.keys(product.specs).length > 0 && (
-                  <div className="border-t border-[var(--border)]/60">
-                    {Object.entries(product.specs).map(([key, val]) => (
-                      <div key={key} className="grid grid-cols-[minmax(96px,38%)_1fr]">
-                        <span className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)] bg-[var(--secondary-bg)]/40">{t(`product.${key}`)}</span>
-                        <span className="px-4 py-2 text-xs text-[var(--text-primary)] min-w-0 break-words">{val}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Condition detail (kept from the admin form's condition field) */}
             <div className="p-4 bg-[var(--secondary-bg)] border border-[var(--border)] rounded-xl text-xs leading-relaxed">
               <span className="font-bold text-[var(--text-primary)] uppercase tracking-wide block mb-1">{t('product.condition')}</span>
               <p className="text-[var(--text-secondary)]">
-                {product.condition === 'new' && t('product.conditionNew')}
-                {product.condition === 'refurbished' && t('product.conditionRefurbished')}
-                {product.condition === 'used' && t('product.conditionUsed')}
-                {product.condition === 'reconditioned' && t('product.conditionReconditioned')}
-                {product.condition === 'unused' && t('product.conditionUnused')}
+                {conditionDetail ||
+                  (product.condition === 'new' && t('product.conditionNew')) ||
+                  (product.condition === 'refurbished' && t('product.conditionRefurbished')) ||
+                  (product.condition === 'used' && t('product.conditionUsed')) ||
+                  (product.condition === 'reconditioned' && t('product.conditionReconditioned')) ||
+                  (product.condition === 'unused' && t('product.conditionUnused'))}
               </p>
             </div>
 
@@ -409,6 +408,26 @@ export default function ProductDetail() {
                     <Percent size={14} /> {t('product.makeOffer')}
                   </button>
                 )}
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-[var(--text-muted)]">
+                  <span>{t('product.needQuantity', { defaultValue: 'Need a different quantity?' })}</span>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <a
+                      href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Hi, I have a question about ${product.name} (SKU ${product.sku}).`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-semibold text-[var(--accent-primary)] no-underline hover:underline"
+                    >
+                      <WhatsAppIcon size={12} /> {t('product.askQuestion', { defaultValue: 'Ask about this part' })}
+                    </a>
+                    <Link
+                      to={lp('/rfq')}
+                      className="font-semibold text-[var(--accent-primary)] no-underline hover:underline"
+                    >
+                      {t('product.requestQuote', { defaultValue: 'Request a quote' })}
+                    </Link>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -428,18 +447,24 @@ export default function ProductDetail() {
               </div>
             )}
 
-            {/* Specs — legacy: only shown when the description blob produced
-                nothing (covers older products with structured specs only) */}
-            {specRows.length === 0 && (
-              <div className="border-t border-[var(--border)] pt-4 space-y-2.5 text-xs">
-                {Object.entries(formSpecs).map(([key, val]) => (
-                  <div key={key} className="grid grid-cols-[auto_1fr] border-b border-[var(--border)]/40 pb-2">
-                    <span className="font-semibold text-[var(--text-muted)] uppercase tracking-wide text-xs">
-                      {t(`product.${key}`)}
-                    </span>
-                    <span className="text-[var(--text-primary)] min-w-0 break-words">{val}</span>
-                  </div>
-                ))}
+            {/* Item Specifics — one de-duplicated table built from curated
+                specs, parsed description rows and identity fallbacks. It sits
+                below the buy box so price and CTA stay above the fold. */}
+            {specRows.length > 0 && (
+              <div className="border border-[var(--border)] rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 bg-[var(--secondary-bg)] border-b border-[var(--border)] font-bold text-sm text-[var(--text-primary)] uppercase tracking-wide">
+                  {t('product.itemSpecifics')}
+                </div>
+                <dl className="divide-y divide-[var(--border)]/60">
+                  {specRows.map((row, idx) => (
+                    <div key={`${row.label}-${idx}`} className="grid grid-cols-[minmax(96px,38%)_1fr]">
+                      <dt className="px-4 py-2 text-xs font-semibold text-[var(--text-muted)] bg-[var(--secondary-bg)]/40 flex items-start">
+                        {row.label}
+                      </dt>
+                      <dd className="px-4 py-2 text-xs text-[var(--text-primary)] min-w-0 break-words flex items-start">{row.value}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             )}
 
@@ -462,10 +487,11 @@ export default function ProductDetail() {
               </span>
             </div>
             <div className="space-y-8 text-sm text-[var(--text-secondary)] leading-relaxed max-w-[800px]">
-              {/* Free-form overview paragraphs */}
-              {parsedDesc.paragraphs.length > 0 && (
+              {/* Free-form overview paragraphs (the lead paragraph shown above
+                  the buy box is removed here to avoid repeating it). */}
+              {descriptionParagraphs.length > 0 && (
                 <div className="space-y-3">
-                  {parsedDesc.paragraphs.map((para, i) => (
+                  {descriptionParagraphs.map((para, i) => (
                     <p key={i}>{para}</p>
                   ))}
                 </div>

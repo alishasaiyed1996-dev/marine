@@ -177,7 +177,13 @@ function canonicalPath(pathname) {
 function withBrandSuffix(title) {
   const value = cleanText(title)
   if (!value) return SITE_NAME
-  return /(?:^|[|\-–—])\s*Alka Traders\s*(?:$|[|\-–—])/i.test(value) ? value : `${value} | ${SITE_NAME}`
+  if (/(?:^|[|\u2013\u2014-])\s*Alka Traders\s*(?:$|[|\u2013\u2014-])/i.test(value)) return value
+  // Keep the SERP title within the ~60 character display limit. When the
+  // product title already fills that space, the product keywords are more
+  // valuable than a repeated site name (the domain and Organization schema
+  // already identify the seller).
+  const suffix = ` | ${SITE_NAME}`
+  return value.length + suffix.length <= 60 ? `${value}${suffix}` : value
 }
 
 /**
@@ -266,6 +272,71 @@ function mapCondition(condition) {
 function isInStock(product) {
   if (typeof product?.inStock === 'boolean') return product.inStock
   return product?.availability !== 'out-of-stock'
+}
+
+const SPEC_PLACEHOLDER_RE =
+  /^(?:n\/?a|na|none|null|unknown|not\s+marked|not\s+applicable|does\s+not\s+apply|see\s+(?:photos?|pictures?|description)|as\s+shown|unbranded|generic|-+)$/i
+const SPEC_IGNORED_LABELS = new Set([
+  'unit', 'unit type', 'unit quantity', 'value', 'quantity',
+  'note usa buyers', 'seller notes', 'condition notes', 'ebay item',
+])
+
+function isPlaceholderValue(value) {
+  const text = cleanText(value)
+  return !text || SPEC_PLACEHOLDER_RE.test(text)
+}
+
+/** Resolve a real manufacturer/brand name; never assert "Not Marked"/"Unbranded". */
+function realBrandName(product) {
+  const candidates = [product?.brand?.name, product?.manufacturer]
+  for (const candidate of candidates) {
+    const value = cleanText(candidate)
+    if (value && !isPlaceholderValue(value)) return value
+  }
+  return null
+}
+
+/** Public specs only, placeholder-free, de-duplicated by label. */
+function publicProductSpecs(product, limit = 12) {
+  const specs = Array.isArray(product?.specs) ? product.specs : []
+  const rows = []
+  const seen = new Set()
+  for (const spec of specs) {
+    const label = cleanText(spec?.name)
+      .replace(/^[•·▪◦*#\-–—]\s*/, '')
+      .replace(/^(?:ITEM|PRODUCT)\s+SPECIFICS\s+/i, '')
+      .replace(/:+$/, '')
+    const value = cleanText(
+      cleanText(spec?.value).replace(/\s*\(?\s*(?:size\s+)?not\s+marked\s*\)?/gi, ' '),
+    )
+    if (!label || !value || isPlaceholderValue(value)) continue
+    if (SPEC_IGNORED_LABELS.has(label.toLowerCase())) continue
+    if (label.toLowerCase() === 'custom bundle' && /^no$/i.test(value)) continue
+    const key = label.toLowerCase()
+    if (seen.has(key)) continue
+    const keyWords = key.split(/\s+/)
+    const valueKey = value.toLowerCase()
+    const redundant = rows.some((row) => {
+      const rowKey = row.label.toLowerCase()
+      const rowWords = rowKey.split(/\s+/)
+      const related =
+        rowKey === key ||
+        rowWords.every((word) => keyWords.includes(word)) ||
+        keyWords.every((word) => rowWords.includes(word))
+      if (!related) return false
+      const rowValue = row.value.toLowerCase()
+      return (
+        rowValue === valueKey ||
+        (valueKey.length >= 4 &&
+          (rowValue.includes(valueKey) || valueKey.includes(rowValue)))
+      )
+    })
+    if (redundant) continue
+    seen.add(key)
+    rows.push({ label, value })
+    if (rows.length >= limit) break
+  }
+  return rows
 }
 
 /** JSON-LD is tagged data-rh so react-helmet-async can replace it on hydration. */
@@ -710,6 +781,32 @@ function productHtml(template, product, related = [], locale = 'en') {
   const inStock = isInStock(product)
   const price = Number(product.price ?? (product.onSale && product.salePrice ? product.salePrice : product.regularPrice))
   const priceValid = Number.isFinite(price) && price > 0
+  const brandName = realBrandName(product)
+  const specRows = publicProductSpecs(product, 24)
+  const schemaImages = (product.images || [])
+    .map((item) => absoluteUrl(item.url))
+    .filter(Boolean)
+    .slice(0, 10)
+  const identitySpecLabels = new Set([
+    'brand', 'manufacturer', 'make', 'model', 'mpn', 'gtin', 'impa', 'impa code',
+    'sku', 'condition', 'category', 'custom bundle', 'bundle description',
+  ])
+  const additionalProperties = []
+  if (product.impaCode) {
+    additionalProperties.push({
+      '@type': 'PropertyValue',
+      name: 'IMPA Code',
+      value: String(product.impaCode).replace(/\s+/g, ''),
+    })
+  }
+  for (const spec of specRows) {
+    if (additionalProperties.length >= 8) break
+    if (identitySpecLabels.has(spec.label.toLowerCase())) continue
+    additionalProperties.push({ '@type': 'PropertyValue', name: spec.label, value: spec.value })
+  }
+  const bodySpecRows = specRows.filter(
+    (spec) => !['sku', 'mpn', 'impa', 'impa code', 'brand', 'model', 'category', 'condition'].includes(spec.label.toLowerCase()),
+  )
 
   const breadcrumbs = [
     { name: 'Home', path: `/${locale}/` },
@@ -731,19 +828,13 @@ function productHtml(template, product, related = [], locale = 'en') {
     ...(product.mpn ? { mpn: product.mpn } : {}),
     ...(validGtin ? { gtin } : {}),
     ...(product.modelNumber ? { model: product.modelNumber } : {}),
-    ...(product.manufacturer ? { manufacturer: { '@type': 'Organization', name: product.manufacturer } } : {}),
-    ...(product.brand?.name ? { brand: { '@type': 'Brand', name: product.brand.name } } : {}),
-    ...(product.category?.name ? { category: product.category.name } : {}),
-    ...(product.impaCode
-      ? {
-          additionalProperty: [{
-            '@type': 'PropertyValue',
-            name: 'IMPA Code',
-            value: String(product.impaCode).replace(/\s+/g, ''),
-          }],
-        }
+    ...(product.manufacturer && !isPlaceholderValue(product.manufacturer)
+      ? { manufacturer: { '@type': 'Organization', name: product.manufacturer } }
       : {}),
-    ...(image ? { image: [image] } : {}),
+    ...(brandName ? { brand: { '@type': 'Brand', name: brandName } } : {}),
+    ...(product.category?.name ? { category: product.category.name } : {}),
+    ...(additionalProperties.length > 0 ? { additionalProperty: additionalProperties } : {}),
+    ...(schemaImages.length > 0 ? { image: schemaImages } : image ? { image: [image] } : {}),
     ...(priceValid
       ? {
           offers: {
@@ -775,10 +866,13 @@ ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" width="
 <dl>
 ${product.sku ? `<dt>SKU</dt><dd>${escapeHtml(product.sku)}</dd>` : ''}
 ${product.mpn ? `<dt>MPN</dt><dd>${escapeHtml(product.mpn)}</dd>` : ''}
+${product.modelNumber ? `<dt>Model</dt><dd>${escapeHtml(product.modelNumber)}</dd>` : ''}
 ${product.impaCode ? `<dt>IMPA</dt><dd>${escapeHtml(product.impaCode)}</dd>` : ''}
-${product.brand?.name ? `<dt>Brand</dt><dd>${product.brand.slug && product.brand.isVisible !== false ? `<a href="/${locale}/brands/${encodeURIComponent(product.brand.slug)}/">${escapeHtml(product.brand.name)}</a>` : escapeHtml(product.brand.name)}</dd>` : ''}
+${brandName ? `<dt>Brand</dt><dd>${product.brand?.slug && product.brand.isVisible !== false && brandName === product.brand.name ? `<a href="/${locale}/brands/${encodeURIComponent(product.brand.slug)}/">${escapeHtml(brandName)}</a>` : escapeHtml(brandName)}</dd>` : ''}
+${product.manufacturer && product.manufacturer !== brandName && !isPlaceholderValue(product.manufacturer) ? `<dt>Manufacturer</dt><dd>${escapeHtml(product.manufacturer)}</dd>` : ''}
 ${product.category?.name ? `<dt>Category</dt><dd>${product.category.slug && product.category.isVisible !== false ? `<a href="/${locale}/categories/${encodeURIComponent(product.category.slug)}/">${escapeHtml(product.category.name)}</a>` : escapeHtml(product.category.name)}</dd>` : ''}
-${product.condition ? `<dt>Condition</dt><dd>${escapeHtml(product.condition)}</dd>` : ''}
+${product.condition ? `<dt>Condition</dt><dd>${escapeHtml(String(product.condition).charAt(0).toUpperCase() + String(product.condition).slice(1))}</dd>` : ''}
+${bodySpecRows.map((spec) => `<dt>${escapeHtml(spec.label)}</dt><dd>${escapeHtml(spec.value)}</dd>`).join('')}
 <dt>Availability</dt><dd>${inStock ? 'In stock' : 'Check availability'}</dd>
 </dl>
 ${priceValid ? `<p>Price: ${price.toFixed(2)} ${escapeHtml(product.currency || 'USD')}</p>` : '<p>Contact us for price and availability.</p>'}

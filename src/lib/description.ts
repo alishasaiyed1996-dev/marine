@@ -106,6 +106,11 @@ export function parseDescription(raw: string | null | undefined): ParsedDescript
     const isSpec = isSpecLine(line)
     // Value part of a "Label: value" pair (empty for bare headers like "KEY FEATURES:")
     const specValue = isSpec ? line.slice(line.indexOf(':') + 1).trim() : null
+    const specLabel = isSpec ? line.slice(0, line.indexOf(':')).trim() : ''
+    const isIdentitySpec =
+      /^(?:sku|mpn|model(?:\s*number)?|brand|manufacturer|condition|impa(?:\s*code)?)$/i.test(
+        specLabel,
+      )
 
     // A known section header opens a block — but "Condition: New" (a real
     // spec pair with a value) must NOT be mistaken for a CONDITION section:
@@ -125,9 +130,22 @@ export function parseDescription(raw: string | null | undefined): ParsedDescript
       continue
     }
 
-    // Standalone "Label: value" lines outside any section → Item Specifics
+    // Identity fields belong in Item Specifics even if a seller put them at the
+    // bottom of an INCLUDED block (a common eBay import artifact).
+    if (isSpec && isIdentitySpec) {
+      itemSpecs.push({ label: specLabel, value: specValue || '' })
+      continue
+    }
+
+    // Standalone "Label: value" lines outside any section → Item Specifics.
+    // Once a KEY FEATURES header has appeared, a colon line is much more
+    // likely to be a feature bullet ("Sizes shown: ...") than a spec row.
     if (isSpec && !current) {
-      itemSpecs.push({ label: line.slice(0, line.indexOf(':')).trim(), value: specValue || '' })
+      if (sawFeaturesHeader) {
+        features.push(line)
+      } else {
+        itemSpecs.push({ label: specLabel, value: specValue || '' })
+      }
       continue
     }
 
@@ -168,7 +186,7 @@ export function buildSpecTable(
 ): Array<{ label: string; value: string }> {
   const rows: Array<{ label: string; value: string }> = []
 
-  // Parsed specs come FIRST so they win the de-dupe below — the admin-entered
+  // Parsed specs come FIRST so they win the de-dupe below - the admin-entered
   // "Condition: New" is more specific than our internal enum value "new".
   for (const s of parsed.itemSpecs) rows.push({ label: s.label, value: s.value })
   if (product.brand) rows.push({ label: 'Brand', value: product.brand })
@@ -183,4 +201,115 @@ export function buildSpecTable(
     seen.add(k)
     return true
   })
+}
+
+const SPEC_LABEL_ALIASES: Record<string, string> = {
+  'manufacturer part number': 'MPN',
+  'part number': 'MPN',
+  'model number': 'Model',
+  'model no': 'Model',
+  'country/region of manufacture': 'Country of Origin',
+  'country of manufacture': 'Country of Origin',
+  'impa': 'IMPA Code',
+  'impa no': 'IMPA Code',
+  'product type': 'Type',
+}
+
+const SPEC_PLACEHOLDER_RE =
+  /^(?:n\/?a|na|none|null|unknown|not\s+marked|not\s+applicable|does\s+not\s+apply|see\s+(?:photos?|pictures?|description)|as\s+shown|-+)$/i
+
+const SPEC_IGNORED_LABELS = new Set([
+  'unit', 'unit type', 'unit quantity', 'value', 'quantity',
+  'note usa buyers', 'seller notes', 'condition notes', 'ebay item',
+])
+
+function cleanSpecLabel(label: string): string {
+  const cleaned = String(label || '')
+    .replace(/^[•·▪◦*#\-–—]\s*/, '')
+    .replace(/^(?:ITEM|PRODUCT)\s+SPECIFICS\s+/i, '')
+    .replace(/:+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return SPEC_LABEL_ALIASES[cleaned.toLowerCase()] || cleaned
+}
+
+function cleanSpecValue(value: string): string {
+  return String(value || '')
+    .replace(/\s*\(?\s*(?:size\s+)?not\s+marked\s*\)?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Build the single Item Specifics table used by the product page.
+ *
+ * Curated rows from the admin/import live in `product.specs`; parsed rows from
+ * the description fill any gaps. Identity fields then act as fallbacks. The
+ * old page rendered the parsed table and then appended every structured spec
+ * again, producing duplicate Brand/Model/Condition rows.
+ */
+export function buildProductSpecRows(
+  parsed: ParsedDescription,
+  product: {
+    brand: string
+    category: string
+    categoryName?: string
+    condition: string
+    sku: string
+    modelNumber?: string | null
+    mpn?: string | null
+    impaCode?: string | null
+  },
+  structured: Record<string, string> = {},
+): Array<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = []
+  const seen = new Set<string>()
+
+  const add = (rawLabel: string, rawValue: string | null | undefined) => {
+    const label = cleanSpecLabel(rawLabel)
+    const value = cleanSpecValue(rawValue || '')
+    if (!label || !value || SPEC_PLACEHOLDER_RE.test(value)) return
+    if (SPEC_IGNORED_LABELS.has(label.toLowerCase())) return
+    if (label === 'Custom Bundle' && /^no$/i.test(value)) return
+    const key = label.toLowerCase()
+    if (seen.has(key)) return
+    // Drop a synonym row whose value is already covered (Type vs Tool Type,
+    // Size vs Drive Size, ...). Different values are still kept.
+    const keyWords = key.split(/\s+/)
+    const valueKey = value.toLowerCase()
+    const redundant = rows.some((row) => {
+      const rowKey = row.label.toLowerCase()
+      const rowWords = rowKey.split(/\s+/)
+      const related =
+        rowKey === key ||
+        rowWords.every((word) => keyWords.includes(word)) ||
+        keyWords.every((word) => rowWords.includes(word))
+      if (!related) return false
+      const rowValue = row.value.toLowerCase()
+      return (
+        rowValue === valueKey ||
+        (valueKey.length >= 4 &&
+          (rowValue.includes(valueKey) || valueKey.includes(rowValue)))
+      )
+    })
+    if (redundant) return
+    seen.add(key)
+    rows.push({ label, value })
+  }
+
+  // Curated rows win; description rows fill gaps; identity is last resort.
+  for (const [label, value] of Object.entries(structured)) add(label, value)
+  for (const spec of parsed.itemSpecs) add(spec.label, spec.value)
+
+  if (product.brand) add('Brand', product.brand)
+  if (product.modelNumber) add('Model', product.modelNumber)
+  if (product.mpn) add('MPN', product.mpn)
+  if (product.impaCode) add('IMPA Code', product.impaCode)
+  add('SKU', product.sku)
+  add('Category', product.categoryName || product.category.replace(/-/g, ' '))
+  if (product.condition) {
+    add('Condition', product.condition.charAt(0).toUpperCase() + product.condition.slice(1))
+  }
+
+  return rows.slice(0, 30)
 }

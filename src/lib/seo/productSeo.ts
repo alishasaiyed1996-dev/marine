@@ -42,6 +42,7 @@ export interface ProductSeoInput {
   mpn?: string | null
   gtin?: string | null
   impaCode?: string | null
+  specs?: Record<string, string>
 }
 
 const BASE_URL = (import.meta.env.VITE_SITE_URL || 'https://alkatraders.co').replace(/\/+$/, '')
@@ -83,8 +84,13 @@ function isUsable(v: string | undefined | null): v is string {
   if (!v) return false
   const s = tidy(v)
   if (!s) return false
-  if (/^(n\/?a|tbd|unknown|none|not available|-+)$/i.test(s)) return false
+  if (/^(n\/?a|tbd|unknown|none|not available|not marked|unbranded|generic|-+)$/i.test(s)) return false
   return true
+}
+
+/** A brand name we can safely assert in metadata and Product schema. */
+function isRealBrand(v: string | undefined | null): v is string {
+  return isUsable(v) && !/^(unknown|unbranded|not marked|generic)$/i.test(tidy(v))
 }
 
 /**
@@ -170,15 +176,15 @@ export function extractIdentity(
  * Cap ~65 chars visible; identifiers win over descriptors when space is short.
  */
 export function buildProductTitle(input: ProductSeoInput, identity: Identity, productType: string): string {
-  const brand = isUsable(input.brand) && input.brand !== 'Unknown' ? tidy(input.brand) : undefined
+  const brand = isRealBrand(input.brand) ? tidy(input.brand) : undefined
   const model = identity.model || identity.mpn
   const impa = identity.impa ? `IMPA ${identity.impa.replace(/\s+/g, '')}` : undefined
 
   const left = [brand, model, productType].filter(Boolean).join(' ')
   // Prefer the identifier tail when it fits; drop the tail when the left side
   // is already long, so the title never becomes a stuffed keyword chain.
-  const withTail = impa && left.length + 3 + impa.length <= 70 ? `${left} | ${impa}` : left
-  return tidy(withTail || productType).slice(0, 70)
+  const withTail = impa && left.length + 3 + impa.length <= 60 ? `${left} | ${impa}` : left
+  return tidy(withTail || productType).slice(0, 60)
 }
 
 /**
@@ -186,7 +192,7 @@ export function buildProductTitle(input: ProductSeoInput, identity: Identity, pr
  * attribute, procurement CTA. No superlatives, no stuffing.
  */
 export function buildMetaDescription(input: ProductSeoInput, identity: Identity, productType: string): string {
-  const brand = isUsable(input.brand) && input.brand !== 'Unknown' ? input.brand : undefined
+  const brand = isRealBrand(input.brand) ? input.brand : undefined
   const parts: string[] = []
   const who = [brand, identity.model].filter(Boolean).join(' ')
   parts.push(who ? `${who} ${productType.toLowerCase()} supplied by Alka Traders` : `${productType} (${input.sku}) supplied by Alka Traders`)
@@ -228,7 +234,7 @@ export function buildImageAlt(
 export function buildH1(input: ProductSeoInput, identity: Identity, productType: string): string {
   const name = tidy(input.name).slice(0, 120)
   if (name) return name
-  const brand = isUsable(input.brand) && input.brand !== 'Unknown' ? tidy(input.brand) : undefined
+  const brand = isRealBrand(input.brand) ? tidy(input.brand) : undefined
   const model = identity.model || identity.mpn
   return tidy([brand, model, productType].filter(Boolean).join(' '))
 }
@@ -277,6 +283,36 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
   const cleanDesc = [...proseParas, ...sectionParas].join(' ')
   const schemaDescription = (isUsable(cleanDesc) ? cleanDesc : tidy(input.name)).slice(0, 300)
 
+  // Real, non-identity specs are useful Product properties. Keep the list
+  // short and omit placeholder values; identity is already represented by
+  // sku/mpn/model/brand above.
+  const identityLabels = new Set([
+    'brand', 'manufacturer', 'make', 'model', 'mpn', 'gtin', 'impa', 'impa code',
+    'sku', 'condition', 'category', 'custom bundle', 'bundle description',
+  ])
+  const additionalProperties: Array<Record<string, unknown>> = []
+  if (identity.impa) {
+    additionalProperties.push({
+      '@type': 'PropertyValue',
+      name: 'IMPA Code',
+      value: identity.impa.replace(/\s+/g, ''),
+    })
+  }
+  for (const [name, value] of Object.entries(input.specs || {})) {
+    if (additionalProperties.length >= 8) break
+    if (identityLabels.has(name.trim().toLowerCase())) continue
+    if (!isUsable(name) || !isUsable(value)) continue
+    additionalProperties.push({
+      '@type': 'PropertyValue',
+      name: tidy(name).slice(0, 100),
+      value: tidy(value).slice(0, 300),
+    })
+  }
+  const schemaImages = (input.images || [])
+    .map((image) => image.url)
+    .filter(Boolean)
+    .slice(0, 10)
+
   // Product schema — real values only. IMPA as additionalProperty (never GTIN).
   const product: Record<string, unknown> = {
     '@context': 'https://schema.org',
@@ -290,19 +326,10 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
     ...(gtin && isValidGtin(gtin) ? { gtin } : {}),
     ...(identity.model ? { model: identity.model } : {}),
     ...(identity.manufacturer ? { manufacturer: { '@type': 'Organization', name: identity.manufacturer } } : {}),
-    ...(isUsable(input.brand) && input.brand !== 'Unknown' ? { brand: { '@type': 'Brand', name: tidy(input.brand) } } : {}),
-    ...(mainImage ? { image: [mainImage] } : {}),
-    ...(identity.impa
-      ? {
-          additionalProperty: [
-            {
-              '@type': 'PropertyValue',
-              name: 'IMPA Code',
-              value: identity.impa.replace(/\s+/g, ''),
-            },
-          ],
-        }
-      : {}),
+    ...(isRealBrand(input.brand) ? { brand: { '@type': 'Brand', name: tidy(input.brand) } } : {}),
+    ...(isUsable(input.category) ? { category: input.category.replace(/-/g, ' ') } : {}),
+    ...(schemaImages.length > 0 ? { image: schemaImages } : {}),
+    ...(additionalProperties.length > 0 ? { additionalProperty: additionalProperties } : {}),
     ...(hasRealPrice ? { offers: {
       '@type': 'Offer',
       // Canonical URL uses the stable public slug (UUID remains a redirect alias).
@@ -321,7 +348,7 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
     metaDescription,
     h1,
     ogType: 'product',
-    productBrand: isUsable(input.brand) && input.brand !== 'Unknown' ? input.brand : undefined,
+    productBrand: isRealBrand(input.brand) ? input.brand : undefined,
     productCondition: mapCondition(input.condition),
     productSku: input.sku,
     productCategory: input.category.replace(/-/g, ' '),

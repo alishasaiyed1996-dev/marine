@@ -50,7 +50,9 @@ export interface Product {
   specs: Record<string, string>
   // New fields
   description: string
+  shortDescription?: string | null
   condition: 'new' | 'refurbished' | 'used' | 'reconditioned' | 'unused'
+  conditionNotes?: string | null
   price: number
   currency?: string
   ogImageUrl?: string | null

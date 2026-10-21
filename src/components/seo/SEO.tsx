@@ -80,8 +80,16 @@ export function SEO({
   // "Alka Traders | Marine Equipment Supplier"). Appending the suffix
   // unconditionally produced "... | Alka Traders | Alka Traders" and
   // duplicated the brand in the most visible SERP element.
-  const hasBrand = /(?:^|[|\-–—])\s*Alka Traders\s*(?:$|[|\-–—])/i.test(title.trim())
-  const fullTitle = hasBrand ? title.trim() : `${title} | ${SITE_NAME}`
+  const hasBrand = /(?:^|[|\u2013\u2014-])\s*Alka Traders\s*(?:$|[|\u2013\u2014-])/i.test(title.trim())
+  // Product titles are already written to the ~60 character SERP limit. Only
+  // spend the remaining space on the site name when it actually fits.
+  const cleanTitle = title.trim()
+  const siteSuffix = ` | ${SITE_NAME}`
+  const fullTitle = hasBrand
+    ? cleanTitle
+    : cleanTitle.length + siteSuffix.length <= 60
+      ? `${cleanTitle}${siteSuffix}`
+      : cleanTitle
   const metaDescription = (description || DEFAULT_DESCRIPTION).replace(/\s+/g, ' ').trim().slice(0, 160)
   const normalizeCanonical = (value: string) => {
     const absolute = /^https?:\/\//i.test(value) ? value : `${BASE_URL}${value}`

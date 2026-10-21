@@ -32,10 +32,6 @@ import { isEbayConfigured, isRetryableError } from './ebayClient.js'
 import { getActiveEbayListings, getEbayItemDetails } from './ebayTradingService.js'
 import { importMediaFromUrl } from './mediaService.js'
 import {
-  buildDescription,
-  buildSeoDescription,
-  buildSeoTitle,
-  buildShortDescription,
   cleanTitle,
   extractIdentity,
   htmlToPlainText,
@@ -45,11 +41,14 @@ import {
   normalizeCurrency,
   normalizeEbaySku,
 } from './ebayCatalogMapping.js'
+import {
+  makeUniqueSeoTitle,
+  normalizeProductContent,
+} from './productContentNormalizer.js'
 
 const log = logger.child({ context: 'ebay-catalog-import' })
 
 export const DEFAULT_IMPORT_MARKETPLACE = 'EBAY_US'
-const MAX_SPECS = 60
 const DISCOVERY_PAGE_SIZE = 100
 const DISCOVERY_MAX_PAGES = 500
 
@@ -209,6 +208,7 @@ async function importOne(
   marketplace: string,
   lookup: { categories: Array<{ id: string; name: string }>; brands: Array<{ id: string; name: string }> },
   actorId: string | null,
+  usedSeoTitles: Set<string>,
 ): Promise<ImportOutcome> {
   const mapped = await prisma.ebayListing.findFirst({
     where: { ebayListingId: itemId },
@@ -255,63 +255,74 @@ async function importOne(
   }
 
   const plainDescription = htmlToPlainText(details.descriptionHtml)
-  const description = buildDescription(plainDescription, details)
   const identity = extractIdentity(details.specifics)
+  const condition = mapEbayCondition(details.condition)
+  const normalized = normalizeProductContent({
+    name: title,
+    sku,
+    condition,
+    conditionNotes: details.condition,
+    manufacturer: identity.manufacturer,
+    modelNumber: identity.modelNumber,
+    mpn: identity.mpn,
+    impaCode: identity.impaCode,
+    description: plainDescription,
+    specs: details.specifics,
+    categoryName: details.categoryName,
+  })
+  normalized.seoTitle = makeUniqueSeoTitle(
+    normalized.seoTitle,
+    sku || normalized.modelNumber || normalized.mpn,
+    usedSeoTitles,
+  )
   const price = details.price != null && Number.isFinite(details.price) ? details.price : 0
   const stockCount = Math.max(0, Math.floor(details.quantity || 0))
   const categoryId = matchCategoryId(details.categoryName, lookup.categories)
-  const brandId = matchBrandId(identity.manufacturer, lookup.brands)
-  const seoTitle = buildSeoTitle(title)
-  const seoDescription = buildSeoDescription({
-    title,
-    condition: details.condition,
-    manufacturer: identity.manufacturer,
-    description: plainDescription,
-  })
+  const brandId = matchBrandId(normalized.manufacturer, lookup.brands)
 
   const product = await prisma.product.create({
     data: {
-      name: title,
-      slug: await uniqueProductSlug(title, itemId),
+      name: normalized.name,
+      slug: await uniqueProductSlug(normalized.name, itemId),
       sku,
       // Draft is deliberate: the publish gate (category, description, SEO,
       // verified identity, image alt text) runs before anything goes public.
       status: 'draft',
       brandId,
       categoryId,
-      condition: mapEbayCondition(details.condition),
+      condition,
       availability: stockCount > 0 ? 'in-stock' : 'out-of-stock',
-      description,
-      shortDescription: buildShortDescription(plainDescription, title),
+      description: normalized.description,
+      shortDescription: normalized.shortDescription,
       regularPrice: price,
       currency: normalizeCurrency(details.currency),
       stockCount,
       conditionNotes: details.condition || null,
-      manufacturer: identity.manufacturer,
-      modelNumber: identity.modelNumber,
-      mpn: identity.mpn,
+      manufacturer: normalized.manufacturer,
+      modelNumber: normalized.modelNumber,
+      mpn: normalized.mpn,
       gtin: identity.gtin,
-      impaCode: identity.impaCode,
+      impaCode: normalized.impaCode,
       sourceUrl: details.listingUrl,
       // Parsed eBay specifics are not human verification; leave lastVerifiedAt
       // NULL so the admin verifies identity before publishing.
-      seoTitle,
-      seoDescription,
+      seoTitle: normalized.seoTitle,
+      seoDescription: normalized.seoDescription,
+      seoKeywords: normalized.keywords.join(', '),
+      keyFeatures: normalized.keyFeatures,
+      includedItems: normalized.includedItems,
       internalNotes: `Imported from eBay item ${itemId} (${marketplace})${details.categoryName ? ` — eBay category: ${details.categoryName}` : ''}.`,
       createdBy: actorId,
       updatedBy: actorId,
     },
   })
 
-  const specs = details.specifics
-    .filter((spec) => spec.name.trim() && spec.value.trim())
-    .slice(0, MAX_SPECS)
-  for (const [index, spec] of specs.entries()) {
+  for (const [index, spec] of normalized.specs.entries()) {
     await prisma.productSpec.create({
       data: {
         productId: product.id,
-        name: spec.name.trim().slice(0, 255),
-        value: spec.value.trim(),
+        name: spec.name.slice(0, 255),
+        value: spec.value,
         isPublic: true,
         sortOrder: index,
       },
@@ -327,7 +338,7 @@ async function importOne(
       const { asset } = await importMediaFromUrl(
         imageUrl,
         actorId || undefined,
-        `${title} - image ${index + 1}`,
+        `${normalized.name} - image ${index + 1}`,
       )
       return { index, asset }
     } catch (err) {
@@ -345,7 +356,7 @@ async function importOne(
         productId: product.id,
         mediaAssetId: entry.asset.id,
         url: entry.asset.url,
-        altText: `${title} - image ${entry.index + 1}`.slice(0, 500),
+        altText: `${normalized.name} - image ${entry.index + 1}`.slice(0, 500),
         label: isMain ? 'Main' : null,
         isMain,
         sortOrder,
@@ -444,6 +455,15 @@ async function processJob(job: EbayImportJob): Promise<void> {
   if (freshStatus?.status !== 'running') return
 
   const lookup = await loadLookup()
+  const existingSeoTitles = await prisma.product.findMany({
+    where: { seoTitle: { not: null } },
+    select: { seoTitle: true },
+  })
+  const usedSeoTitles = new Set(
+    existingSeoTitles
+      .map((product) => product.seoTitle?.trim().toLowerCase())
+      .filter((title): title is string => Boolean(title)),
+  )
   let cursor = Math.min(job.cursor, total)
   const end = Math.min(total, cursor + batchSize())
   const counts = {
@@ -464,7 +484,7 @@ async function processJob(job: EbayImportJob): Promise<void> {
     }
 
     try {
-      const outcome = await importOne(itemId, job.marketplace, lookup, job.createdBy)
+      const outcome = await importOne(itemId, job.marketplace, lookup, job.createdBy, usedSeoTitles)
       counts[outcome] += 1
     } catch (err) {
       // A rate limit / eBay outage must not burn through the remaining item

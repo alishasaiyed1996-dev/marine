@@ -106,7 +106,7 @@ export function apiProductToFrontend(api: ApiProduct): Product {
     lastVerifiedAt: api.lastVerifiedAt,
     filename,
     name: api.name,
-    brand: api.brand?.name || api.manufacturer?.trim() || 'Unknown',
+    brand: api.brand?.name || api.manufacturer?.trim() || 'Unbranded',
     // Hidden hubs return 404 by design, so never link to them.
     brandSlug: api.brand && api.brand.isVisible !== false ? api.brand.slug : undefined,
     sku: api.sku,
@@ -124,6 +124,8 @@ export function apiProductToFrontend(api: ApiProduct): Product {
         .map((s) => [s.name, s.value]),
     ),
     description: api.description || api.shortDescription || '',
+    shortDescription: api.shortDescription,
+    conditionNotes: api.conditionNotes,
     condition: api.condition as Product['condition'],
     price: effectivePrice,
     regularPrice: api.regularPrice != null ? Number(api.regularPrice) : undefined,
