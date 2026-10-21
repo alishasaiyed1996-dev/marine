@@ -15,7 +15,7 @@ interface ProductGridProps {
   isLoading?: boolean
 }
 
-function ProductCard({ product, addedIds, onAddToCart }: { product: Product; addedIds: Set<string>; onAddToCart: (product: Product) => void }) {
+function ProductCard({ product, addedIds, onAddToCart, priority = false }: { product: Product; addedIds: Set<string>; onAddToCart: (product: Product) => void; priority?: boolean }) {
   const { t } = useTranslation()
   const lp = useLocalizedPath()
   const effPrice = product.onSale && product.salePrice ? product.salePrice : product.price
@@ -38,7 +38,8 @@ function ProductCard({ product, addedIds, onAddToCart }: { product: Product; add
             transformWidth={600}
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
-            loading="lazy"
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : 'auto'}
           />
         </div>
         {product.customLabel && (
@@ -140,12 +141,13 @@ export function ProductGrid({ products, addedIds, onAddToCart, isLoading }: Prod
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5">
-      {products.map((product) => (
+      {products.map((product, index) => (
         <ProductCard
           key={product.id}
           product={product}
           addedIds={addedIds}
           onAddToCart={onAddToCart}
+          priority={index < 4}
         />
       ))}
     </div>
