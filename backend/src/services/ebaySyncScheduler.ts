@@ -7,9 +7,11 @@
  *   1. pollRecentOrders — webhook-delivery net: recent Fulfillment orders run
  *      through the same idempotent processor. Order-level dedupe keeps stock
  *      claims single; failed orders retry on the next hourly bucket.
- *   2. syncPendingListings — pushes CENTRAL stock to every eBay offer whose
- *      listing is marked sync-pending. Central inventory is authoritative:
- *      failures never roll stock back, only mark the mirror unhealthy.
+ *   2. syncPendingListings — pushes CENTRAL stock to every eBay listing marked
+ *      sync-pending, using the Inventory API offer id when present or the
+ *      Trading API ItemID for imported listings. Central inventory is
+ *      authoritative: failures never roll stock back, only mark the mirror
+ *      unhealthy.
  *   3. reconcileEbayQuantities — detects drift between central stock and the
  *      last synced quantity (e.g. a missed webhook) and re-enqueues.
  *   4. retryPendingEvents — reprocesses deferred webhook events (temporary
@@ -18,6 +20,7 @@
 import { prisma } from '../server.js'
 import logger from '../utils/logger.js'
 import { isEbayConfigured, updateOfferQuantity, isRetryableError } from './ebayClient.js'
+import { reviseTradingQuantity } from './ebayTradingService.js'
 
 const log = logger.child({ context: 'ebay-sync' })
 
@@ -62,21 +65,24 @@ export async function syncPendingListings(): Promise<{ synced: number; failed: n
       continue
     }
 
-    // Listings sync through their Inventory-API offer id (the app lists
-    // products itself, so every managed row carries one).
+    // App-created listings sync through their Inventory-API offer id.
+    // Imported (pre-existing Seller Hub) listings have no offer id, so they
+    // sync through the Trading API's ItemID instead.
     const centralQty = listing.product.stockCount
     const offerId = listing.ebayOfferId
-    if (!offerId) {
+    const tradingItemId = listing.ebayListingId
+    if (!offerId && !tradingItemId) {
       await prisma.ebayListing.update({
         where: { id: listing.id },
-        data: { status: 'sync-failed', lastError: 'no eBay offer id stored — cannot push quantity' },
+        data: { status: 'sync-failed', lastError: 'no eBay offer id or item id stored — cannot push quantity' },
       })
       result.skipped++
       continue
     }
 
     try {
-      await updateOfferQuantity(offerId, centralQty)
+      if (offerId) await updateOfferQuantity(offerId, centralQty)
+      else await reviseTradingQuantity(tradingItemId as string, centralQty)
       await prisma.ebayListing.update({
         where: { id: listing.id },
         data: { status: 'synced', lastSyncedQty: centralQty, lastSyncAt: new Date(), lastError: null },
@@ -107,7 +113,9 @@ export async function reconcileEbayQuantities(): Promise<number> {
   const active = await prisma.ebayListing.findMany({
     where: { status: { in: ['synced', 'published', 'sync-failed'] } },
     include: { product: { select: { stockCount: true, status: true } } },
-    take: 500,
+    // The whole mapped catalog is checked; 8k rows is small enough for an
+    // in-memory compare, and drift rows are the only ones written back.
+    orderBy: { updatedAt: 'asc' },
   })
 
   let drifted = 0

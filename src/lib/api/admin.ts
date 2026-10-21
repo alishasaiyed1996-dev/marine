@@ -86,6 +86,29 @@ export interface ActiveEbayListingsResponse {
   fetchedAt: string
 }
 
+export type EbayImportJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+/** Backend `EbayImportJob` without the (large) discovered itemIds array. */
+export interface EbayImportJob {
+  id: string
+  status: EbayImportJobStatus
+  marketplace: string
+  cursor: number
+  total: number
+  processed: number
+  created: number
+  linked: number
+  skipped: number
+  failed: number
+  remaining: number
+  lastError: string | null
+  createdBy: string | null
+  startedAt: string | null
+  finishedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export const admin = {
   // eBay marketplace sync (central inventory mirrors)
   ebay: {
@@ -100,6 +123,16 @@ export const admin = {
     syncNow: () => api.post<{ synced: number; failed: number; skipped: number; driftFound: number; ordersPolled: number }>('/admin/ebay/inventory/sync-now', undefined, { auth: 'admin' }),
     createListing: (data: { productId: string; categoryId: string; price?: number; marketplace?: string }) =>
       api.post<{ listing: { id: string; status: string; ebayOfferId?: string; ebayListingId?: string } }>('/admin/ebay/listings', data, { auth: 'admin' }),
+    startCatalogImport: (data?: { marketplace?: string }) =>
+      api.post<{ job: EbayImportJob }>('/admin/ebay/catalog-import', data ?? {}, { auth: 'admin' }),
+    catalogImport: (id: string) =>
+      api.get<{ job: EbayImportJob }>(`/admin/ebay/catalog-import/${id}`, { auth: 'admin' }),
+    latestCatalogImport: (params?: Record<string, string>) => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+      return api.get<{ job: EbayImportJob | null }>(`/admin/ebay/catalog-import/latest${qs}`, { auth: 'admin' })
+    },
+    cancelCatalogImport: (id: string) =>
+      api.post<{ job: EbayImportJob }>(`/admin/ebay/catalog-import/${id}/cancel`, undefined, { auth: 'admin' }),
   },
 
   // Dashboard

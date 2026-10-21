@@ -108,18 +108,20 @@ export async function getMediaUsage(assetId: string) {
 
 // ─── Mutations ─────────────────────────────────────────────────
 
-export async function uploadMedia(file: Express.Multer.File, actor: AuthUser) {
-  if (!file) throw Object.assign(new Error('No file provided'), { status: 400 })
+const MAX_REMOTE_IMAGE_BYTES = 12 * 1024 * 1024
 
-  // Optimize image
-  const { optimized, width, height } = await optimizeImage(file.buffer, file.mimetype)
+/**
+ * Optimize + hash + upload one image buffer, reusing an existing media asset
+ * when the same bytes were already stored. Shared by admin uploads and the
+ * eBay catalog importer so both paths get identical dedupe guarantees.
+ */
+async function storeImageBuffer(input: { buffer: Buffer; originalName: string; uploadedBy?: string }) {
+  const { optimized, width, height } = await optimizeImage(input.buffer, '')
   const fileHash = generateHash(optimized)
 
   // Pre-check for existing hash (performance optimization)
   const preExisting = await prisma.mediaAsset.findFirst({ where: { hash: fileHash } })
-  if (preExisting) {
-    return { asset: preExisting, message: 'Duplicate file — existing asset returned' }
-  }
+  if (preExisting) return { asset: preExisting, duplicate: true }
 
   // Upload to Cloudinary
   const { url, publicId } = await uploadToCloudinary(optimized, fileHash)
@@ -133,23 +135,23 @@ export async function uploadMedia(file: Express.Multer.File, actor: AuthUser) {
       const asset = await prisma.mediaAsset.create({
         data: {
           filename: publicId,
-          originalName: file.originalname,
+          originalName: input.originalName,
           url,
           mimeType: 'image/webp',
           fileSize: optimized.length,
           width,
           height,
           hash: fileHash,
-          uploadedBy: actor.id,
+          uploadedBy: input.uploadedBy,
         },
       })
-      return { asset }
+      return { asset, duplicate: false }
     } catch (err: any) {
       // P2002 = unique constraint violation on hash — a concurrent upload of
       // the same file won the race. Return the existing asset instead.
       if (err?.code === 'P2002') {
         const existing = await prisma.mediaAsset.findFirst({ where: { hash: fileHash } })
-        if (existing) return { asset: existing, message: 'Duplicate file — existing asset returned' }
+        if (existing) return { asset: existing, duplicate: true }
       }
       throw err
     }
@@ -158,6 +160,88 @@ export async function uploadMedia(file: Express.Multer.File, actor: AuthUser) {
     await destroyCloudinary(publicId)
     throw Object.assign(new Error(`Database error after Cloudinary upload: ${(err as Error).message}`), { status: 502 })
   }
+}
+
+export async function uploadMedia(file: Express.Multer.File, actor: AuthUser) {
+  if (!file) throw Object.assign(new Error('No file provided'), { status: 400 })
+
+  const { asset, duplicate } = await storeImageBuffer({
+    buffer: file.buffer,
+    originalName: file.originalname,
+    uploadedBy: actor.id,
+  })
+  return duplicate
+    ? { asset, message: 'Duplicate file — existing asset returned' }
+    : { asset }
+}
+
+/**
+ * Mirror a remote image (eBay picture) into Cloudinary. Used by the catalog
+ * importer so product pages never depend on eBay's image CDN staying stable.
+ * The URL must be HTTPS; bytes are capped to avoid pulling oversized files.
+ */
+export async function importMediaFromUrl(url: string, uploadedBy?: string, originalName?: string) {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw Object.assign(new Error(`Invalid image URL: ${url.slice(0, 200)}`), { status: 400 })
+  }
+  if (parsed.protocol !== 'https:') {
+    throw Object.assign(new Error(`Refusing non-HTTPS image URL: ${url.slice(0, 200)}`), { status: 400 })
+  }
+
+  // Only mirror eBay-hosted images. The URL comes from listing data, so
+  // without this check a seller-controlled ExternalPictureURL could make the
+  // server fetch an internal HTTPS endpoint (SSRF).
+  const host = parsed.hostname.toLowerCase()
+  const allowedHost = host === 'ebayimg.com'
+    || host.endsWith('.ebayimg.com')
+    || host.endsWith('.ebaystatic.com')
+    || host === 'ebay.com'
+    || host.endsWith('.ebay.com')
+  if (!allowedHost) {
+    throw Object.assign(new Error(`Refusing non-eBay image host: ${host}`), { status: 400 })
+  }
+
+  const response = await fetch(parsed, {
+    headers: { accept: 'image/*' },
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!response.ok) {
+    throw Object.assign(new Error(`Image download failed (${response.status}): ${url.slice(0, 200)}`), { status: 502 })
+  }
+
+  const contentType = (response.headers.get('content-type') || '').toLowerCase()
+  if (contentType && !contentType.startsWith('image/')) {
+    throw Object.assign(new Error(`Remote URL is not an image (${contentType}): ${url.slice(0, 200)}`), { status: 400 })
+  }
+
+  const declaredSize = Number(response.headers.get('content-length') || 0)
+  if (declaredSize > MAX_REMOTE_IMAGE_BYTES) {
+    throw Object.assign(new Error(`Image is too large (${declaredSize} bytes): ${url.slice(0, 200)}`), { status: 413 })
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer())
+  if (buffer.length === 0) {
+    throw Object.assign(new Error(`Image download was empty: ${url.slice(0, 200)}`), { status: 502 })
+  }
+  if (buffer.length > MAX_REMOTE_IMAGE_BYTES) {
+    throw Object.assign(new Error(`Image is too large (${buffer.length} bytes): ${url.slice(0, 200)}`), { status: 413 })
+  }
+
+  let fallbackName = parsed.pathname.split('/').filter(Boolean).pop() || 'remote-image'
+  try {
+    fallbackName = decodeURIComponent(fallbackName)
+  } catch {
+    // Keep the encoded path segment.
+  }
+
+  return storeImageBuffer({
+    buffer,
+    originalName: originalName || fallbackName,
+    uploadedBy,
+  })
 }
 
 export async function deleteMedia(assetId: string) {

@@ -45,6 +45,30 @@ Railway migration.
 2. Once products exist, MT-4 (identity fields) and the eBay stock sync become
    exercisable again.
 
+**Implemented 2026-10-21 — eBay → catalog importer.** The old read-only
+listing view now has an **Import active EBAY_US** action
+(`Admin → eBay Inventory`). It discovers active listings with
+`GetMyeBaySelling`, pulls full details with `GetItem` (description, all
+pictures, item specifics), mirrors images to Cloudinary, and creates **draft**
+products with the eBay price/quantity/condition/identity fields. It is
+idempotent (skips already-mapped item IDs, links existing SKUs instead of
+duplicating) and resumable (`ebay_import_jobs.cursor` survives restarts).
+Imported listings without an Inventory API offer id now sync stock through the
+Trading API `ReviseInventoryStatus`, so website sales still decrement eBay.
+
+**Remaining manual steps:**
+1. Deploy the additive migration `20261021000001_ebay_catalog_import`
+   (Railway preDeploy runs `prisma migrate deploy`; confirm it applied in the
+   API service logs). Do not run `migrate dev`.
+2. Confirm the API service still has `EBAY_CLIENT_ID`,
+   `EBAY_CLIENT_SECRET`, `EBAY_REFRESH_TOKEN`, `EBAY_ENV=production`, and
+   `EBAY_SITE_ID=0` (EBAY_US).
+3. Open **Admin → eBay Inventory → Import active EBAY_US** and let the job
+   finish. Tune `EBAY_IMPORT_BATCH_SIZE` / `EBAY_IMPORT_MAX_IMAGES` only if
+   Cloudinary or eBay rate limits require it.
+4. Review the drafts in **Admin → Products**, assign categories/identity
+   fields, then publish. Drafts intentionally do not bypass the publish gate.
+
 Group C (eBay stock sync) lights up the moment products with matching SKUs
 (e.g. `Z 35`, `C 126`, `E 206`) exist in the catalog.
 

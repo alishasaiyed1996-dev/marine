@@ -14,6 +14,12 @@ import { prisma } from '../../server.js'
 import { createListingForProduct } from '../../services/ebayListingService.js'
 import { getActiveEbayListings } from '../../services/ebayTradingService.js'
 import { syncNow } from '../../services/ebaySyncScheduler.js'
+import {
+  startEbayCatalogImport,
+  getEbayCatalogImport,
+  getLatestEbayCatalogImport,
+  cancelEbayCatalogImport,
+} from '../../services/ebayCatalogImportService.js'
 
 const router = Router()
 router.use(authenticateAdmin)
@@ -83,6 +89,50 @@ router.post('/listings', requireRole('inventory-manager'), asyncHandler(async (r
     const status = (err as { status?: number }).status || 500
     return sendError(res, (err as Error).message, status)
   }
+}))
+
+// ─── Import active eBay listings into the website catalog (drafts) ──
+const catalogImportSchema = z.object({
+  marketplace: z.string().max(20).optional(),
+})
+
+router.post('/catalog-import', requireRole('inventory-manager'), asyncHandler(async (req: AuthRequest, res) => {
+  const parsed = catalogImportSchema.safeParse(req.body ?? {})
+  if (!parsed.success) {
+    return sendError(res, 'Invalid catalog import request', 400)
+  }
+  try {
+    const job = await startEbayCatalogImport({
+      marketplace: parsed.data.marketplace,
+      actor: req.user!,
+    })
+    return sendSuccess(res, { job }, 202)
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status || 500
+    return sendError(res, (err as Error).message, status)
+  }
+}))
+
+router.get('/catalog-import/latest', asyncHandler(async (req: AuthRequest, res) => {
+  const marketplace = typeof req.query.marketplace === 'string' ? req.query.marketplace : undefined
+  const job = await getLatestEbayCatalogImport(marketplace)
+  return sendSuccess(res, { job })
+}))
+
+router.get('/catalog-import/:id', asyncHandler(async (req: AuthRequest, res) => {
+  const parsed = z.string().uuid().safeParse(req.params.id)
+  if (!parsed.success) return sendError(res, 'Invalid import job id', 400)
+  const job = await getEbayCatalogImport(parsed.data)
+  if (!job) return sendError(res, 'Import job not found', 404)
+  return sendSuccess(res, { job })
+}))
+
+router.post('/catalog-import/:id/cancel', requireRole('inventory-manager'), asyncHandler(async (req: AuthRequest, res) => {
+  const parsed = z.string().uuid().safeParse(req.params.id)
+  if (!parsed.success) return sendError(res, 'Invalid import job id', 400)
+  const job = await cancelEbayCatalogImport(parsed.data)
+  if (!job) return sendError(res, 'Import job not found', 404)
+  return sendSuccess(res, { job })
 }))
 
 export default router
