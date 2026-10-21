@@ -218,11 +218,19 @@ export function buildImageAlt(
   return tidy(name).slice(0, 120)
 }
 
-/** H1 mirrors the title without the identifier tail. */
+/**
+ * The H1 is the product's catalog name. Building it from brand + model +
+ * category produced nonsense for imported marketplace listings whose model
+ * field is "Not Marked" (e.g. "GAZ Not Marked Hand Tools") and hid the part
+ * the customer was actually viewing. Keep the identifier fallback only for
+ * records that somehow have no name.
+ */
 export function buildH1(input: ProductSeoInput, identity: Identity, productType: string): string {
+  const name = tidy(input.name).slice(0, 120)
+  if (name) return name
   const brand = isUsable(input.brand) && input.brand !== 'Unknown' ? tidy(input.brand) : undefined
   const model = identity.model || identity.mpn
-  return tidy([brand, model, productType].filter(Boolean).join(' ')) || tidy(input.name).slice(0, 80)
+  return tidy([brand, model, productType].filter(Boolean).join(' '))
 }
 
 /** Build the full SEO payload for a product. */
