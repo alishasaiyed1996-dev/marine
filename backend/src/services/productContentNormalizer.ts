@@ -997,6 +997,17 @@ function normalizeDescription(
 
   for (const rawLine of lines) {
     const lineForHeader = stripDecorativePrefix(rawLine)
+    // A long prose line can end with an inline "KEY FEATURES" marker. Keep the
+    // prose, then parse the following bullet lines as features.
+    const inlineHeader = lineForHeader.match(
+      /^(.*?)\s+(?:KEY\s+FEATURES?|FEATURES?|HIGHLIGHTS?)\s*:?\s*$/i,
+    )
+    if (inlineHeader && section === 'intro' && tidy(inlineHeader[1]).length >= 40) {
+      addUnique(intro, inlineHeader[1], 1_200)
+      section = 'features'
+      otherTitle = ''
+      continue
+    }
     const header = lineForHeader.match(SECTION_HEADER_RE)
     if (header) {
       const mapped = sectionFromHeader(header[1])
@@ -1128,8 +1139,11 @@ function normalizeDescription(
     parts.push(`${title.toUpperCase()}\n${values.join('\n')}`)
   }
 
-  if (tidy(input.sku) && !isUuidLikeSku(input.sku)) {
-    parts.push(`SKU: ${tidy(input.sku)}`)
+  const sku = tidy(input.sku)
+  const alreadyHasSku =
+    Boolean(sku) && parts.some((part) => part.toLowerCase().includes(`sku: ${sku.toLowerCase()}`))
+  if (sku && !alreadyHasSku && !isUuidLikeSku(sku)) {
+    parts.push(`SKU: ${sku}`)
   }
 
   let description = parts.join('\n\n').replace(/\n{3,}/g, '\n\n').trim()
