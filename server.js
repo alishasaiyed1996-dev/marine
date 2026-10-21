@@ -286,6 +286,15 @@ function isPlaceholderValue(value) {
   return !text || SPEC_PLACEHOLDER_RE.test(text)
 }
 
+/** Internal import SKUs are often 32-char hex UUIDs; keep them out of public UI. */
+function isUuidSku(value) {
+  const text = cleanText(value)
+  return (
+    /^[0-9a-f]{24,}$/i.test(text) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)
+  )
+}
+
 /** Resolve a real manufacturer/brand name; never assert "Not Marked"/"Unbranded". */
 function realBrandName(product) {
   const candidates = [product?.brand?.name, product?.manufacturer]
@@ -824,7 +833,7 @@ function productHtml(template, product, related = [], locale = 'en') {
     description: schemaDescription,
     url: canonical,
     mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
-    ...(product.sku ? { sku: product.sku } : {}),
+    ...(product.sku && !isUuidSku(product.sku) ? { sku: product.sku } : {}),
     ...(product.mpn ? { mpn: product.mpn } : {}),
     ...(validGtin ? { gtin } : {}),
     ...(product.modelNumber ? { model: product.modelNumber } : {}),
@@ -853,7 +862,7 @@ function productHtml(template, product, related = [], locale = 'en') {
   const relatedLinks = (related || [])
     .filter((item) => item?.slug && item.slug !== slug)
     .slice(0, 8)
-    .map((item) => `<li><a href="/${locale}/product/${encodeURIComponent(item.slug)}/">${escapeHtml(item.name)}</a>${item.sku ? ` — ${escapeHtml(item.sku)}` : ''}</li>`)
+    .map((item) => `<li><a href="/${locale}/product/${encodeURIComponent(item.slug)}/">${escapeHtml(item.name)}</a>${item.sku && !isUuidSku(item.sku) ? ` — ${escapeHtml(item.sku)}` : ''}</li>`)
     .join('')
 
   const body = `<main class="seo-product">
@@ -864,7 +873,7 @@ ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" width="
 <p>${escapeHtml(description)}</p>
 <h2>Product details</h2>
 <dl>
-${product.sku ? `<dt>SKU</dt><dd>${escapeHtml(product.sku)}</dd>` : ''}
+${product.sku && !isUuidSku(product.sku) ? `<dt>SKU</dt><dd>${escapeHtml(product.sku)}</dd>` : ''}
 ${product.mpn ? `<dt>MPN</dt><dd>${escapeHtml(product.mpn)}</dd>` : ''}
 ${product.modelNumber ? `<dt>Model</dt><dd>${escapeHtml(product.modelNumber)}</dd>` : ''}
 ${product.impaCode ? `<dt>IMPA</dt><dd>${escapeHtml(product.impaCode)}</dd>` : ''}
@@ -993,7 +1002,7 @@ function hubHtml(template, entity, type, locale = 'en') {
     : `<p>Browse published ${escapeHtml(entity.name)} equipment and spare parts available from Alka Traders.</p>`
 
   const children = !isBrand && Array.isArray(entity.children) ? entity.children : []
-  const productLinks = products.slice(0, 24).map((product) => `<li><a href="/${locale}/product/${encodeURIComponent(product.slug)}/">${escapeHtml(product.name)}</a>${product.sku ? ` — ${escapeHtml(product.sku)}` : ''}</li>`).join('')
+  const productLinks = products.slice(0, 24).map((product) => `<li><a href="/${locale}/product/${encodeURIComponent(product.slug)}/">${escapeHtml(product.name)}</a>${product.sku && !isUuidSku(product.sku) ? ` — ${escapeHtml(product.sku)}` : ''}</li>`).join('')
 
   const body = `<main class="seo-hub">
 ${breadcrumbNav(breadcrumbs)}

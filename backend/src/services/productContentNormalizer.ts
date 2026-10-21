@@ -180,6 +180,15 @@ function truncateAtWord(value: string, max: number): string {
   return result || text.slice(0, max).trim()
 }
 
+/** Internal import SKUs are often 32-char hex UUIDs; keep them out of public copy. */
+function isUuidLikeSku(value: string | null | undefined): boolean {
+  const text = tidy(value || '')
+  return (
+    /^[0-9a-f]{24,}$/i.test(text) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)
+  )
+}
+
 function truncateAtSentence(value: string, max: number): string {
   const text = tidy(value)
   if (text.length <= max) return text
@@ -571,7 +580,22 @@ function deriveLabel(
       }
     }
   }
-  const displayType = type ? smartTitleCase(type, brand) : null
+  let displayType = type ? smartTitleCase(type, brand) : null
+  if (displayType && brand) {
+    const brandWords = brand.split(/\s+/).filter(Boolean)
+    const typeWords = displayType.split(/\s+/)
+    let leadingBrandWords = 0
+    while (
+      leadingBrandWords < brandWords.length &&
+      typeWords[leadingBrandWords]?.toLowerCase() === brandWords[leadingBrandWords].toLowerCase()
+    ) {
+      leadingBrandWords++
+    }
+    if (leadingBrandWords > 0) {
+      displayType = tidy(typeWords.slice(leadingBrandWords).join(' '))
+    }
+  }
+  if (displayType && displayType.length < 3) displayType = null
   let label = tidy([brand, modelWithoutBrand, displayType].filter(Boolean).join(' '))
   if (label.length < 12 || label.length > 90) return tidy(input.name)
 
@@ -704,7 +728,7 @@ function buildMetaDescription(
   specs: ProductSpecInput[],
 ): string {
   const detail = keyDetail(specs)
-  const sku = tidy(input.sku)
+  const sku = isUuidLikeSku(input.sku) ? '' : tidy(input.sku)
   const skuText = sku ? `SKU ${sku}. ` : ''
   const detailText = detail ? `${detail} ` : ''
   const conditionText = condition ? `${condition} condition` : 'the condition shown'
@@ -721,7 +745,7 @@ function buildMetaDescription(
       .replace(/\.\s*\./g, '.')
     if (text.length <= 160 && text.length >= 90) return text
   }
-  return truncateAtWord(candidates[0], 160)
+  return truncateAtSentence(candidates[0], 160)
 }
 
 function buildShortDescription(
@@ -979,7 +1003,7 @@ function normalizeDescription(
     parts.push(`${title.toUpperCase()}\n${values.join('\n')}`)
   }
 
-  if (tidy(input.sku)) {
+  if (tidy(input.sku) && !isUuidLikeSku(input.sku)) {
     parts.push(`SKU: ${tidy(input.sku)}`)
   }
 

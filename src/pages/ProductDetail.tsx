@@ -19,7 +19,7 @@ import { useStoreSettings } from '../hooks/useStoreSettings'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { useProductDetail } from '../hooks/useApiQuery'
-import { parseDescription, buildProductSpecRows, sectionTitle } from '../lib/description'
+import { parseDescription, buildProductSpecRows, sectionTitle, isUuidSku } from '../lib/description'
 import { buildProductSeo } from '../lib/seo/productSeo'
 import { ProductImageGallery } from '../components/product/ProductImageGallery'
 import { OfferModal } from '../components/product/OfferModal'
@@ -284,7 +284,9 @@ export default function ProductDetail() {
                     {t('product.brandPrefix', { brand: product.brand })}
                   </span>
                 )}
-                <span className="text-xs font-mono text-[var(--text-muted)]">{t('product.skuPrefix', { sku: product.sku })}</span>
+                {!isUuidSku(product.sku) && (
+                  <span className="text-xs font-mono text-[var(--text-muted)]">{t('product.skuPrefix', { sku: product.sku })}</span>
+                )}
                 <span className="text-xs font-semibold px-2.5 py-0.5 border text-[var(--text-secondary)] border-[var(--border)] rounded">
                   {t('product.conditionLabel', { condition: product.condition.charAt(0).toUpperCase() + product.condition.slice(1) })}
                 </span>
@@ -413,7 +415,7 @@ export default function ProductDetail() {
                   <span>{t('product.needQuantity', { defaultValue: 'Need a different quantity?' })}</span>
                   <div className="flex flex-wrap items-center gap-3">
                     <a
-                      href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Hi, I have a question about ${product.name} (SKU ${product.sku}).`)}`}
+                      href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Hi, I have a question about ${product.name}${isUuidSku(product.sku) ? '' : ` (SKU ${product.sku})`}.`)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 font-semibold text-[var(--accent-primary)] no-underline hover:underline"

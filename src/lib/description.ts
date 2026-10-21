@@ -240,6 +240,15 @@ function cleanSpecValue(value: string): string {
     .trim()
 }
 
+/** Internal import SKUs are often 32-char hex UUIDs; keep them out of public UI. */
+export function isUuidSku(value: string | null | undefined): boolean {
+  const text = String(value || '').trim()
+  return (
+    /^[0-9a-f]{24,}$/i.test(text) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)
+  )
+}
+
 /**
  * Build the single Item Specifics table used by the product page.
  *
@@ -305,7 +314,7 @@ export function buildProductSpecRows(
   if (product.modelNumber) add('Model', product.modelNumber)
   if (product.mpn) add('MPN', product.mpn)
   if (product.impaCode) add('IMPA Code', product.impaCode)
-  add('SKU', product.sku)
+  add('SKU', isUuidSku(product.sku) ? '' : product.sku)
   add('Category', product.categoryName || product.category.replace(/-/g, ' '))
   if (product.condition) {
     add('Condition', product.condition.charAt(0).toUpperCase() + product.condition.slice(1))

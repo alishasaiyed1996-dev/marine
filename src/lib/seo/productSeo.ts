@@ -11,7 +11,7 @@
  *   - Unknown attributes are omitted, not padded with "N/A"
  */
 
-import { parseDescription } from '../description'
+import { isUuidSku, parseDescription } from '../description'
 import { isValidGtin } from './productContent'
 
 export interface ProductSeoInput {
@@ -195,7 +195,14 @@ export function buildMetaDescription(input: ProductSeoInput, identity: Identity,
   const brand = isRealBrand(input.brand) ? input.brand : undefined
   const parts: string[] = []
   const who = [brand, identity.model].filter(Boolean).join(' ')
-  parts.push(who ? `${who} ${productType.toLowerCase()} supplied by Alka Traders` : `${productType} (${input.sku}) supplied by Alka Traders`)
+  const publicSku = isUuidSku(input.sku) ? '' : tidy(input.sku)
+  parts.push(
+    who
+      ? `${who} ${productType.toLowerCase()} supplied by Alka Traders`
+      : publicSku
+        ? `${productType} (${publicSku}) supplied by Alka Traders`
+        : `${productType} supplied by Alka Traders`,
+  )
   if (identity.impa) parts.push(`IMPA ${identity.impa.replace(/\s+/g, '')}`)
   if (identity.size) parts.push(`${identity.size}`)
   if (identity.material) parts.push(identity.material.toLowerCase())
@@ -319,7 +326,7 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
     '@type': 'Product',
     name: h1,
     description: schemaDescription,
-    sku: input.sku,
+    ...(isUuidSku(input.sku) ? {} : { sku: input.sku }),
     url: canonicalUrl,
     mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
     ...(identity.mpn ? { mpn: identity.mpn } : {}),
@@ -350,7 +357,7 @@ export function buildProductSeo(input: ProductSeoInput): ProductSeoResult {
     ogType: 'product',
     productBrand: isRealBrand(input.brand) ? input.brand : undefined,
     productCondition: mapCondition(input.condition),
-    productSku: input.sku,
+    productSku: isUuidSku(input.sku) ? '' : input.sku,
     productCategory: input.category.replace(/-/g, ' '),
     productPrice: effectivePrice,
     productCurrency: currency,
