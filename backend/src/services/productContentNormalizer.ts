@@ -359,14 +359,24 @@ function normalizeDisplayAcronyms(value: string): string {
 }
 
 function cleanStrayQuotes(value: string): string {
-  return tidy(value)
+  let text = tidy(value)
     // eBay exports sometimes carry an escaped quote pair around a phrase
     // ("for Parts Only '\" Not Working\""). Normalize those markers without
     // touching normal apostrophes or inch marks.
     .replace(/\s*['"]?\\["']\s*/g, ' - ')
+    // The unescaped variant has a standalone quote run surrounded by spaces
+    // ("Only '" Not Working"'"). Quoted product phrases keep their quotes
+    // attached to the words, so this only removes isolated marker runs.
+    .replace(/\s+['"]{1,3}\s+/g, ' - ')
+    .replace(/^\s*['"]{1,3}\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if ((text.match(/"/g) || []).length % 2 === 1) {
+    text = text.replace(/"['"]?\s*$/, '').trim()
+  }
+  return text
     .replace(/^\s*[-–—]\s*/, '')
     .replace(/\s*[-–—]\s*$/, '')
-    .replace(/\s+/g, ' ')
     .trim()
 }
 
