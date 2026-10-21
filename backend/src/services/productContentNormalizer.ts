@@ -387,7 +387,7 @@ function cleanMarketplaceName(raw: string, manufacturer: string | null): string 
     .replace(/\bFASTSHIP\b/gi, ' ')
     .replace(/\bFFEDEX\b/gi, ' ')
     .replace(/\bFEDEX\b/gi, ' ')
-    .replace(/\bFREE\s+SHIPPING\b/gi, ' ')
+    .replace(/\bFREE\s+(?:FAST\s+)?SHIPPING\b/gi, ' ')
     .replace(/\bAS\s+PICTURED\b/gi, ' ')
     .replace(/\bAS\s+SHOWN\b/gi, ' ')
     .replace(/\bSEE\s+(?:PHOTOS?|PICTURES?)\b/gi, ' ')
@@ -402,7 +402,7 @@ function cleanMarketplaceName(raw: string, manufacturer: string | null): string 
   // condition is already shown as a structured badge, so remove it from the
   // title tail without touching a model number that happens to contain it.
   for (let i = 0; i < 3; i++) {
-    value = value.replace(/(?:\s*[|,:–—-]\s*|\s+)(?:BRAND\s+)?(?:NEW|USED|TESTED|REFURBISHED|RECONDITIONED)\s*$/i, ' ').trim()
+    value = value.replace(/(?:\s*[|,:–—-]\s*|\s+)(?:BRAND\s+)?(?:NEW\s+(?:SURPLUS|OTHER|OPEN\s+BOX)|NEW|USED|TESTED|REFURBISHED|RECONDITIONED|SURPLUS)\s*$/i, ' ').trim()
   }
 
   value = stripTrailingPunctuation(value)
@@ -523,7 +523,7 @@ function collectSpecsFromDescription(description: string | null | undefined): Pr
 function isBoilerplateLine(line: string): boolean {
   const text = tidy(line)
   if (!text) return true
-  if (/^(?:ITEM\s+SPECIFICS(?:\s+UPDATED\s+AND\s+FINAL)?|PRODUCT\s+DESCRIPTION(?:\s+PROFESSIONAL\s+AND\s+CONSISTENT)?)$/i.test(text)) return true
+  if (/^(?:(?:ITEM|EM)\s+SPECIFICS(?:\s+UPDATED\s+AND\s+FINAL)?|PRODUCT\s+DESCRIPTION(?:\s+PROFESSIONAL\s+AND\s+CONSISTENT)?)$/i.test(text)) return true
   if (/^(?:CHECK\s+OUT\s+MY\s+OTHER\s+ITEMS|PLEASE\s+LEAVE\s+(?:POSITIVE\s+)?FEEDBACK|THANK\s+YOU\s+FOR\s+LOOKING|HAPPY\s+BIDDING)[.!]?$/i.test(text)) return true
   if (/^NOTE\s+USA\s+BUYERS/i.test(text)) return true
   if (/^(?:WE\s+ARE\s+WORKING\s+ON|THE\s+QUOTED\s+SHIPPING\s+RATE\s+IS\s+INCLUSIVE)/i.test(text)) return true
@@ -741,6 +741,10 @@ function buildSeoTitle(name: string, label: string): string {
   // Prefer a complete compact title over a mid-phrase truncation.
   const compactName = cleanName.replace(/^(?:Heavy[- ]Duty|Industrial|Professional)\s+/i, '')
   if (compactName.length <= MAX_SEO_TITLE_CHARS) return compactName
+  // A long descriptive tail after a dash can be dropped when the leading
+  // phrase is already a complete product name.
+  const dashHead = trimTitleTail(cleanName.split(/\s+[–—]\s*|\s+-\s+/)[0])
+  if (dashHead.length >= 30 && dashHead.length <= MAX_SEO_TITLE_CHARS) return dashHead
   if (label.length >= 30 && label.length <= MAX_SEO_TITLE_CHARS) return label
 
   const descriptive = trimTitleTail(
@@ -792,6 +796,8 @@ function keyDetail(specs: ProductSpecInput[]): string | null {
     ['Size', 'size'],
     ['Socket Sizes', 'sizes'],
     ['Voltage', 'voltage'],
+    ['Current Rating', 'current'],
+    ['Amperage', 'current'],
     ['Pressure', 'pressure'],
     ['Capacity', 'capacity'],
     ['Power', 'power'],
@@ -821,7 +827,7 @@ function buildMetaDescription(
   const detailCore = detail
     ? detail
         .replace(/\.\s*$/, '')
-        .replace(/\s+(?:power|voltage|pressure|capacity|size|sizes|drive|construction)$/i, '')
+        .replace(/\s+(?:power|voltage|current|amperage|pressure|capacity|size|sizes|drive|construction)$/i, '')
     : ''
   const detailValue = detailCore ? measureValue(detailCore) : ''
   const detailText =
@@ -948,6 +954,14 @@ function normalizedSpecs(
     .slice(0, MAX_SPEC_ROWS)
 }
 
+function stripDecorativePrefix(line: string): string {
+  return tidy(line)
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/[*#_~]+$/g, '')
+    .replace(/\s*\((?:SEO\s+)?Optimized\)\s*$/i, '')
+    .trim()
+}
+
 function normalizeDescription(
   input: ProductContentInput,
   label: string,
@@ -970,7 +984,8 @@ function normalizeDescription(
   let otherTitle = ''
 
   for (const rawLine of lines) {
-    const header = rawLine.match(SECTION_HEADER_RE)
+    const lineForHeader = stripDecorativePrefix(rawLine)
+    const header = lineForHeader.match(SECTION_HEADER_RE)
     if (header) {
       const mapped = sectionFromHeader(header[1])
       section = mapped.key
@@ -981,19 +996,19 @@ function normalizeDescription(
       continue
     }
 
-    if (isBoilerplateLine(rawLine)) continue
-    if (BOILERPLATE_SPEC_RE.test(rawLine)) continue
+    if (isBoilerplateLine(lineForHeader)) continue
+    if (BOILERPLATE_SPEC_RE.test(lineForHeader)) continue
     const line = tidy(rawLine.replace(/\b(?:FAST\s*SHIP|FASTSHIP|FFEDEX)\b/gi, ' '))
     if (!line) continue
 
     // eBay listings often put a comma list on one \"Features:\" line rather
     // than a KEY FEATURES section. Preserve those as features, not prose.
-    const featureList = line.match(/^(?:KEY\s+FEATURES?|FEATURES?|HIGHLIGHTS?)\s*:\s*(.+)$/i)
+    const featureList = lineForHeader.match(/^(?:KEY\s+FEATURES?|FEATURES?|HIGHLIGHTS?)\s*:\s*(.+)$/i)
     if (featureList) {
       addFeature(features, featureList[1])
       continue
     }
-    const includedList = line.match(/^(?:INCLUDED(?:\s+ITEMS?)?)\s*:\s*(.+)$/i)
+    const includedList = lineForHeader.match(/^(?:INCLUDED(?:\s+ITEMS?)?)\s*:\s*(.+)$/i)
     if (includedList) {
       addUnique(included, includedList[1], 500)
       continue
@@ -1008,8 +1023,9 @@ function normalizeDescription(
       continue
     }
     // Keep placeholder and empty rows ("Model: Not Marked", "Brand:") out of
-    // the prose too.
-    if (canParseSpecs && (isSpecLikeLine(line) || isBlankSpecLine(line))) continue
+    // the prose too, even when they appear under a features heading.
+    if (isBlankSpecLine(line)) continue
+    if (canParseSpecs && isSpecLikeLine(line)) continue
 
     if (normalizeForCompare(line) === normalizeForCompare(input.name)) continue
     // Raw marketplace titles and all-caps prose are not useful body copy. Keep
