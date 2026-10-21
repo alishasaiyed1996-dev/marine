@@ -797,6 +797,7 @@ function keyDetail(specs: ProductSpecInput[]): string | null {
     ['Socket Sizes', 'sizes'],
     ['Voltage', 'voltage'],
     ['Current Rating', 'current'],
+    ['Current', 'current'],
     ['Amperage', 'current'],
     ['Pressure', 'pressure'],
     ['Capacity', 'capacity'],
@@ -810,6 +811,17 @@ function keyDetail(specs: ProductSpecInput[]): string | null {
     if (!value || value.length > 48) continue
     if (noun === 'drive') value = value.replace(/\bInch(?:es)?\b/gi, 'in')
     if (noun === 'construction') return `${value} construction.`
+    // Don't write "600 Amps current." when the value already carries its unit.
+    const selfDescribing: Record<string, RegExp> = {
+      voltage: /\d\s*(?:v|volt|volts|kv|mv)\b/i,
+      current: /\d\s*(?:a|amp|amps|ma|ka)\b/i,
+      power: /\d\s*(?:w|watt|watts|kw|hp|kva)\b/i,
+      pressure: /\d\s*(?:psi|psig|bar|kpa|mpa|pa)\b/i,
+      capacity: /\d\s*(?:l|lbs?|kg|gpm|lpm|gal|m3|tons?)\b/i,
+      size: /\d\s*(?:mm|cm|in|inch|inches|ft|m)\b/i,
+      sizes: /\d\s*(?:mm|cm|in|inch|inches|ft|m)\b/i,
+    }
+    if (selfDescribing[noun]?.test(value)) return `${value}.`
     // \"Size: Size 0\" should not become \"Size 0 size.\"
     if (new RegExp(`\\b${noun}\\b`, 'i').test(value)) return `${value}.`
     return `${value} ${noun}.`
