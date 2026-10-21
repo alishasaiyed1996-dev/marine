@@ -72,11 +72,49 @@ const SMALL_WORDS = new Set([
 
 /** Common abbreviations that should stay uppercase in a title. */
 const ACRONYMS = new Set([
-  'AC', 'ANSI', 'API', 'BSP', 'CM', 'CNC', 'DC', 'DIN', 'EPDM', 'GAZ', 'HP',
+  'AC', 'ANSI', 'API', 'BSP', 'BSPT', 'CM', 'CNC', 'DC', 'DIN', 'EPDM', 'GAZ', 'HP',
   'HVAC', 'HZ', 'ID', 'IMPA', 'IP', 'ISO', 'JIS', 'KG', 'KW', 'LCD', 'LED',
-  'MIL', 'MM', 'MPN', 'NBR', 'NPT', 'NPTF', 'OD', 'PC', 'PTFE', 'PU', 'PVC',
+  'MIL', 'MM', 'MPCB', 'MPN', 'NBR', 'NPT', 'NPTF', 'OD', 'PC', 'PTFE', 'PU', 'PVC',
   'RPM', 'SAE', 'SKU', 'SS', 'UK', 'US', 'USA', 'V',
 ])
+
+/** Mixed-case marketplace titles also need standard acronym casing. */
+const DISPLAY_ACRONYMS: Record<string, string> = {
+  'ac': 'AC',
+  'ansi': 'ANSI',
+  'bspt': 'BSPT',
+  'dc': 'DC',
+  'din': 'DIN',
+  'epdm': 'EPDM',
+  'ethercat': 'EtherCAT',
+  'gpm': 'GPM',
+  'hmi': 'HMI',
+  'hp': 'HP',
+  'i/o': 'I/O',
+  'iso': 'ISO',
+  'kva': 'kVA',
+  'kw': 'kW',
+  'lcd': 'LCD',
+  'led': 'LED',
+  'lpm': 'LPM',
+  'mpcb': 'MPCB',
+  'nbr': 'NBR',
+  'nir': 'NIR',
+  'npt': 'NPT',
+  'pcb': 'PCB',
+  'plc': 'PLC',
+  'psi': 'PSI',
+  'ptfe': 'PTFE',
+  'pvc': 'PVC',
+  'rpm': 'RPM',
+  'rs232': 'RS232',
+  'rs485': 'RS485',
+  'sae': 'SAE',
+  'usb': 'USB',
+  'vac': 'VAC',
+  'vdc': 'VDC',
+  'vfd': 'VFD',
+}
 
 /** Label aliases used by eBay and the admin form. */
 const SPEC_LABEL_ALIASES: Record<string, string> = {
@@ -307,8 +345,33 @@ function smartTitleCase(value: string, manufacturer: string | null): string {
     .join(' ')
 }
 
+function normalizeDisplayAcronyms(value: string): string {
+  return tidy(value)
+    .split(' ')
+    .map((word) => {
+      const leading = word.match(/^[("']+/)?.[0] || ''
+      const trailing = word.match(/[)"'.,:;]+$/)?.[0] || ''
+      const bare = word.slice(leading.length, word.length - trailing.length)
+      const replacement = DISPLAY_ACRONYMS[bare.toLowerCase()]
+      return replacement ? `${leading}${replacement}${trailing}` : word
+    })
+    .join(' ')
+}
+
+function cleanStrayQuotes(value: string): string {
+  return tidy(value)
+    // eBay exports sometimes carry an escaped quote pair around a phrase
+    // ("for Parts Only '\" Not Working\""). Normalize those markers without
+    // touching normal apostrophes or inch marks.
+    .replace(/\s*['"]?\\["']\s*/g, ' - ')
+    .replace(/^\s*[-–—]\s*/, '')
+    .replace(/\s*[-–—]\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function cleanMarketplaceName(raw: string, manufacturer: string | null): string {
-  let value = decodeBasicEntities(raw || '')
+  let value = cleanStrayQuotes(decodeBasicEntities(raw || ''))
     .replace(/#/g, ' ')
     .replace(/\bFAST\s*SHIP\b/gi, ' ')
     .replace(/\bFASTSHIP\b/gi, ' ')
@@ -318,17 +381,22 @@ function cleanMarketplaceName(raw: string, manufacturer: string | null): string 
     .replace(/\bAS\s+PICTURED\b/gi, ' ')
     .replace(/\bAS\s+SHOWN\b/gi, ' ')
     .replace(/\bSEE\s+(?:PHOTOS?|PICTURES?)\b/gi, ' ')
+    // "Used Tested" is a seller condition claim, not a product attribute. The
+    // structured condition badge already communicates it.
+    .replace(/\b(?:used|tested)\s+(?:and\s+)?(?:tested|used)\b/gi, ' ')
+    .replace(/\btested\s+(?:good|working|works?)\b/gi, ' ')
+    .replace(/\bused\s+(?=(?:lot|set|pack)\s+of\b)/gi, ' ')
     .replace(/\s+/g, ' ')
 
   // Marketplace listings often append the condition as a keyword. The
   // condition is already shown as a structured badge, so remove it from the
   // title tail without touching a model number that happens to contain it.
   for (let i = 0; i < 3; i++) {
-    value = value.replace(/(?:\s*[|,:–—-]\s*|\s+)(?:BRAND\s+)?(?:NEW|USED|REFURBISHED|RECONDITIONED)\s*$/i, ' ').trim()
+    value = value.replace(/(?:\s*[|,:–—-]\s*|\s+)(?:BRAND\s+)?(?:NEW|USED|TESTED|REFURBISHED|RECONDITIONED)\s*$/i, ' ').trim()
   }
 
   value = stripTrailingPunctuation(value)
-  value = smartTitleCase(value, manufacturer)
+  value = normalizeDisplayAcronyms(smartTitleCase(value, manufacturer))
   if (!value) value = tidy(raw)
   return truncateAtWord(value, MAX_NAME_CHARS) || tidy(raw).slice(0, MAX_NAME_CHARS)
 }
@@ -566,7 +634,17 @@ function deriveLabel(
   specs: ProductSpecInput[],
 ): string {
   const brand = identity.manufacturer
-  const model = identity.modelNumber || identity.mpn
+  let model = identity.modelNumber || identity.mpn
+  // A truncated "Model" (IQ-RELAY-3P-I) should not hide the fuller MPN
+  // (IQ-RELAY-3P-IN) when the MPN simply extends it.
+  if (
+    identity.modelNumber &&
+    identity.mpn &&
+    identity.mpn.length > identity.modelNumber.length &&
+    identity.mpn.toUpperCase().startsWith(identity.modelNumber.toUpperCase())
+  ) {
+    model = identity.mpn
+  }
   let modelWithoutBrand = model
   if (brand && modelWithoutBrand) {
     modelWithoutBrand = modelWithoutBrand.replace(new RegExp(`^${brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'i'), '').trim()
@@ -600,9 +678,11 @@ function deriveLabel(
   if (label.length < 12 || label.length > 90) return tidy(input.name)
 
   // Preserve a set/lot quantity when the type itself does not carry it.
-  const setMatch = tidy(input.name).match(/\b(?:set|lot|pack)\s+of\s+(\d+)\b/i)
+  const setMatch = tidy(input.name).match(/\b(set|lot|pack)\s+of\s+(\d+)\b/i)
   const piecesRow = specs.find((spec) => normalizeLabel(spec.name) === 'Number of Pieces')
-  let pieces = setMatch ? `Set of ${setMatch[1]}` : ''
+  let pieces = setMatch
+    ? `${setMatch[1].charAt(0).toUpperCase()}${setMatch[1].slice(1).toLowerCase()} of ${setMatch[2]}`
+    : ''
   if (!pieces && piecesRow) {
     const value = tidy(piecesRow.value)
     if (value.length <= 20) pieces = value
@@ -728,9 +808,16 @@ function buildMetaDescription(
   specs: ProductSpecInput[],
 ): string {
   const detail = keyDetail(specs)
+  const detailCore = detail
+    ? detail
+        .replace(/\.\s*$/, '')
+        .replace(/\s+(?:power|voltage|pressure|capacity|size|sizes|drive|construction)$/i, '')
+    : ''
+  const detailValue = detailCore ? measureValue(detailCore) : ''
+  const detailText =
+    detail && !(detailValue && measureValue(label).includes(detailValue)) ? `${detail} ` : ''
   const sku = isUuidLikeSku(input.sku) ? '' : tidy(input.sku)
   const skuText = sku ? `SKU ${sku}. ` : ''
-  const detailText = detail ? `${detail} ` : ''
   const conditionText = condition ? `${condition} condition` : 'the condition shown'
   const candidates = [
     `${label}, ${conditionText}. ${detailText}${skuText}Order online from Alka Traders with worldwide dispatch.`,
