@@ -12,6 +12,7 @@ import { asyncHandler } from '../../middleware/validate.js'
 import { sendSuccess, sendError } from '../../middleware/response.js'
 import { prisma } from '../../server.js'
 import { createListingForProduct } from '../../services/ebayListingService.js'
+import { getActiveEbayListings } from '../../services/ebayTradingService.js'
 import { syncNow } from '../../services/ebaySyncScheduler.js'
 
 const router = Router()
@@ -41,6 +42,19 @@ router.get('/inventory', asyncHandler(async (req: AuthRequest, res) => {
 
   const total = await prisma.product.count({ where: { status: { not: 'archived' } } })
   return sendSuccess(res, { products, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } })
+}))
+
+// ─── Active eBay listings (read-only, Trading API) ─────────────
+router.get('/active-listings', asyncHandler(async (req: AuthRequest, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1)
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50))
+  try {
+    const result = await getActiveEbayListings({ page, limit })
+    return sendSuccess(res, result)
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status || 502
+    return sendError(res, (err as Error).message, status)
+  }
 }))
 
 // ─── Manual "sync now" ─────────────────────────────────────────

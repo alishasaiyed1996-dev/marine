@@ -53,12 +53,49 @@ export interface DashboardActivityResponse {
   logs: ApiAuditLog[]
 }
 
+export interface ActiveEbayListing {
+  itemId: string | null
+  title: string | null
+  sku: string | null
+  quantity: number
+  price: number | null
+  currency: string | null
+  originalPrice: number | null
+  originalCurrency: string | null
+  listingUrl: string | null
+  imageUrl: string | null
+  categoryId: string | null
+  categoryName: string | null
+  condition: string | null
+  listingType: string | null
+  marketplace: string
+  startTime: string | null
+  endTime: string | null
+  watchCount: number | null
+  linkedProduct: {
+    id: string
+    slug: string
+    sku: string
+    status: string
+  } | null
+}
+
+export interface ActiveEbayListingsResponse {
+  listings: ActiveEbayListing[]
+  pagination: Pagination
+  fetchedAt: string
+}
+
 export const admin = {
   // eBay marketplace sync (central inventory mirrors)
   ebay: {
     inventory: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : ''
       return api.get<{ products: ApiProduct[]; pagination: Pagination }>(`/admin/ebay/inventory${qs}`, { auth: 'admin' })
+    },
+    activeListings: (params?: Record<string, string>) => {
+      const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+      return api.get<ActiveEbayListingsResponse>(`/admin/ebay/active-listings${qs}`, { auth: 'admin' })
     },
     syncNow: () => api.post<{ synced: number; failed: number; skipped: number; driftFound: number; ordersPolled: number }>('/admin/ebay/inventory/sync-now', undefined, { auth: 'admin' }),
     createListing: (data: { productId: string; categoryId: string; price?: number; marketplace?: string }) =>
