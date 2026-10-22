@@ -28,6 +28,7 @@ interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> 
   ) => void
 }
 
+import { useEffect, useRef } from 'react'
 import { applyImageFallback, applyCloudinaryTransform } from '../../lib/utils'
 
 /**
@@ -55,6 +56,14 @@ export function OptimizedImage({
   transformWidth = 800,
   ...rest
 }: OptimizedImageProps) {
+  // A mobile connection can drop a single image request without the asset
+  // being broken. Retrying the primary rendition once (after a short pause)
+  // recovers those cases instead of leaving the gallery on a fallback/blank.
+  const retriedSrc = useRef<string | null>(null)
+  useEffect(() => {
+    retriedSrc.current = null
+  }, [src])
+
   return (
     <img
       src={applyCloudinaryTransform(src, transformWidth)}
@@ -68,10 +77,19 @@ export function OptimizedImage({
         const img = e.currentTarget
         // Read the failing URL BEFORE the fallback chain runs: by the time the
         // error event reaches the caller, applyImageFallback below may already
-        // have swapped the src to the local placeholder, and a later
-        // placeholder failure would otherwise be miscounted as ANOTHER image
-        // failing. (See ProductImageGallery's distinct-URL failure tracking.)
+        // have swapped the src to the local placeholder.
         const failedSrc = img.getAttribute('src') || img.src
+        const primarySrc = applyCloudinaryTransform(src, transformWidth)
+
+        if (failedSrc === primarySrc && retriedSrc.current !== primarySrc) {
+          retriedSrc.current = primarySrc
+          setTimeout(() => {
+            if (!img.isConnected) return
+            img.src = `${primarySrc}${primarySrc.includes('?') ? '&' : '?'}_retry=1`
+          }, 500)
+          return
+        }
+
         applyImageFallback(img)
         if (onError) onError(e, failedSrc)
       }}

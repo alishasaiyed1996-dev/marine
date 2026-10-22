@@ -510,7 +510,13 @@ function cspPolicy(nonce) {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://res.cloudinary.com https://i.ebayimg.com https://www.paypalobjects.com https://www.google-analytics.com https://*.google-analytics.com",
     "font-src 'self' data: https://fonts.gstatic.com",
-    `connect-src 'self' ${apiOrigin} https://*.paypal.com https://*.paypalobjects.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com`,
+    // res.cloudinary.com is required for CONNECT (not just IMG) because the
+    // Workbox runtime route in vite.config.ts fetches Cloudinary image URLs
+    // through the service worker (`fetchAndCachePut`). A service worker fetch
+    // inherits the page's connect-src, so omitting it here made every image
+    // intercepted by the SW fail with `no-response` — the mobile "images
+    // disappear after the SW registers" bug. Keep this in sync with img-src.
+    `connect-src 'self' ${apiOrigin} https://res.cloudinary.com https://*.paypal.com https://*.paypalobjects.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com`,
     'frame-src https://www.paypal.com https://sandbox.paypal.com',
     "worker-src 'self' blob:",
     "manifest-src 'self'",

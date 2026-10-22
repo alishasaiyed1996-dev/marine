@@ -70,6 +70,11 @@ export default defineConfig(({ mode }) => {
             },
           },
           {
+            // Cross-origin images are fetched by the service worker, which is
+            // governed by the page's CSP `connect-src` (NOT `img-src`). Keep
+            // https://res.cloudinary.com in server.js connect-src, otherwise
+            // every cached image request fails with Workbox `no-response` and
+            // the gallery loses its images once the SW takes control.
             urlPattern: /^https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/.*/i,
             handler: 'CacheFirst',
             options: {

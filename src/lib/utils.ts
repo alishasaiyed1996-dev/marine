@@ -124,6 +124,31 @@ export function getImageFallbackUrl(failedSrc: string): string {
  */
 export function applyImageFallback(img: HTMLImageElement): void {
   const current = img.getAttribute('src') || img.src
+  const uploadPath = '/image/upload/'
+
+  // A transformed Cloudinary URL failed. Try the untransformed original once
+  // before giving up: on-demand transformations can be rate-limited or fail
+  // for one rendition while the uploaded asset itself is healthy. This is the
+  // difference between "no image at all" and a heavier image that still loads.
+  // Legacy /alka/products/ URLs keep their local-copy fallback below.
+  if (
+    current.includes('res.cloudinary.com') &&
+    current.includes(uploadPath) &&
+    !current.includes('/alka/products/') &&
+    !img.dataset.originalFallback
+  ) {
+    const uploadIndex = current.indexOf(uploadPath)
+    const origin = current.slice(0, uploadIndex)
+    const rest = current.slice(uploadIndex + uploadPath.length)
+    const segments = rest.split('/')
+    const versionIndex = segments.findIndex((segment) => /^v\d+$/.test(segment))
+    if (versionIndex > 0) {
+      img.dataset.originalFallback = '1'
+      img.src = `${origin}${uploadPath}${segments.slice(versionIndex).join('/')}`
+      return
+    }
+  }
+
   // Cloudinary product URL failed → try the local deployed copy
   if (current.includes('/alka/products/')) {
     img.src = getImageFallbackUrl(current)
