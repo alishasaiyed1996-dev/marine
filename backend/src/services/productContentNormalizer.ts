@@ -345,6 +345,15 @@ function smartTitleCase(value: string, manufacturer: string | null): string {
     .join(' ')
 }
 
+function normalizeMalformedWordCase(value: string): string {
+  // A single stray capital at the end of an otherwise title-cased word
+  // ("TooL") is a marketplace typo, not an intentional brand casing.
+  return value.replace(
+    /\b([A-Z][a-z]{2,})([A-Z])\b/g,
+    (_match: string, stem: string, tail: string) => `${stem}${tail.toLowerCase()}`,
+  )
+}
+
 function normalizeDisplayAcronyms(value: string): string {
   return tidy(value)
     .split(' ')
@@ -401,12 +410,22 @@ function cleanMarketplaceName(raw: string, manufacturer: string | null): string 
   // Marketplace listings often append the condition as a keyword. The
   // condition is already shown as a structured badge, so remove it from the
   // title tail without touching a model number that happens to contain it.
+  // Seller condition tags occasionally survive as a trailing parenthetical
+  // ("... Micrometer (other)"). Remove only known noise tags so legitimate
+  // parentheticals such as "(2 Pack)" remain intact. This runs before the
+  // keyword strip so a hidden "stock surplus"-style tag underneath can also
+  // be removed on the next pass.
+  value = value
+    .replace(/\s*\((?:OTHER|USED|NEW|UNTESTED|AS\s+IS|FOR\s+PARTS(?:\s+OR\s+NOT\s+WORKING)?|UNKNOWN|SEE\s+(?:PHOTOS?|PICTURES?))\)\s*$/gi, ' ')
+    .trim()
   for (let i = 0; i < 3; i++) {
-    value = value.replace(/(?:\s*[|,:–—-]\s*|\s+)(?:BRAND\s+)?(?:NEW\s+(?:SURPLUS|OTHER|OPEN\s+BOX)|NEW|USED|TESTED|REFURBISHED|RECONDITIONED|SURPLUS)\s*$/i, ' ').trim()
+    value = value.replace(/(?:\s*[|,:–—-]\s*|\s+)(?:BRAND\s+)?(?:NEW\s+(?:SURPLUS|OTHER|OPEN\s+BOX)|NEW|USED|TESTED|REFURBISHED|RECONDITIONED|STOCK\s+SURPLUS|SURPLUS)\s*$/i, ' ').trim()
   }
+  // Re-join any dash that is glued to the word after clean-up ("–Precision").
+  value = value.replace(/\s*[–—](?=[A-Za-z])/g, ' - ').trim()
 
   value = stripTrailingPunctuation(value)
-  value = normalizeDisplayAcronyms(smartTitleCase(value, manufacturer))
+  value = normalizeDisplayAcronyms(normalizeMalformedWordCase(smartTitleCase(value, manufacturer)))
   if (!value) value = tidy(raw)
   return truncateAtWord(value, MAX_NAME_CHARS) || tidy(raw).slice(0, MAX_NAME_CHARS)
 }
