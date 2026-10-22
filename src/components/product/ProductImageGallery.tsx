@@ -26,7 +26,13 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   const [showZoom, setShowZoom] = useState(false)
   const [zoomPos, setZoomPos] = useState({ x: 50, y: 50 })
   const [showShare, setShowShare] = useState(false)
-  const [failedCount, setFailedCount] = useState(0)
+  // Distinct image URLs whose PRIMARY rendition failed to load. Semantics:
+  //   - one entry per URL, never per error event (a retried or re-mounted
+  //     <img> must not double-report the same broken image), and
+  //   - failures of the SHARED fallback assets (placeholder etc.) do not
+  //     count, otherwise one network hiccup would void genuinely working
+  //     images — this is what previously made product photos "disappear".
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set())
 
   // Touch zoom state
   const [touchScale, setTouchScale] = useState(1)
@@ -45,12 +51,12 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   const active = images[Math.min(activeIndex, images.length - 1)]
 
   // Navigating between products reuses this component instance, so every
-  // per-product state (selected photo, failed-image count, zoom/share) must be
+  // per-product state (selected photo, failed-image URLs, zoom/share) must be
   // reset — otherwise the new gallery opens on a stale index or shows the
   // placeholder because the previous product's images "failed".
   useEffect(() => {
     setActiveIndex(0)
-    setFailedCount(0)
+    setFailedUrls(new Set())
     setShowZoom(false)
     setZoomPos({ x: 50, y: 50 })
     setShowShare(false)
@@ -187,7 +193,7 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
           className="relative overflow-hidden rounded-xl bg-[var(--primary-bg)] aspect-square w-full flex items-center justify-center"
           onTouchEnd={handleDoubleTap}
         >
-          {hasImages && failedCount < images.length ? (
+          {hasImages && failedUrls.size < images.length ? (
             <OptimizedImage
               key={active.url}
               src={active.url}
@@ -198,7 +204,21 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
               fetchPriority="high"
               sizes="(max-width: 1024px) 100vw, 55vw"
               transformWidth={1200}
-              onError={() => setFailedCount((c) => c + 1)}
+              onError={(_event, failedSrc) => {
+                // failedSrc (pre-fallback) is the URL that actually failed.
+                // Only the image's own rendition counts — Cloudinary for the
+                // imported catalog / local product copy for legacy demo data.
+                // The shared placeholder failing is NOT a per-image failure.
+                if (
+                  !failedSrc ||
+                  (!failedSrc.includes('res.cloudinary.com') &&
+                    !failedSrc.includes('/images/products/'))
+                )
+                  return
+                setFailedUrls((prev) =>
+                  prev.has(active.url) ? prev : new Set(prev).add(active.url),
+                )
+              }}
               className={`w-full h-full object-contain transition-transform duration-200 ${
                 showZoom ? 'scale-150' : touchScale > 1 ? '' : 'scale-100'
               }`}
