@@ -11,6 +11,45 @@ separately in the agent todo list; this file only holds manual actions.
 
 ## 🔴 Pending now
 
+### MT-19 · 🔴 URGENT — email delivery on Railway (SMTP ports are blocked)
+
+**Diagnosed 2026-10-23.** Railway blocks outbound SMTP ports 25/465/587/2525.
+The live `email_queue` shows four admin emails failed with `Connection timeout`
+and `ENETUNREACH ...:465`; the SMTP credentials are set but cannot be reached
+from Railway. The backend now supports Resend over HTTPS 443 when
+`RESEND_API_KEY` is set, and keeps SMTP as a fallback for hosts that allow it.
+
+1. Create a Resend account and verify `alkatraders.co` (add the DNS records it
+   gives you).
+2. Create an API key (`re_...`).
+3. Add `RESEND_API_KEY` to the Railway `api` service variables. Keep
+   `EMAIL_FROM=sales@alkatraders.co`; it must be on the verified domain.
+4. Redeploy. The startup log should say `transport: resend`.
+5. Submit a test RFQ. `email_queue.status` must be `sent`, and both
+   `sales@alkatraders.co` and `rfq@alkatraders.com` should receive it.
+6. Old `failed` rows do not auto-retry; replay them only if the old reports
+   are still useful.
+
+### MT-18 · 🔴 URGENT — rotate leaked JWT/CSRF secrets and the admin password
+
+**Found 2026-10-23.** The old backend JWT fallback was committed to git
+history and is byte-for-byte the `JWT_SECRET` in root `.env.production` and
+`backend/.env.hostinger`; `CSRF_SECRET` in those files is the same value. The
+removed e2e fallback also matched `ADMIN_PASSWORD` in root `.env.production`.
+Treat all three as compromised.
+
+1. Generate new random values for `JWT_SECRET` and `CSRF_SECRET` in every
+   deployed environment (Railway `api`, Hostinger backend, and any other).
+2. Change the live admin password in the database/admin UI. Changing
+   `ADMIN_PASSWORD` in an env file does **not** update the existing password
+   hash.
+3. Update the ignored local env files; never commit them.
+4. Redeploy. Production now refuses to boot when `JWT_SECRET` or `CSRF_SECRET`
+   still matches the known leaked value (hash denylist in
+   `backend/src/utils/env.ts`).
+5. Verify: old sessions are invalidated, admin login works with the new
+   password, and the frontend build contains no server secret values.
+
 ### MT-13 · 🔴 URGENT — live storefront has no products (catalog data is gone)
 
 **Diagnosed 2026-10-19.** The live Railway API/database contains **no products
@@ -71,6 +110,43 @@ Trading API `ReviseInventoryStatus`, so website sales still decrement eBay.
 
 Group C (eBay stock sync) lights up the moment products with matching SKUs
 (e.g. `Z 35`, `C 126`, `E 206`) exist in the catalog.
+
+---
+
+### MT-16 · Replace the eBay tool testimonials with marine references
+
+**Why (U-14/C-5):** the six reviews in `src/data/testimonials.ts` are genuine
+verified eBay purchases, but they are pipe vises, threaders, tubing benders and
+chain tongs — not marine spares. The section is now honestly labelled
+"Marketplace Feedback" / "Verified feedback from our eBay buyers" and says the
+reviews cover the industrial tooling and surplus equipment sold on eBay. The FAQ
+also claims only what the terms support (condition grades, no automatic
+certificates). Only real marine buyers can supply the marine proof.
+
+**Action:** collect 3–6 references with permission: company, role, vessel or
+plant type, part family purchased, destination, and a 1–3 sentence quote. Add
+them as a marine references block; keep the eBay entries on the marketplace
+feedback block, because they are real feedback.
+
+---
+
+### MT-17 · Real company + bank details in store settings
+
+**Why (C-5, U-2):** the admin defaults are now honest placeholders
+(`+91 87990 95041`, `Asia/Kolkata`, empty bank fields) instead of a UAE phone
+number and an Emirates NBD IBAN for the Indian entity. Bank transfer stays
+**unavailable at checkout** until real details are entered.
+
+**Action in Admin → Settings → Payments:**
+1. Bank Transfer → fill bank name, account name, account number, IBAN/SWIFT
+   (or IFSC) for the account that should receive customer wires.
+2. Letter of Credit → fill the accepting-bank list if L/C terms are offered.
+3. Settings → General: confirm company name, phone, address, timezone and
+   currency match the legal entity (GSTIN/VAT belongs on invoices, not in these
+   fields).
+
+**Verify:** checkout shows bank instructions and the review step accepts a
+bank-transfer order; before that it offers only the methods that work.
 
 ---
 
@@ -257,6 +333,8 @@ Create the project(s), put the DSNs in Railway env vars (`SENTRY_DSN_FRONTEND`,
 
 Neon dashboard → project → **Backups / PITR**: confirm point-in-time restore is
 available on the current plan and do one test restore into a throwaway branch.
+The full procedure is in `docs/backup-restore.md`; record the date, retention
+window, and operator in the operations log after the test.
 
 ### MT-8 · Search Console API access (unlocks B10 automation)
 
@@ -293,6 +371,10 @@ plus their images/specs. Zero offers/orders/eBay listings affected.
 `detect-duplicate-products` now reports a clean catalog.
 
 ### MT-12 · Automated email delivery — SMTP configured on Railway (verify)
+
+**Update 2026-10-23:** SMTP credentials are set, but Railway blocks outbound
+SMTP ports, so delivery fails with connection timeouts. Use the Resend HTTPS
+transport in **MT-19** instead.
 
 **Status 2026-10-19:** SMTP is the email transport (send; the mailbox also
 receives replies). `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_PORT`,
