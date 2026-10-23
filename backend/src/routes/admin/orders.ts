@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { authenticateAdmin, requireRole, AuthRequest } from '../../middleware/auth.js'
+import { authenticateAdmin, requireRole, requireReadAccess, AuthRequest } from '../../middleware/auth.js'
 import { asyncHandler, validateBody } from '../../middleware/validate.js'
 import { z } from 'zod'
 import * as orderService from '../../services/orderService.js'
@@ -7,6 +7,9 @@ import { sendSuccess, sendError } from '../../middleware/response.js'
 
 const router = Router()
 router.use(authenticateAdmin)
+// Orders carry customer names, emails, addresses, and order values — a
+// read-only `viewer` must not be able to enumerate them.
+router.use(requireReadAccess('orders'))
 
 const statusUpdateSchema = z.object({
   status: z.enum(['pending', 'confirmed', 'paid', 'processing', 'packed', 'shipped', 'delivered', 'cancelled']),

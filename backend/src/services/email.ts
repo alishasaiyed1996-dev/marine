@@ -12,9 +12,10 @@ import logger from '../utils/logger.js'
 import { withTimeout } from '../utils/withTimeout.js'
 import type { Prisma } from '@prisma/client'
 
-// Hostinger SMTP transport (see SMTP_HOST / SMTP_USER / SMTP_PASS / SMTP_PORT
-// / SMTP_SECURE in the hosting panel). Built lazily on first send so tests can
-// set the env before exercising either the configured or the dry-run path.
+// Email transport. Resend over HTTPS is preferred because Railway blocks
+// outbound SMTP ports; SMTP remains as a fallback for hosts that allow it.
+// Built lazily on first send so tests can set the env before exercising either
+// the configured or the unconfigured path.
 let transporter: nodemailer.Transporter | null | undefined
 
 function getTransporter(): nodemailer.Transporter | null {
@@ -37,6 +38,21 @@ function getTransporter(): nodemailer.Transporter | null {
   return transporter
 }
 
+function getResendApiKey(): string | null {
+  const key = process.env.RESEND_API_KEY?.trim()
+  // Resend keys start with "re_". Requiring the prefix and a realistic length
+  // prevents a placeholder ("none", "changeme", etc.) from being treated as a
+  // working transport and turning every queued message into a failed send.
+  if (!key || !key.startsWith('re_') || key.length < 24) return null
+  return key
+}
+
+function emailTransportName(): 'resend' | 'smtp' | 'none' {
+  if (getResendApiKey()) return 'resend'
+  if (getTransporter()) return 'smtp'
+  return 'none'
+}
+
 const emailLog = logger.child({ context: 'email' })
 
 const FROM = process.env.EMAIL_FROM || 'noreply@alkatraders.co'
@@ -53,6 +69,7 @@ interface QueueEmail {
   subject: string
   html: string
   text?: string
+  replyTo?: string
   template?: string
   templateData?: Record<string, unknown>
 }
@@ -62,6 +79,15 @@ interface QueueEmail {
  */
 export async function queueEmail(email: QueueEmail): Promise<boolean> {
   try {
+    // replyTo has no dedicated column yet. Keep it inside templateData so it
+    // survives retries without a schema migration; sendEmail() pulls it back
+    // out before handing the message to Resend/SMTP.
+    const templateData = email.templateData
+      ? { ...email.templateData, ...(email.replyTo ? { __replyTo: email.replyTo } : {}) }
+      : email.replyTo
+        ? { __replyTo: email.replyTo }
+        : undefined
+
     const record = await prisma.emailQueue.create({
       data: {
         toEmail: email.to,
@@ -70,13 +96,15 @@ export async function queueEmail(email: QueueEmail): Promise<boolean> {
         htmlBody: email.html,
         textBody: email.text,
         template: email.template,
-        templateData: email.templateData as unknown as Prisma.InputJsonValue,
+        templateData: templateData as unknown as Prisma.InputJsonValue,
         status: 'pending',
       },
     })
-    // Attempt to send immediately. Delivery failures are retried by the queue
-    // processor; the row itself is the durable record that the job was queued.
-    await sendEmail(record.id)
+    // Do not make the HTTP request wait on the mail provider. The row is the
+    // durable job; the processor retries it if this immediate attempt fails.
+    void sendEmail(record.id).catch((error) => {
+      emailLog.error({ err: error, queueId: record.id }, 'Immediate email send failed; queued for retry')
+    })
     return true
   } catch (error) {
     emailLog.error({ err: error, to: email.to, subject: email.subject }, 'Failed to queue email')
@@ -84,33 +112,83 @@ export async function queueEmail(email: QueueEmail): Promise<boolean> {
   }
 }
 
+async function sendViaResend(params: {
+  apiKey: string
+  record: { toEmail: string; subject: string; htmlBody: string; textBody: string | null }
+  replyTo?: string
+}): Promise<void> {
+  // Railway blocks outbound SMTP ports (25/465/587/2525). Resend is an HTTPS
+  // API on 443, so it works from the same container.
+  const recipients = params.record.toEmail
+    .split(',')
+    .map((address) => address.trim())
+    .filter(Boolean)
+  if (recipients.length === 0) throw new Error('No recipient address')
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: FROM,
+      to: recipients,
+      subject: params.record.subject,
+      html: params.record.htmlBody,
+      ...(params.record.textBody ? { text: params.record.textBody } : {}),
+      ...(params.replyTo ? { reply_to: params.replyTo } : {}),
+    }),
+    signal: AbortSignal.timeout(15_000),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`Resend API ${response.status}: ${body.slice(0, 500)}`)
+  }
+}
+
 async function sendEmail(queueId: string): Promise<void> {
   const record = await prisma.emailQueue.findUnique({ where: { id: queueId } })
-  if (!record || (record.status !== 'pending' && record.status !== 'retrying')) return
+  if (!record || !['pending', 'retrying', 'skipped'].includes(record.status)) return
 
-  const smtp = getTransporter()
-  if (!smtp) {
-    // Honest state: without SMTP credentials nothing can be delivered, so the
-    // row must NOT be marked 'sent' (that made undelivered mail look delivered
-    // and hid outages — see the 2026-10 email diagnostic). 'skipped' keeps the
-    // original content for inspection/replay without pretending success.
-    emailLog.warn({ to: record.toEmail, subject: record.subject }, 'SMTP not configured — email NOT sent (queued as skipped)')
+  const resendKey = getResendApiKey()
+  const smtp = resendKey ? null : getTransporter()
+  if (!resendKey && !smtp) {
+    // Honest state: without a transport nothing can be delivered, so the row
+    // must NOT be marked 'sent'. 'skipped' keeps the original content for
+    // inspection/replay without pretending success.
+    emailLog.warn({ to: record.toEmail, subject: record.subject }, 'No email transport configured — email NOT sent (queued as skipped)')
     await prisma.emailQueue.update({
       where: { id: queueId },
-      data: { status: 'skipped', attempts: { increment: 1 }, lastError: 'SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS missing) — message was NOT delivered' },
+      data: {
+        status: 'skipped',
+        attempts: { increment: 1 },
+        lastError: 'No email transport configured (set RESEND_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASS) — message was NOT delivered',
+      },
     })
     return
   }
 
+  const templateData = record.templateData && typeof record.templateData === 'object'
+    ? record.templateData as Record<string, unknown>
+    : null
+  const replyTo = typeof templateData?.__replyTo === 'string' ? templateData.__replyTo : undefined
+
   try {
-    // nodemailer throws on delivery failure — the catch below handles retries.
-    await smtp.sendMail({
-      from: FROM,
-      to: record.toEmail,
-      subject: record.subject,
-      html: record.htmlBody,
-      text: record.textBody || undefined,
-    })
+    if (resendKey) {
+      await sendViaResend({ apiKey: resendKey, record, replyTo })
+    } else {
+      // nodemailer throws on delivery failure — the catch below handles retries.
+      await smtp!.sendMail({
+        from: FROM,
+        to: record.toEmail,
+        subject: record.subject,
+        html: record.htmlBody,
+        text: record.textBody || undefined,
+        ...(replyTo ? { replyTo } : {}),
+      })
+    }
 
     await prisma.emailQueue.update({
       where: { id: queueId },
@@ -132,15 +210,19 @@ let processorInterval: ReturnType<typeof setInterval> | null = null
 
 export function startEmailQueueProcessor(intervalMs = 60_000) {
   if (processorInterval) return
+  emailLog.info({ transport: emailTransportName() }, 'Email queue processor started')
   processorInterval = setInterval(async () => {
     try {
+      const transportReady = emailTransportName() !== 'none'
       const pending = await withTimeout(
         prisma.emailQueue.findMany({
           // 'pending' sweep catches rows whose immediate first attempt never
-          // ran (process restart mid-queue). Only rows older than 2 minutes
-          // are re-claimed so the immediate-send path always goes first.
+          // ran (process restart mid-queue). 'skipped' rows are retried once a
+          // transport exists (e.g. RESEND_API_KEY added after an outage). Only
+          // rows older than 2 minutes are re-claimed so the immediate-send path
+          // always goes first.
           where: {
-            status: { in: ['retrying', 'pending'] },
+            status: { in: transportReady ? ['retrying', 'pending', 'skipped'] : ['retrying', 'pending'] },
             attempts: { lt: MAX_EMAIL_ATTEMPTS },
             createdAt: { lt: new Date(Date.now() - 2 * 60 * 1000) },
           },
@@ -170,7 +252,7 @@ export function stopEmailQueueProcessor() {
 
 export { emailTemplates } from './emailTemplates.js'
 export {
-  sendOrderConfirmation, sendOrderShipped, sendOrderCancelled,
+  sendOrderConfirmation, sendOrderPaymentReceived, sendOrderShipped, sendOrderCancelled,
   sendRfqReceived, sendRfqResponse, sendEmergencyAlert,
   sendOfferReceived, sendOfferDecision,
   sendContactNotification, sendPasswordReset, sendWelcome,

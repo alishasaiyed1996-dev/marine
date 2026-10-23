@@ -18,6 +18,11 @@ const shippingSchema = z.object({
   state: z.string().optional(),
   postalCode: z.string().optional(),
   country: z.string().min(1),
+  // Freight / B2B details — a forwarder needs a phone number, and a company
+  // buyer needs its name and tax id on the commercial invoice.
+  phone: z.string().max(40).optional(),
+  company: z.string().max(255).optional(),
+  taxId: z.string().max(100).optional(),
 })
 
 const orderParamsSchema = z.object({
@@ -30,9 +35,11 @@ const orderSchema = z.object({
     quantity: z.number().int().positive(),
   })).min(1),
   shipping: shippingSchema,
-  paymentMethod: z.enum(['bank-transfer', 'paypal']),
+  paymentMethod: z.enum(['bank-transfer', 'lc', 'paypal']),
   customerNotes: z.string().optional(),
   idempotencyKey: z.string().max(200).optional(),
+  // Legal acceptance is a server-side requirement, not a UI-only checkbox.
+  termsAccepted: z.literal(true),
 })
 
 const trackSchema = z.object({
@@ -57,8 +64,11 @@ router.post('/', optionalCustomerAuth, validateBody(orderSchema), asyncHandler(a
     })
     sendSuccess(res, { order }, 201)
   } catch (err: unknown) {
-    const e = err as { message?: string; status?: number }
-    sendError(res, e.message || 'Failed to create order', e.status || 500)
+    const e = err as { message?: string; status?: number; details?: Array<{ field: string; message: string }> }
+    // `details` carries the product ids that became unavailable, so the
+    // checkout can remove exactly those lines and ask the customer to review
+    // the order — instead of dropping lines after the order is created.
+    sendError(res, e.message || 'Failed to create order', e.status || 500, e.details)
   }
 }))
 

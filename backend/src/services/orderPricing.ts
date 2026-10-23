@@ -1,6 +1,7 @@
 import { prisma } from '../server.js'
 import { numberOrDefault } from '../utils/helpers.js'
 import { calcShippingCost, parseShippingZones } from '../utils/shipping.js'
+import { isDomesticCountry } from '../utils/country.js'
 
 export interface OrderTotals {
   subtotal: number
@@ -21,11 +22,12 @@ const round2 = (value: number) => Math.round(value * 100) / 100
  * line prices) and the destination country are inputs here.
  */
 export async function computeOrderTotals(subtotal: number, country: string | null | undefined): Promise<OrderTotals> {
-  const [shippingCostSetting, taxRateSetting, freeShippingThresholdSetting, shippingZonesSetting] = await Promise.all([
+  const [shippingCostSetting, taxRateSetting, freeShippingThresholdSetting, shippingZonesSetting, storeCountrySetting] = await Promise.all([
     prisma.storeSetting.findUnique({ where: { key: 'checkout.shippingCost' } }),
     prisma.storeSetting.findUnique({ where: { key: 'checkout.taxRate' } }),
     prisma.storeSetting.findUnique({ where: { key: 'checkout.freeShippingThreshold' } }),
     prisma.storeSetting.findUnique({ where: { key: 'store.shippingZones' } }),
+    prisma.storeSetting.findUnique({ where: { key: 'site.country' } }),
   ])
 
   const baseShippingCost = numberOrDefault(
@@ -46,7 +48,15 @@ export async function computeOrderTotals(subtotal: number, country: string | nul
   )
 
   const roundedSubtotal = round2(subtotal)
-  const tax = round2(roundedSubtotal * taxRate)
+  // Tax is a domestic charge. The Terms page says Indian tax applies to
+  // domestic orders only; charging the same percentage on an export order is
+  // both a pricing error and a compliance problem.
+  const domesticCountry = typeof storeCountrySetting?.value === 'string' && storeCountrySetting.value.trim()
+    ? storeCountrySetting.value
+    : (process.env.DEFAULT_COUNTRY || 'IN')
+  const tax = isDomesticCountry(country, domesticCountry)
+    ? round2(roundedSubtotal * taxRate)
+    : 0
   return {
     subtotal: roundedSubtotal,
     shippingCost: round2(shippingCost),

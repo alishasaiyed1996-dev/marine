@@ -6,6 +6,7 @@ import logger from '../utils/logger.js'
 import type { AuthUser } from '../middleware/auth.js'
 import { canDecide, acceptedAmountOf, OFFER_PAYMENT_WINDOW_MS, type AdminOfferAction } from './offerRules.js'
 import { computeOrderTotals } from './orderPricing.js'
+import { getStoreCurrency } from './settingsService.js'
 import {
   computeOfferSnapshot,
   bucketOffersByDay,
@@ -40,7 +41,7 @@ async function guardedDecision(
   const offer = await prisma.offer.findUnique({
     where: { id },
     include: {
-      product: { select: { name: true } },
+      product: { select: { name: true, currency: true } },
       order: { select: { id: true, orderNumber: true, paymentStatus: true } },
     },
   })
@@ -234,14 +235,14 @@ export async function acceptOffer(id: string, actor: AuthUser) {
     actor, action: 'offer.accept', entityType: 'offer', entityId: offer.id, entityName: offer.offerNumber,
     newValue: { status: 'accepted', acceptedPrice },
   })
-  sendOfferDecision({ to: offer.customerEmail, offerNumber: offer.offerNumber, productName: offer.product?.name || 'Unknown', decision: 'accepted' }).catch(err => logger.error({ err }, 'Offer email failed'))
+  sendOfferDecision({ to: offer.customerEmail, offerNumber: offer.offerNumber, productName: offer.product?.name || 'Unknown', decision: 'accepted', currency: offer.product?.currency || 'USD' }).catch(err => logger.error({ err }, 'Offer email failed'))
   return { offer }
 }
 
 export async function rejectOffer(id: string, actor: AuthUser) {
   const offer = await guardedDecision(id, 'reject', actor, { status: 'rejected' })
   await logAudit({ actor, action: 'offer.reject', entityType: 'offer', entityId: offer.id, entityName: offer.offerNumber })
-  sendOfferDecision({ to: offer.customerEmail, offerNumber: offer.offerNumber, productName: offer.product?.name || 'Unknown', decision: 'rejected' }).catch(err => logger.error({ err }, 'Offer email failed'))
+  sendOfferDecision({ to: offer.customerEmail, offerNumber: offer.offerNumber, productName: offer.product?.name || 'Unknown', decision: 'rejected', currency: offer.product?.currency || 'USD' }).catch(err => logger.error({ err }, 'Offer email failed'))
   return { offer }
 }
 
@@ -251,7 +252,7 @@ export async function counterOffer(id: string, counterPrice: number, actor: Auth
     actor, action: 'offer.counter', entityType: 'offer', entityId: offer.id, entityName: offer.offerNumber,
     newValue: { counterPrice },
   })
-  sendOfferDecision({ to: offer.customerEmail, offerNumber: offer.offerNumber, productName: offer.product?.name || 'Unknown', decision: 'countered', counterPrice }).catch(err => logger.error({ err }, 'Offer email failed'))
+  sendOfferDecision({ to: offer.customerEmail, offerNumber: offer.offerNumber, productName: offer.product?.name || 'Unknown', decision: 'countered', counterPrice, currency: offer.product?.currency || 'USD' }).catch(err => logger.error({ err }, 'Offer email failed'))
   return { offer }
 }
 
@@ -278,6 +279,7 @@ export async function convertOfferToOrder(id: string, actor: AuthUser) {
   const customerId = offer.customerId || offer.customer?.id || null
   const country = offer.customer?.country || offer.rfq?.country || ''
   const { shippingCost, tax, total } = await computeOrderTotals(subtotal, country)
+  const currency = await getStoreCurrency()
 
   // Historical pricing snapshot + offer link so both conversion paths
   // (bank-transfer here, PayPal via offerService) produce identical order data.
@@ -291,7 +293,7 @@ export async function convertOfferToOrder(id: string, actor: AuthUser) {
       shippingCost,
       tax,
       total,
-      currency: 'USD',
+      currency,
       originalListedPrice: offer.product ? Number(offer.product.regularPrice) : null,
       negotiatedPrice: price,
       shippingFullName: offer.customer?.name || offer.rfq?.fullName || '',

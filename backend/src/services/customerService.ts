@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '../server.js'
 import { paginationParams, paginationResponse } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
+import { normalizeEmail } from './authService.js'
 import type { AuthUser } from '../middleware/auth.js'
 
 // ─── Queries ──────────────────────────────────────────────────
@@ -95,12 +96,18 @@ export async function getCustomer(id: string) {
 export async function createCustomer(data: { name: string; email: string; password: string; phone?: string; company?: string; country?: string; city?: string; address?: string; website?: string }, actor: AuthUser, ipAddress = '') {
   const { password, ...fields } = data
   const passwordHash = await bcrypt.hash(password, 12)
+  // Emails are normalized to lower case — a Postgres unique index is
+  // case-sensitive, so `User@x.com` and `user@x.com` would otherwise be two
+  // accounts with the same address.
+  const email = normalizeEmail(fields.email)
 
-  const existing = await prisma.customer.findUnique({ where: { email: data.email } })
+  const existing = await prisma.customer.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' as const } },
+  })
   if (existing) throw Object.assign(new Error('Email already registered'), { status: 400 })
 
   const customer = await prisma.customer.create({
-    data: { ...fields, passwordHash },
+    data: { ...fields, email, passwordHash },
   })
 
   await logAudit({

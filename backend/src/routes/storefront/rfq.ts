@@ -22,6 +22,9 @@ const rfqSchema = z.object({
   notes: z.string().max(2000).optional(),
   source: z.string().max(200).optional(),
   consent: z.boolean().refine(v => v === true, 'Consent is required'),
+  // When the visitor gave consent. Recorded with the request so the agreement
+  // has a timestamp, not just a boolean the client always sends as true.
+  consentAt: z.string().datetime({ offset: true }).optional(),
 })
 
 // ─── Submit RFQ ────────────────────────────────────────────────

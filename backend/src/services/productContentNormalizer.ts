@@ -866,11 +866,12 @@ function buildMetaDescription(
   const sku = isUuidLikeSku(input.sku) ? '' : tidy(input.sku)
   const skuText = sku ? `SKU ${sku}. ` : ''
   const conditionText = condition ? `${condition} condition` : 'the condition shown'
+  // Keep the description product-specific. Site-wide sales phrases do not
+  // improve the snippet and become duplicate boilerplate across the catalog.
   const candidates = [
-    `${label}, ${conditionText}. ${detailText}${skuText}Order online from Alka Traders with worldwide dispatch.`,
-    `${label}, ${conditionText}. ${detailText}${skuText}Available from Alka Traders.`,
-    `${label}, ${conditionText}. ${detailText}${skuText}See photos and specifications.`,
-    `${label}, ${conditionText}. ${skuText}Available from Alka Traders.`,
+    `${label}, ${conditionText}. ${detailText}${skuText}`,
+    `${label}. ${detailText}${skuText}`,
+    `${label}, ${conditionText}. ${skuText}`,
   ]
 
   for (const candidate of candidates) {
@@ -902,7 +903,6 @@ function buildShortDescription(
   if (firstParagraph) parts.push(firstParagraph)
   parts.push(`${label} in ${condition || 'the condition shown'} condition.`)
   if (detail) parts.push(detail)
-  parts.push('Supplied by Alka Traders; review the photos and specifications before ordering.')
   let text = tidy(parts.join(' '))
   if (text.length > 300) {
     text = truncateAtSentence(text, 296)
@@ -1137,7 +1137,7 @@ function normalizeDescription(
     }
   }
 
-  const generatedIntro = `${label} in ${condition || 'the condition shown'} condition, supplied by Alka Traders. Please review the photos and specifications for details.`
+  const generatedIntro = `${label} in ${condition || 'the condition shown'} condition, supplied by Alka Traders.`
   const parts: string[] = []
   parts.push(intro.length > 0 ? intro.join('\n\n') : generatedIntro)
 

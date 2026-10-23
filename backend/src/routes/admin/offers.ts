@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { authenticateAdmin, requireRole, AuthRequest } from '../../middleware/auth.js'
+import { authenticateAdmin, requireRole, requireReadAccess, AuthRequest } from '../../middleware/auth.js'
 import { asyncHandler, validateBody } from '../../middleware/validate.js'
 import { z } from 'zod'
 import { sendSuccess, sendError } from '../../middleware/response.js'
@@ -7,6 +7,8 @@ import * as offerAdminService from '../../services/offerAdminService.js'
 
 const router = Router()
 router.use(authenticateAdmin)
+// Offers carry the customer's email, name, and negotiated pricing.
+router.use(requireReadAccess('offers'))
 
 const counterSchema = z.object({ counterPrice: z.number().positive() })
 

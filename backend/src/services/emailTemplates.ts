@@ -1,15 +1,21 @@
 import { escapeHtml } from '../utils/html-escape.js'
 import { getFrontendUrl } from '../utils/env.js'
+import { formatMoney } from '../utils/money.js'
 
 const WHATSAPP = process.env.WHATSAPP_NUMBER || '918799095041'
 const COMPANY = process.env.COMPANY_EMAIL || 'sales@alkatraders.co'
 const FRONTEND_URL = getFrontendUrl()
-// Single inbox for ALL inbound form submissions — contact form, RFQ,
-// emergency request, and make-offer. Hard-defaults to sales@alkatraders.co
-// so user submissions always land in the sales inbox regardless of other
-// env vars (previously RFQ_EMAIL / EMERGENCY_EMAIL / ADMIN_EMAIL could
-// redirect them to separate addresses). Override only via SALES_EMAIL.
+// Primary inbox for inbound form submissions. RFQ and emergency alerts also
+// go to their dedicated inboxes when configured, because those are the
+// addresses the owner actually monitors. SALES_EMAIL remains the fallback.
 const SALES_EMAIL = process.env.SALES_EMAIL || 'sales@alkatraders.co'
+const RFQ_EMAIL = process.env.RFQ_EMAIL?.trim() || SALES_EMAIL
+const EMERGENCY_EMAIL = process.env.EMERGENCY_EMAIL?.trim() || SALES_EMAIL
+
+/** Build a deduplicated recipient list; the queue stores it as one string. */
+function recipients(...addresses: string[]): string {
+  return [...new Set(addresses.map((address) => address.trim()).filter(Boolean))].join(', ')
+}
 
 // ─── Template Helpers ──────────────────────────────────────────
 
@@ -58,6 +64,7 @@ interface QueueEmail {
   subject: string
   html: string
   text?: string
+  replyTo?: string
   template?: string
   templateData?: Record<string, unknown>
 }
@@ -74,29 +81,80 @@ export const emailTemplates = {
     tax: number
     total: number
     shippingAddress: string
+    currency?: string
+    paymentMethod?: string
+    /** Payment instructions shown to the customer (bank details for a transfer). */
+    paymentInstructions?: {
+      heading: string
+      details: { label: string; value: string }[]
+      note?: string
+    }
+    /** Set when the order still needs money before it ships. */
+    paymentPending?: boolean
   }): QueueEmail {
+    const currency = data.currency || 'USD'
+    const money = (value: number) =>
+      new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value)
     const itemRows = data.items.map(i =>
-      `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;color:#1e293b;">${escapeHtml(i.name)}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:center;color:#64748b;">${i.quantity}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;color:#1e293b;">$${i.price.toFixed(2)}</td></tr>`
+      `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;color:#1e293b;">${escapeHtml(i.name)}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:center;color:#64748b;">${i.quantity}</td><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;color:#1e293b;">${money(i.price)}</td></tr>`
     ).join('')
 
+    const instructionsBlock = data.paymentInstructions
+      ? `
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:16px;margin:24px 0;">
+        <tr><td>
+          <p style="margin:0 0 10px;color:#92400e;font-size:14px;font-weight:700;">${escapeHtml(data.paymentInstructions.heading)}</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr><td>
+              ${data.paymentInstructions.details.map(d => infoRow(d.label, d.value)).join('')}
+            </td></tr>
+          </table>
+          ${data.paymentInstructions.note ? `<p style="margin:12px 0 0;color:#92400e;font-size:12px;line-height:1.5;">${escapeHtml(data.paymentInstructions.note)}</p>` : ''}
+        </td></tr>
+      </table>`
+      : ''
+
     const html = baseLayout(`
-      <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">Order Confirmed ✅</h2>
+      <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">Order Received ✅</h2>
       <p style="color:#64748b;font-size:14px;margin:0 0 24px;">Thank you for your order, ${escapeHtml(data.customerName)}!</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:24px;">
-        <tr><td>${infoRow('Order Number', `<span style="color:#0ea5e9;font-weight:700;">${data.orderNumber}</span>`)}</td></tr>
+        <tr><td>${infoRow('Order Number', `<span style="color:#0ea5e9;font-weight:700;">${data.orderNumber}</span>`)}${infoRow('Order Date', new Date().toISOString().slice(0, 10))}${data.paymentMethod ? infoRow('Payment Method', escapeHtml(data.paymentMethod)) : ''}</td></tr>
       </table>
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
         <tr style="background:#f8fafc;"><th style="padding:10px 8px;text-align:left;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Product</th><th style="padding:10px 8px;text-align:center;font-size:12px;color:#64748b;">Qty</th><th style="padding:10px 8px;text-align:right;font-size:12px;color:#64748b;">Price</th></tr>
         ${itemRows}
       </table>
-      ${infoRow('Subtotal', `$${data.subtotal.toFixed(2)}`)}
-      ${infoRow('Shipping', `$${data.shippingCost.toFixed(2)}`)}
-      ${infoRow('Tax', `$${data.tax.toFixed(2)}`)}
-      <p style="font-size:18px;font-weight:bold;border-top:2px solid #e2e8f0;padding-top:8px;">Total: <span style="color:#0ea5e9;">$${data.total.toFixed(2)}</span></p>
+      ${infoRow('Subtotal', money(data.subtotal))}
+      ${infoRow('Shipping', money(data.shippingCost))}
+      ${infoRow('Tax', money(data.tax))}
+      <p style="font-size:18px;font-weight:bold;border-top:2px solid #e2e8f0;padding-top:8px;">Total: <span style="color:#0ea5e9;">${money(data.total)}</span></p>
       ${infoRow('Shipping Address', escapeHtml(data.shippingAddress))}
-      <p style="color:#64748b;font-size:13px;text-align:center;">We'll send you tracking information once your order ships.</p>
+      ${instructionsBlock}
+      <p style="color:#64748b;font-size:13px;text-align:center;">${data.paymentPending ? 'We will start preparing your order as soon as payment is received.' : "We'll send you tracking information once your order ships."}</p>
+      <p style="color:#64748b;font-size:13px;text-align:center;">Questions? Reply to this email or <a href="https://wa.me/${WHATSAPP}" style="color:#0ea5e9;">WhatsApp us</a>.</p>
     `)
-    return { to: '', subject: `Order ${data.orderNumber} Confirmed — Alka Traders`, html, template: 'order-confirmation', templateData: data as Record<string, unknown> }
+    return { to: '', subject: `Order ${data.orderNumber} Received — Alka Traders`, html, template: 'order-confirmation', templateData: data as Record<string, unknown> }
+  },
+
+  orderPaymentReceived(data: {
+    orderNumber: string
+    customerName: string
+    total: number
+    currency?: string
+    paymentMethod?: string
+  }): QueueEmail {
+    const currency = data.currency || 'USD'
+    const money = (value: number) =>
+      new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value)
+    const html = baseLayout(`
+      <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">Payment Received 💳</h2>
+      <p style="color:#64748b;font-size:14px;margin:0 0 24px;">Hi ${escapeHtml(data.customerName)}, we have received your payment for order <strong>${escapeHtml(data.orderNumber)}</strong>.</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin-bottom:24px;">
+        <tr><td>${infoRow('Order', `<span style="font-weight:700;">${escapeHtml(data.orderNumber)}</span>`)}${data.paymentMethod ? infoRow('Paid via', escapeHtml(data.paymentMethod)) : ''}${infoRow('Amount received', `<strong style="color:#059669;">${money(data.total)}</strong>`)}</td></tr>
+      </table>
+      <p style="color:#64748b;font-size:13px;">Your order is being prepared. We'll email you again with tracking information once it ships.</p>
+    `)
+    return { to: '', subject: `Payment received — Order ${data.orderNumber} — Alka Traders`, html, template: 'order-payment-received', templateData: data as Record<string, unknown> }
   },
 
   orderShipped(data: { orderNumber: string; customerName: string; trackingNumber: string; courier: string }): QueueEmail {
@@ -123,16 +181,17 @@ export const emailTemplates = {
     return { to: '', subject: `Order ${data.orderNumber} Cancelled — Alka Traders`, html, template: 'order-cancelled', templateData: data as Record<string, unknown> }
   },
 
-  rfqReceived(data: { rfqNumber: string; customerName: string; productDescription: string; urgency: string }): QueueEmail {
+  rfqReceived(data: { rfqNumber: string; customerName: string; customerEmail?: string; productDescription: string; urgency: string }): QueueEmail {
     const urgencyColor = data.urgency === 'emergency' ? '#dc2626' : data.urgency === 'urgent' ? '#f59e0b' : '#0ea5e9'
+    const safeEmail = data.customerEmail ? escapeHtml(data.customerEmail) : ''
     const html = baseLayout(`
       <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">New RFQ Received 📋</h2>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:24px;">
-        <tr><td>${infoRow('RFQ Number', `<span style="color:#0ea5e9;font-weight:700;">${data.rfqNumber}</span>`)}${infoRow('Customer', data.customerName)}${infoRow('Urgency', `<span style="display:inline-block;background:${urgencyColor};color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;text-transform:uppercase;">${data.urgency}</span>`)}${infoRow('Description', escapeHtml(data.productDescription))}</td></tr>
+        <tr><td>${infoRow('RFQ Number', `<span style="color:#0ea5e9;font-weight:700;">${escapeHtml(data.rfqNumber)}</span>`)}${infoRow('Customer', escapeHtml(data.customerName))}${safeEmail ? infoRow('Customer Email', `<a href="mailto:${safeEmail}" style="color:#0ea5e9;">${safeEmail}</a>`) : ''}${infoRow('Urgency', `<span style="display:inline-block;background:${urgencyColor};color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;text-transform:uppercase;">${escapeHtml(data.urgency)}</span>`)}${infoRow('Description', escapeHtml(data.productDescription))}</td></tr>
       </table>
       ${btn(`${FRONTEND_URL}/admin/rfqs`, 'View RFQ in Admin Panel', urgencyColor)}
     `)
-    return { to: SALES_EMAIL, subject: `[RFQ ${data.urgency.toUpperCase()}] ${data.rfqNumber} — ${escapeHtml(data.customerName)}`, html, template: 'rfq-received', templateData: data as Record<string, unknown> }
+    return { to: recipients(SALES_EMAIL, RFQ_EMAIL), replyTo: data.customerEmail, subject: `[RFQ ${data.urgency.toUpperCase()}] ${data.rfqNumber} — ${escapeHtml(data.customerName)}`, html, template: 'rfq-received', templateData: data as Record<string, unknown> }
   },
 
   rfqResponse(data: { rfqNumber: string; customerName: string; message: string }): QueueEmail {
@@ -159,30 +218,32 @@ export const emailTemplates = {
       ${btn(`tel:${safePhone}`, '📞 Call Customer Now', '#dc2626')}
       ${btn(`https://wa.me/${waPhone}`, '💬 WhatsApp Now', '#25d366')}
     `)
-    return { to: SALES_EMAIL, subject: `🚨 EMERGENCY RFQ ${data.rfqNumber} — ${data.customerName} — ${data.vesselName || 'Vessel Unknown'}`, html, template: 'emergency-rfq', templateData: data as Record<string, unknown> }
+    return { to: recipients(SALES_EMAIL, EMERGENCY_EMAIL), subject: `🚨 EMERGENCY RFQ ${data.rfqNumber} — ${data.customerName} — ${data.vesselName || 'Vessel Unknown'}`, html, template: 'emergency-rfq', templateData: data as Record<string, unknown> }
   },
 
-  offerReceived(data: { offerNumber: string; productName: string; offeredPrice: number; customerEmail: string }): QueueEmail {
+  offerReceived(data: { offerNumber: string; productName: string; offeredPrice: number; customerEmail: string; currency?: string }): QueueEmail {
+    const offered = formatMoney(data.offeredPrice, data.currency)
     const html = baseLayout(`
       <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">New Make-Offer Request 💰</h2>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:24px;">
-        <tr><td>${infoRow('Offer Number', `<span style="color:#0ea5e9;font-weight:700;">${data.offerNumber}</span>`)}${infoRow('Product', data.productName)}${infoRow('Offered Price', `<span style="color:#059669;font-weight:700;font-size:16px;">$${data.offeredPrice.toFixed(2)}</span>`)}${infoRow('Customer', data.customerEmail)}</td></tr>
+        <tr><td>${infoRow('Offer Number', `<span style="color:#0ea5e9;font-weight:700;">${data.offerNumber}</span>`)}${infoRow('Product', data.productName)}${infoRow('Offered Price', `<span style="color:#059669;font-weight:700;font-size:16px;">${offered}</span>`)}${infoRow('Customer', data.customerEmail)}</td></tr>
       </table>
       ${btn(`${FRONTEND_URL}/admin/offers`, 'Review Offer in Admin', '#059669')}
     `)
-    return { to: SALES_EMAIL, subject: `[OFFER] ${data.offerNumber} — $${data.offeredPrice.toFixed(2)} — ${data.productName}`, html, template: 'offer-received', templateData: data as Record<string, unknown> }
+    return { to: SALES_EMAIL, replyTo: data.customerEmail, subject: `[OFFER] ${data.offerNumber} — ${offered} — ${data.productName}`, html, template: 'offer-received', templateData: data as Record<string, unknown> }
   },
 
-  offerDecision(data: { offerNumber: string; productName: string; decision: 'accepted' | 'rejected' | 'countered'; counterPrice?: number }): QueueEmail {
+  offerDecision(data: { offerNumber: string; productName: string; decision: 'accepted' | 'rejected' | 'countered'; counterPrice?: number; currency?: string }): QueueEmail {
     const colors = { accepted: '#059669', rejected: '#dc2626', countered: '#f59e0b' }
-    const labels = { accepted: 'Accepted ✅', rejected: 'Rejected ❌', countered: `Countered at $${data.counterPrice?.toFixed(2)}` }
+    const counter = formatMoney(data.counterPrice || 0, data.currency)
+    const labels = { accepted: 'Accepted ✅', rejected: 'Rejected ❌', countered: `Countered at ${counter}` }
     const html = baseLayout(`
       <h2 style="margin:0 0 8px;color:${colors[data.decision]};font-size:22px;">Offer ${labels[data.decision]}</h2>
       <p style="color:#64748b;font-size:14px;margin:0 0 24px;">Your offer for <strong>${data.productName}</strong> has been ${data.decision}.</p>
       ${infoRow('Offer', data.offerNumber)}
       ${infoRow('Product', data.productName)}
       ${infoRow('Status', `<span style="color:${colors[data.decision]};font-weight:700;">${labels[data.decision]}</span>`)}
-      ${data.decision === 'countered' ? `<p style="color:#1e293b;font-size:14px;">We've countered with <strong>$${data.counterPrice?.toFixed(2)}</strong>. Reply to this email or <a href="https://wa.me/${WHATSAPP}" style="color:#25d366;">WhatsApp us</a> to continue.</p>` : ''}
+      ${data.decision === 'countered' ? `<p style="color:#1e293b;font-size:14px;">We've countered with <strong>${counter}</strong>. Reply to this email or <a href="https://wa.me/${WHATSAPP}" style="color:#25d366;">WhatsApp us</a> to continue.</p>` : ''}
     `)
     return { to: '', subject: `Offer ${data.offerNumber} ${labels[data.decision]} — Alka Traders`, html, template: 'offer-decision', templateData: data as Record<string, unknown> }
   },
@@ -195,7 +256,7 @@ export const emailTemplates = {
       <div style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:24px;color:#1e293b;font-size:14px;line-height:1.6;">${escapeHtml(data.message)}</div>
       ${btn(`mailto:${encodeURIComponent(data.email)}?subject=${encodeURIComponent(`Re: ${data.subject || 'Your Message'}`)}`, 'Reply via Email', '#0ea5e9')}
     `)
-    return { to: SALES_EMAIL, subject: `[CONTACT] ${data.subject || 'New message from ' + data.name}`, html, template: 'contact-notification', templateData: data as Record<string, unknown> }
+    return { to: SALES_EMAIL, replyTo: data.email, subject: `[CONTACT] ${data.subject || 'New message from ' + data.name}`, html, template: 'contact-notification', templateData: data as Record<string, unknown> }
   },
 
   passwordReset(data: { name: string; resetUrl: string; isAdmin?: boolean }): QueueEmail {
@@ -230,13 +291,15 @@ export const emailTemplates = {
     customerName?: string
     customerEmail?: string
     total?: number
+    currency?: string
     note?: string
   }): QueueEmail {
+    const total = data.total != null ? formatMoney(data.total, data.currency) : null
     const html = baseLayout(`
       <h2 style="margin:0 0 8px;color:#1e293b;font-size:22px;">${escapeHtml(data.event)} 🛒</h2>
       <p style="color:#64748b;font-size:14px;margin:0 0 24px;">An order event just happened on Alka Traders.</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:24px;">
-        <tr><td>${infoRow('Order', `<span style="color:#0ea5e9;font-weight:700;">${escapeHtml(data.orderNumber)}</span>`)}${infoRow('Status', escapeHtml(data.status))}${infoRow('Customer', escapeHtml(data.customerName || 'Guest'))}${data.customerEmail ? infoRow('Email', escapeHtml(data.customerEmail)) : ''}${data.total != null ? infoRow('Total', `<strong>$${data.total.toFixed(2)}</strong>`) : ''}${data.note ? infoRow('Note', escapeHtml(data.note)) : ''}</td></tr>
+        <tr><td>${infoRow('Order', `<span style="color:#0ea5e9;font-weight:700;">${escapeHtml(data.orderNumber)}</span>`)}${infoRow('Status', escapeHtml(data.status))}${infoRow('Customer', escapeHtml(data.customerName || 'Guest'))}${data.customerEmail ? infoRow('Email', escapeHtml(data.customerEmail)) : ''}${total ? infoRow('Total', `<strong>${total}</strong>`) : ''}${data.note ? infoRow('Note', escapeHtml(data.note)) : ''}</td></tr>
       </table>
       ${btn(`${FRONTEND_URL}/admin/orders`, 'Open Orders in Admin', '#0ea5e9')}
     `)

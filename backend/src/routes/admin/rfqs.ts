@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { authenticateAdmin, requireRole, AuthRequest } from '../../middleware/auth.js'
+import { authenticateAdmin, requireRole, requireReadAccess, AuthRequest } from '../../middleware/auth.js'
 import { asyncHandler, validateBody } from '../../middleware/validate.js'
 import { z } from 'zod'
 import * as rfqService from '../../services/rfqService.js'
@@ -7,6 +7,8 @@ import { sendSuccess, sendError } from '../../middleware/response.js'
 
 const router = Router()
 router.use(authenticateAdmin)
+// RFQs carry customer names, emails, phone numbers, and vessel details.
+router.use(requireReadAccess('rfqs'))
 
 const statusSchema = z.object({
   status: z.enum(['new', 'reviewing', 'awaiting-supplier', 'quote-sent', 'customer-replied', 'won', 'lost', 'closed']),

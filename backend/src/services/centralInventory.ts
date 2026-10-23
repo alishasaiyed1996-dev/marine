@@ -134,12 +134,110 @@ export async function increaseStock(
 }
 
 /**
+ * Claims stock for several order lines as ONE unit of work.
+ *
+ * Every line is decremented inside a single transaction: either all lines are
+ * claimed or none are. This is what makes "reserve before charging the
+ * customer" safe — a partial claim can never be left behind, and two
+ * concurrent buyers can never both claim the last unit.
+ *
+ * The caller owns the release: if the payment that follows the reservation
+ * fails, `releaseReservation` must put the units back.
+ */
+export async function reserveStock(
+  lines: { productId: string; quantity: number }[],
+  channel: InventoryChannel,
+  reference?: { orderId?: string; note?: string },
+): Promise<{
+  ok: boolean
+  reserved: { productId: string; quantity: number }[]
+  failedProductId?: string
+  reason?: 'not-found' | 'insufficient-stock' | 'invalid-quantity'
+}> {
+  const valid = lines.filter(l => l.productId && Number.isInteger(l.quantity) && l.quantity > 0)
+  if (valid.length === 0) {
+    return { ok: true, reserved: [] }
+  }
+
+  try {
+    const reserved = await prisma.$transaction(async (tx) => {
+      const claimed: { productId: string; quantity: number }[] = []
+      for (const line of valid) {
+        const affected = await tx.$executeRawUnsafe(
+          'UPDATE products SET stock_count = stock_count - $1 WHERE id = $2::uuid AND stock_count >= $1',
+          line.quantity, line.productId,
+        )
+        if (affected === 0) {
+          throw new ReservationError(line.productId, 'insufficient-stock')
+        }
+        claimed.push(line)
+      }
+      return claimed
+    })
+
+    // Post-commit side effects: the availability flag and the eBay mirror
+    // follow central stock, never the other way round.
+    for (const line of reserved) {
+      const product = await prisma.product.findUnique({
+        where: { id: line.productId },
+        select: { stockCount: true },
+      })
+      if (product) await syncAvailabilityFlag(line.productId, product.stockCount)
+    }
+    for (const line of reserved) {
+      void enqueueEbayQuantitySync(line.productId).catch((err) =>
+        log.error({ err, productId: line.productId }, 'eBay sync enqueue failed (central stock remains authoritative)'))
+    }
+
+    log.info({ reserved, channel, reference }, 'Central inventory reserved for order')
+    return { ok: true, reserved }
+  } catch (err) {
+    if (err instanceof ReservationError) {
+      log.warn({ productId: err.productId, channel, reference }, 'Inventory reservation refused - insufficient stock')
+      return { ok: false, reserved: [], failedProductId: err.productId, reason: err.reason }
+    }
+    log.error({ err, channel, reference }, 'Inventory reservation failed')
+    return { ok: false, reserved: [], reason: 'not-found' }
+  }
+}
+
+/** Puts a reservation back into stock (payment failed after the claim). */
+export async function releaseReservation(
+  reserved: { productId: string; quantity: number }[],
+  channel: InventoryChannel,
+  reference?: { orderId?: string; note?: string },
+): Promise<void> {
+  for (const line of reserved) {
+    if (!line.productId || !Number.isInteger(line.quantity) || line.quantity <= 0) continue
+    await prisma.$executeRawUnsafe(
+      'UPDATE products SET stock_count = stock_count + $1 WHERE id = $2::uuid',
+      line.quantity, line.productId,
+    )
+    const product = await prisma.product.findUnique({
+      where: { id: line.productId },
+      select: { stockCount: true },
+    })
+    if (product) await syncAvailabilityFlag(line.productId, product.stockCount)
+    void enqueueEbayQuantitySync(line.productId).catch((err) =>
+      log.error({ err, productId: line.productId }, 'eBay sync enqueue failed'))
+    log.info({ productId: line.productId, quantity: line.quantity, channel, reference }, 'Inventory reservation released')
+  }
+}
+
+/** Internal signal that a line could not be claimed. */
+class ReservationError extends Error {
+  constructor(public productId: string, public reason: 'insufficient-stock' | 'not-found') {
+    super(`Reservation failed for ${productId}: ${reason}`)
+    this.name = 'ReservationError'
+  }
+}
+
+/**
  * Admin absolute set (form edit: stock 5 → 3). Computes the delta and routes
  * it through increase/decrease so the eBay sync and availability flag always
  * engage. This is the ONLY sanctioned way to write stockCount outside the
  * atomic paths.
- */
-export async function setStock(
+ */export async function setStock(
   productId: string,
   newQuantity: number,
   note?: string,

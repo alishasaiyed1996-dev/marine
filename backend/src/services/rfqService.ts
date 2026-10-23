@@ -3,7 +3,7 @@ import { generateRfqNumber, generateOrderNumber, generateOfferNumber, pagination
 import { rfqInclude } from '../utils/prisma-helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { sendRfqReceived, sendRfqResponse } from './email.js'
-import { shouldNotify } from './settingsService.js'
+import { shouldNotify, getStoreCurrency } from './settingsService.js'
 import { computeOrderTotals } from './orderPricing.js'
 import logger from '../utils/logger.js'
 import type { AuthUser } from '../middleware/auth.js'
@@ -27,13 +27,16 @@ export async function createRfq(data: {
   partNumber?: string; brand?: string; quantity?: number
   deliveryLocation?: string; urgency?: string; notes?: string
   source?: string; consent: boolean
+  consentAt?: string
 }) {
-  const { notes, ...dbFields } = data
+  const { notes, consentAt, ...dbFields } = data
   const rfq = await prisma.rfq.create({
     data: {
       rfqNumber: await generateRfqNumber(),
       ...dbFields,
       internalNotes: notes || null,
+      // The agreement is only meaningful with a timestamp.
+      ...(consentAt ? { consentAt: new Date(consentAt) } : {}),
       status: 'new',
       responseDeadline: data.urgency === 'emergency'
         ? new Date(Date.now() + 2 * 60 * 60 * 1000) // 2 hours
@@ -65,6 +68,7 @@ export async function createRfq(data: {
     sendRfqReceived({
       rfqNumber: rfq.rfqNumber,
       customerName: data.fullName,
+      customerEmail: data.email,
       productDescription: data.productDescription,
       urgency: data.urgency || 'standard',
     }).catch(err => logger.error({ err }, 'RFQ email failed'))
@@ -324,6 +328,7 @@ export async function convertRfqToOrder(id: string, unitPrice: number, actor: Au
 
   let orderId: string | null = null
   try {
+    const currency = await getStoreCurrency()
     const order = await prisma.order.create({
       data: {
         orderNumber: await generateOrderNumber(),
@@ -332,7 +337,7 @@ export async function convertRfqToOrder(id: string, unitPrice: number, actor: Au
         paymentMethod: 'bank-transfer',
         paymentStatus: 'pending',
         subtotal, shippingCost, tax, total,
-        currency: 'USD',
+        currency,
         originalListedPrice: product ? Number(product.regularPrice) : null,
         negotiatedPrice: unitPrice,
         shippingFullName: rfq.fullName,

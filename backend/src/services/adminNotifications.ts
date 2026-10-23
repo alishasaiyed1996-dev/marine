@@ -36,7 +36,7 @@ const ORDER_EVENT_LABELS: Record<OrderEventKey, string> = {
 /** Admin notification for an order lifecycle event, gated by its toggle. */
 export async function notifyOrderEvent(key: OrderEventKey, params: {
   orderNumber: string; status: string
-  customerName?: string; customerEmail?: string; total?: number; note?: string
+  customerName?: string; customerEmail?: string; total?: number; note?: string; currency?: string
 }): Promise<void> {
   try {
     if (!(await shouldNotify(key))) return

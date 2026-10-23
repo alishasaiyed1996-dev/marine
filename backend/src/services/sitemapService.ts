@@ -1,15 +1,14 @@
 import { prisma } from '../server.js'
 import { isHubIndexable } from '../utils/hubSeo.js'
+import { SHIPPED_LOCALES, TRANSLATED_ROUTES } from '../utils/routeI18n.js'
 
 const BASE_URL = (process.env.FRONTEND_URL || 'https://alkatraders.co').replace(/\/+$/, '')
 
-// ─── Static pages with metadata ──────────────────────────────
-const staticPages = [
-  '/', '/products', '/brands', '/industries', '/about', '/contact',
-  '/network', '/rfq', '/emergency', '/intelligence', '/privacy-policy',
-  '/terms-of-service', '/refund-policy',
-]
-
+// ─── Static pages ───────────────────────────────────────────
+// The translated static routes come from backend/src/utils/routeI18n.ts — the
+// same list the storefront uses to decide what is indexable. Every shipped
+// locale has a translated prerendered equivalent for these, so each one is
+// emitted per locale with its hreflang alternates.
 function escapeXml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 }
@@ -17,6 +16,32 @@ function escapeXml(str: string): string {
 /** Product image URLs are absolute Cloudinary links — only prefix site-relative ones. */
 function absoluteUrl(url: string): string {
   return /^https?:\/\//i.test(url) ? url : `${BASE_URL}${url}`
+}
+
+/**
+ * The canonical URL of a translated static route in a given locale.
+ * Every locale is canonical under its own prefix: the bare path 301s to
+ * /en/, so hreflang and sitemap entries must carry the prefix too.
+ */
+function localeUrl(locale: string, route: string): string {
+  return `${BASE_URL}/${locale}${route}`
+}
+
+/**
+ * The hreflang alternates for a translated route: every shipped locale plus
+ * x-default (the English page).
+ */
+function alternatesFor(route: string): string {
+  const links = SHIPPED_LOCALES.map(
+    (locale) => `    <xhtml:link rel="alternate" hreflang="${locale}" href="${escapeXml(localeUrl(locale, route))}" />`,
+  )
+  links.push(`    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(localeUrl('en', route))}" />`)
+  return links.join('\n')
+}
+
+/** The translated static routes that belong in the sitemap. */
+function translatedStaticRoutes(): string[] {
+  return TRANSLATED_ROUTES as readonly string[] as string[]
 }
 
 async function buildSitemap(): Promise<string> {
@@ -67,10 +92,12 @@ async function buildSitemap(): Promise<string> {
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
-${staticPages.map((page) => `  <url>
-    <loc>${BASE_URL}/en${page === '/' ? '/' : `${page}/`}</loc>
-  </url>`).join('\n')}
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+${translatedStaticRoutes().flatMap((route) => SHIPPED_LOCALES.map((locale) => `  <url>
+    <loc>${escapeXml(localeUrl(locale, route))}</loc>
+${alternatesFor(route)}
+  </url>`)).join('\n')}
 ${products.map((product) => `  <url>
     <loc>${BASE_URL}/en/product/${escapeXml(product.slug)}/</loc>${lastmod(product.contentUpdatedAt)}${product.images[0]?.url ? `\n    <image:image>\n      <image:loc>${escapeXml(absoluteUrl(product.images[0].url))}</image:loc>\n    </image:image>` : ''}
   </url>`).join('\n')}
@@ -85,9 +112,11 @@ export async function generateSitemap(): Promise<string> {
 
 export function getFallbackSitemap(): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${staticPages.map((page) => `  <url>
-    <loc>${BASE_URL}/en${page === '/' ? '/' : `${page}/`}</loc>
-  </url>`).join('\n')}
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+${translatedStaticRoutes().flatMap((route) => SHIPPED_LOCALES.map((locale) => `  <url>
+    <loc>${escapeXml(localeUrl(locale, route))}</loc>
+${alternatesFor(route)}
+  </url>`)).join('\n')}
 </urlset>`
 }

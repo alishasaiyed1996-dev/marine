@@ -2,7 +2,11 @@ import { prisma } from '../server.js'
 import { generateOfferNumber, generateOrderNumber, isProductInStock } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
 import { sendOfferReceived } from './email.js'
+import { normalizeEmail } from './authService.js'
 import { computeOrderTotals } from './orderPricing.js'
+import { getStoreCurrency } from './settingsService.js'
+import { CURRENT_TERMS_VERSION } from '../utils/legal.js'
+import { formatMoney } from '../utils/money.js'
 import {
   checkOfferEligibility,
   eligibilityMessage,
@@ -67,17 +71,22 @@ export async function submitOffer(data: SubmitOfferInput) {
   // ── Abuse guards (G47) — fail fast, cheapest first ──────────
   // Open-offer ceiling + rolling 24h budgets per email, then an IP-level
   // flood breaker. All decided server-side from two cheap indexed counts.
+  //
+  // The email is normalized to lower case first: the counts used to compare
+  // exact strings, so `User@x.com` and `user@x.com` each had their own
+  // budget and the daily limit could be multiplied by changing the case.
+  const customerEmail = normalizeEmail(data.customerEmail)
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
   const [openCount, recentForEmail, recentForIp] = await Promise.all([
-    prisma.offer.count({ where: { customerEmail: data.customerEmail, status: { in: [...OPEN_OFFER_STATUSES] } } }),
-    prisma.offer.count({ where: { customerEmail: data.customerEmail, createdAt: { gte: dayAgo } } }),
+    prisma.offer.count({ where: { customerEmail, status: { in: [...OPEN_OFFER_STATUSES] } } }),
+    prisma.offer.count({ where: { customerEmail, createdAt: { gte: dayAgo } } }),
     data.submissionIp
       ? prisma.offer.count({ where: { submissionIp: data.submissionIp, createdAt: { gte: dayAgo } } })
       : Promise.resolve(0),
   ])
   const guard =
-    checkOpenOfferLimit(data.customerEmail, openCount) ??
-    checkDailyEmailLimit(data.customerEmail, recentForEmail) ??
+    checkOpenOfferLimit(customerEmail, openCount) ??
+    checkDailyEmailLimit(customerEmail, recentForEmail) ??
     checkDailyIpLimit(data.submissionIp, recentForIp)
   if (guard) {
     throw Object.assign(new Error(offerGuardMessage(guard)), { status: 429 })
@@ -88,7 +97,7 @@ export async function submitOffer(data: SubmitOfferInput) {
       offerNumber: await generateOfferNumber(),
       productId,
       customerId: customerId || undefined,
-      customerEmail: data.customerEmail,
+      customerEmail,
       offeredPrice,
       quantity,
       message: data.message,
@@ -96,7 +105,7 @@ export async function submitOffer(data: SubmitOfferInput) {
       status: 'pending',
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
     },
-    include: { product: { select: { id: true, name: true, regularPrice: true } } },
+    include: { product: { select: { id: true, name: true, regularPrice: true, currency: true } } },
   })
 
   await logAudit({
@@ -113,6 +122,7 @@ export async function submitOffer(data: SubmitOfferInput) {
     productName: product.name,
     offeredPrice,
     customerEmail: data.customerEmail,
+    currency: product.currency || 'USD',
   }).catch(() => {})
 
   return offer
@@ -236,7 +246,14 @@ export async function createOfferOrder(offerId: string, customerId: string, ship
   state?: string
   postalCode?: string
   country: string
-}) {
+}, termsAccepted: boolean) {
+  if (termsAccepted !== true) {
+    throw Object.assign(
+      new Error('You must accept the Terms of Service, Privacy Policy and Refund Policy before paying this offer.'),
+      { status: 400 },
+    )
+  }
+
   const offer = await prisma.offer.findUnique({
     where: { id: offerId },
     include: {
@@ -272,6 +289,7 @@ export async function createOfferOrder(offerId: string, customerId: string, ship
   const subtotal = Math.round(negotiatedUnit * offer.quantity * 100) / 100
 
   const { shippingCost, tax, total } = await computeOrderTotals(subtotal, shipping.country)
+  const currency = await getStoreCurrency()
 
   // Guarded flip to awaiting-payment makes concurrent double-clicks safe:
   // only the first request proceeds to order creation.
@@ -297,7 +315,11 @@ export async function createOfferOrder(offerId: string, customerId: string, ship
         status: 'pending',
         paymentMethod: 'paypal',
         paymentStatus: 'pending',
-        subtotal, shippingCost, tax, total, currency: product.currency || 'USD',
+        subtotal, shippingCost, tax, total, currency,
+        // The accepted-offer flow is still a checkout and must carry the same
+        // legal acceptance proof as the normal storefront order.
+        termsAcceptedAt: new Date(),
+        termsVersion: CURRENT_TERMS_VERSION,
         // Historical pricing snapshot — immutable once paid.
         originalListedPrice: listedUnit,
         negotiatedPrice: negotiatedUnit,
@@ -327,7 +349,7 @@ export async function createOfferOrder(offerId: string, customerId: string, ship
       data: {
         orderId: order.id,
         status: 'pending',
-        note: `Created from accepted offer ${offer.offerNumber} — negotiated $${negotiatedUnit.toFixed(2)} (listed $${listedUnit.toFixed(2)})`,
+        note: `Created from accepted offer ${offer.offerNumber} — negotiated ${formatMoney(negotiatedUnit, currency)} (listed ${formatMoney(listedUnit, currency)})`,
       },
     })
     // Link the offer to its order. If this write fails the transaction-style

@@ -3,6 +3,7 @@ import { optionalCustomerAuth, AuthRequest } from '../../middleware/auth.js'
 import { asyncHandler, validateBody } from '../../middleware/validate.js'
 import { z } from 'zod'
 import { PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET } from '../../utils/paypal.js'
+import { getStoreCurrency } from '../../services/settingsService.js'
 import { sendSuccess, sendError } from '../../middleware/response.js'
 import * as paypalService from '../../services/paypalService.js'
 
@@ -13,7 +14,10 @@ router.get('/client-id', asyncHandler(async (_req, res) => {
   if (!PAYPAL_CLIENT_ID) {
     return sendError(res, 'PayPal not configured', 503)
   }
-  sendSuccess(res, { clientId: PAYPAL_CLIENT_ID })
+  // The SDK must load with the store's settlement currency. Loading USD and
+  // then charging EUR makes PayPal reject the create-order call.
+  const currency = await getStoreCurrency()
+  sendSuccess(res, { clientId: PAYPAL_CLIENT_ID, currency })
 }))
 
 // ─── Create PayPal Order ─────────────────────────────────────

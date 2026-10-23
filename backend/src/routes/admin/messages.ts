@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { authenticateAdmin, requireRole, AuthRequest } from '../../middleware/auth.js'
+import { authenticateAdmin, requireRole, requireReadAccess, AuthRequest } from '../../middleware/auth.js'
 import { asyncHandler, validateBody } from '../../middleware/validate.js'
 import { z } from 'zod'
 import { sendSuccess, sendError } from '../../middleware/response.js'
@@ -7,6 +7,8 @@ import * as messageService from '../../services/messageService.js'
 
 const router = Router()
 router.use(authenticateAdmin)
+// Contact messages contain the sender's name, email, and message body.
+router.use(requireReadAccess('messages'))
 
 const composeSchema = z.object({
   to: z.string().email(),

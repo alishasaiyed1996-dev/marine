@@ -82,6 +82,7 @@ const paySchema = z.object({
     postalCode: z.string().optional(),
     country: z.string().min(1),
   }),
+  termsAccepted: z.literal(true),
 })
 
 // ─── Create the payment order for an accepted offer ───────────
@@ -89,7 +90,12 @@ const paySchema = z.object({
 // product price, shipping and tax are computed server-side from stored data.
 router.post('/:id/pay', authenticateCustomer, validateParams(idParamsSchema), validateBody(paySchema), asyncHandler(async (req: AuthRequest, res) => {
   try {
-    const order = await offerService.createOfferOrder(req.params.id as string, req.user!.id, req.body.shipping)
+    const order = await offerService.createOfferOrder(
+      req.params.id as string,
+      req.user!.id,
+      req.body.shipping,
+      req.body.termsAccepted,
+    )
     sendSuccess(res, { order }, 201)
   } catch (err: unknown) {
     const e = err as { message?: string; status?: number }
