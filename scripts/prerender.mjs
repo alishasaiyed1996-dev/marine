@@ -24,7 +24,8 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { getAllRoutes } from './prerender-routes.mjs'
-import { fetchPublishedProducts, fetchSiteSeoSettings, extractIdentityQuick, extractProductTypeQuick, buildProductTitleQuick } from './fetch-products.mjs'
+import { fetchPublishedProducts, fetchSiteSeoSettings } from './fetch-products.mjs'
+import { buildProductPage, renderProductBodyHtml } from '../shared/product-page.mjs'
 
 const distArgIndex = process.argv.indexOf('--dist')
 const DIST = distArgIndex !== -1 && process.argv[distArgIndex + 1]
@@ -72,14 +73,36 @@ const LOCALE_DIR_MAP = { en: 'ltr', ar: 'rtl', es: 'ltr' }
 
 // ─── Hreflang Tags ──────────────────────────────────────────────
 
+/** The locales that ship a translated equivalent of every page. */
+const HREFLANG_LOCALES = ['en', 'ar', 'es']
+
 /**
- * Generate hreflang <link> tags for all three locales plus x-default.
- * @param {string} path - The FULL locale-prefixed path, e.g. "/en/products"
+ * Generate hreflang <link> tags for all shipped locales plus x-default.
+ *
+ * The audit found the hreflang generator returning an empty string while AR
+ * and ES pages were served to users. Every locale now has a translated
+ * prerendered equivalent, so each page declares its reciprocal alternates and
+ * the English page is the x-default.
+ *
+ * @param {string} path - The FULL locale-prefixed path, e.g. "/en/products/"
  */
-function hreflangTags() {
-  // Do not claim untranslated Arabic/Spanish equivalents. Add reciprocal
-  // locale alternates only when localized content is available.
-  return ''
+function hreflangTags(path) {
+  // Strip the locale prefix so the alternates point at the same page in
+  // every language: "/en/products/" → "/products/".
+  const withoutLocale = String(path || '/')
+    .replace(/^\/(en|ar|es)(?=\/|$)/, '')
+  const suffix = withoutLocale === '' ? '/' : withoutLocale
+
+  const tags = HREFLANG_LOCALES.map((locale) => {
+    // The English page is canonical under /en/ (the bare path 301s to it),
+    // so every alternate must carry its locale prefix.
+    const localePath = `/${locale}${suffix}`
+    return `<link rel="alternate" hreflang="${locale}" href="${BASE_URL}${localePath}" />`
+  })
+  // x-default points at the English page, which is the fallback for any
+  // language the site does not translate.
+  tags.push(`<link rel="alternate" hreflang="x-default" href="${BASE_URL}/en${suffix}" />`)
+  return tags.join('\n  ')
 }
 
 // ─── JSON-LD Generators ─────────────────────────────────────────
@@ -131,64 +154,19 @@ function breadcrumbJsonLd(segments) {
   }
 }
 
-/**
- * Product JSON-LD built from REAL product data (fetched from the API at
- * build time). Replaces the old getProductPrice() that fabricated a price
- * from the product UUID — a Google rich-results policy violation. Identity
- * (model/MPN/IMPA) comes from Item Specifics the admin recorded; unknown
- * fields are omitted, and IMPA is additionalProperty (never GTIN).
- */
-function productJsonLd(p, locale) {
-  const identity = extractIdentityQuick(p.description, {
-    manufacturer: p.manufacturer,
-    modelNumber: p.modelNumber,
-    mpn: p.mpn,
-    impaCode: p.impaCode,
-  })
-  const productType = extractProductTypeQuick(p.name, p.category)
-  const brand = p.brand && p.brand !== 'Unknown' ? p.brand : undefined
-  const h1 = [brand, identity.model || identity.mpn, productType].filter(Boolean).join(' ') || p.name.slice(0, 80)
-  const effectivePrice = p.onSale && p.salePrice ? Number(p.salePrice) : Number(p.price || 0)
-  const mainImage = p.images?.[0]?.url
-  const canonical = `${BASE_URL}/${locale}/product/${p.slug || p.id}/`
-
-  const product = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: h1,
-    description: plainText(p.seoDescription || p.description || p.shortDescription || p.name, 300),
-    url: canonical,
-    mainEntityOfPage: canonical,
-    sku: p.sku,
-    ...(identity.mpn || p.mpn ? { mpn: identity.mpn || p.mpn } : {}),
-    ...(brand ? { brand: { '@type': 'Brand', name: brand } } : {}),
-    ...(p.categoryName ? { category: p.categoryName } : {}),
-    ...(mainImage ? { image: [mainImage] } : {}),
-    ...(identity.impa || p.impaCode
-      ? { additionalProperty: [{ '@type': 'PropertyValue', name: 'IMPA Code', value: String(identity.impa || p.impaCode).replace(/\s+/g, '') }] }
-      : {}),
-    ...(effectivePrice > 0 ? { offers: {
-      '@type': 'Offer',
-      url: canonical,
-      priceCurrency: 'USD',
-      price: effectivePrice.toFixed(2),
-      availability: p.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-      itemCondition: p.condition === 'new' || p.condition === 'unused'
-        ? 'https://schema.org/NewCondition'
-        : p.condition === 'refurbished' || p.condition === 'reconditioned'
-          ? 'https://schema.org/RefurbishedCondition'
-          : 'https://schema.org/UsedCondition',
-      seller: { '@type': 'Organization', '@id': `${BASE_URL}/#organization`, name: SITE_NAME },
-    } } : {}),
-  }
-  return product
-}
-
 // ─── SEO Head Generator ─────────────────────────────────────────
 
-function seoHeadTags({ path, title, description, locale = 'en', extraJsonLd, breadcrumbs, ogType, ogImage, ogImageAlt }) {
+function seoHeadTags({ path, title, description, locale = 'en', extraJsonLd, breadcrumbs, ogType, ogImage, ogImageAlt, titleSuffix = 'always' }) {
   const rawTitle = plainText(title) || `${SITE_NAME} — Marine & Industrial Equipment Supplier`
-  const fullTitle = /(?:^|[|\-–—])\s*Alka Traders\s*(?:$|[|\-–—])/i.test(rawTitle) ? rawTitle : `${rawTitle} | ${SITE_NAME}`
+  const hasBrand = /(?:^|[|\-–—])\s*Alka Traders\s*(?:$|[|\-–—])/i.test(rawTitle)
+  const brandSuffix = ` | ${SITE_NAME}`
+  // Product titles are written to the ~60 character SERP budget. "auto"
+  // mirrors SEO.tsx: only spend space on the site name when it fits.
+  const fullTitle = hasBrand
+    ? rawTitle
+    : titleSuffix === 'auto'
+      ? (rawTitle.length + brandSuffix.length <= 60 ? `${rawTitle}${brandSuffix}` : rawTitle)
+      : `${rawTitle}${brandSuffix}`
   const fullDesc = plainText(description).slice(0, 160) || DEFAULT_DESC
   const url = `${BASE_URL}${canonicalPath(path)}`
   const image = ogImage || LOGO_URL
@@ -223,7 +201,7 @@ function seoHeadTags({ path, title, description, locale = 'en', extraJsonLd, bre
   const tags = [
     `<title data-rh="true">${esc(fullTitle)}</title>`,
     `<meta data-rh="true" name="description" content="${esc(fullDesc)}" />`,
-    `<meta data-rh="true" name="robots" content="${locale === 'en' ? 'index, follow, max-image-preview:large, max-snippet:-1' : 'noindex, follow'}" />`,
+    `<meta data-rh="true" name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />`,
     `<link data-rh="true" rel="canonical" href="${url}" />`,
     hreflangTags(path),
 
@@ -388,54 +366,6 @@ function injectIntoTemplate(template, path, routeData) {
   return html
 }
 
-function generateProductBody({ p, identity, h1, metaDescription, productPath, locale, related }) {
-  const categorySlug = p.categorySlug || p.category || ''
-  const categoryName = p.categoryName || String(categorySlug).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-  const breadcrumbs = [
-    { name: 'Home', path: `/${locale}/` },
-    { name: 'Products', path: `/${locale}/products/` },
-    ...(categorySlug ? [{ name: categoryName, path: `/${locale}/categories/${categorySlug}/` }] : []),
-    { name: h1, path: productPath },
-  ]
-  const image = p.images?.[0]
-  const relatedLinks = (related || [])
-    .map((item) => `<li><a href="/${locale}/product/${item.slug || item.id}/">${esc(item.name)}</a></li>`)
-    .join('')
-
-  return `<div class="seo-shell">
-      ${breadcrumbNav(breadcrumbs)}
-      <main>
-        <article>
-          <h1>${esc(h1)}</h1>
-          ${image?.url ? `<img src="${esc(image.url)}" alt="${esc(image.alt || h1)}" width="640" height="640" fetchpriority="high">` : ''}
-          <p>${esc(metaDescription)}</p>
-          <h2>Product details</h2>
-          <dl>
-            ${p.sku ? `<dt>SKU</dt><dd>${esc(p.sku)}</dd>` : ''}
-            ${identity.mpn ? `<dt>MPN</dt><dd>${esc(identity.mpn)}</dd>` : ''}
-            ${identity.impa ? `<dt>IMPA</dt><dd>${esc(identity.impa)}</dd>` : ''}
-            ${p.brand && p.brand !== 'Unknown' ? `<dt>Brand</dt><dd>${p.brandSlug ? `<a href="/${locale}/brands/${p.brandSlug}/">${esc(p.brand)}</a>` : esc(p.brand)}</dd>` : ''}
-            ${categorySlug ? `<dt>Category</dt><dd><a href="/${locale}/categories/${categorySlug}/">${esc(categoryName)}</a></dd>` : ''}
-            <dt>Condition</dt><dd>${esc(p.condition || 'used')}</dd>
-            <dt>Availability</dt><dd>${p.inStock ? 'In stock' : 'Check availability'}</dd>
-          </dl>
-          <p><a href="/${locale}/rfq/">Request a quote for ${esc(p.name)}</a></p>
-        </article>
-        ${relatedLinks ? `<aside><h2>Related parts</h2><ul>${relatedLinks}</ul></aside>` : ''}
-        <section>
-          <h2>Browse more</h2>
-          <ul>
-            <li><a href="/${locale}/products/">All marine and industrial spare parts</a></li>
-            ${categorySlug ? `<li><a href="/${locale}/categories/${categorySlug}/">More ${esc(categoryName)}</a></li>` : ''}
-            <li><a href="/${locale}/brands/">Equipment brands</a></li>
-            <li><a href="/${locale}/emergency/">Emergency procurement</a></li>
-          </ul>
-        </section>
-      </main>
-      ${shellFooterNav()}
-    </div>`
-}
-
 // ─── File Writer ────────────────────────────────────────────────
 
 function writeHtml(path, html) {
@@ -561,60 +491,37 @@ async function main() {
   const products = await fetchPublishedProducts()
   console.log(`  📦 Fetched ${products.length} published products from the API\n`)
   for (const p of products) {
-    const identity = extractIdentityQuick(p.description, {
-      manufacturer: p.manufacturer,
-      modelNumber: p.modelNumber,
-      mpn: p.mpn,
-      impaCode: p.impaCode,
-    })
-    const productType = extractProductTypeQuick(p.name, p.category)
-    const brand = p.brand && p.brand !== 'Unknown' ? p.brand : undefined
-    const h1 = [brand, identity.model || identity.mpn, productType].filter(Boolean).join(' ') || p.name.slice(0, 80)
-
     const canonicalSlug = p.slug || p.id
-    const related = products
-      .filter((candidate) => candidate.slug !== canonicalSlug && candidate.category === p.category)
-      .slice(0, 6)
+    const categorySiblings = products.filter(
+      (candidate) => candidate.slug !== canonicalSlug && candidate.category === p.category,
+    )
+    // Prefer same-brand parts, then the rest of the category. This gives each
+    // product page useful, topically related outbound links.
+    const related = [
+      ...categorySiblings.filter((candidate) => p.brand && candidate.brand === p.brand),
+      ...categorySiblings.filter((candidate) => !p.brand || candidate.brand !== p.brand),
+    ].slice(0, 8)
 
     // Product descriptions and metadata currently have no verified per-locale
     // translations. Publish only English product URLs until translations exist.
     for (const locale of ['en']) {
-      const parts = [brand ? `${brand} ${productType.toLowerCase()}` : `${productType.toLowerCase()} (${p.sku}) supplied by Alka Traders`]
-      if (identity.impa) parts.push(`IMPA ${identity.impa.replace(/\s+/g, '')}`)
-      if (identity.size) parts.push(identity.size)
-      if (identity.material) parts.push(identity.material.toLowerCase())
-      parts.push(p.inStock ? 'in stock for export dispatch' : 'check availability with our procurement team')
-      const metaDesc = `${parts.join(', ').replace(/,\s*\./, '.')}.`.slice(0, 158)
+      // Same builder used by React and the runtime server: identical title,
+      // meta, H1, specs, sections, FAQs, breadcrumbs and JSON-LD.
+      const model = buildProductPage(p, { baseUrl: BASE_URL, locale, related })
+      const productPath = model.canonicalPath
+      const bodyHtml = `<div class="seo-shell">${renderProductBodyHtml(model, { locale })}${shellFooterNav()}</div>`
 
-      const productPath = `/${locale}/product/${canonicalSlug}/`
-      const mainImage = p.images?.[0]?.url
-      const categorySlug = p.categorySlug || p.category || ''
-      const categoryName = p.categoryName || String(categorySlug).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-      const breadcrumbs = [
-        { name: 'Home', path: `/${locale}/` },
-        { name: 'Products', path: `/${locale}/products/` },
-        ...(categorySlug ? [{ name: categoryName, path: `/${locale}/categories/${categorySlug}/` }] : []),
-        { name: h1, path: productPath },
-      ]
       const html = injectIntoTemplate(template, productPath, {
-        title: p.seoTitle || buildProductTitleQuick(p),
-        description: p.seoDescription || metaDesc,
-        h1,
+        title: model.title,
+        titleSuffix: 'auto',
+        description: model.metaDescription,
         ogType: 'product',
-        ogImage: mainImage,
-        ogImageAlt: `${h1}${identity.size ? ` — ${identity.size}` : ''}`,
+        ogImage: model.ogImage,
+        ogImageAlt: model.ogImageAlt,
         locale,
-        extraJsonLd: productJsonLd(p, locale),
-        breadcrumbs,
-        bodyHtml: generateProductBody({
-          p,
-          identity,
-          h1,
-          metaDescription: p.seoDescription || metaDesc,
-          productPath,
-          locale,
-          related,
-        }),
+        extraJsonLd: model.jsonLd,
+        breadcrumbs: model.breadcrumbs,
+        bodyHtml,
       })
       writeHtml(productPath, html)
       count++

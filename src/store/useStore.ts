@@ -105,6 +105,8 @@ interface AppState {
   isSessionLoading: boolean
   showAuthModal: boolean
   authError: string | null
+  /** Neutral sign-up message (e.g. "check your inbox") — not an error. */
+  authNotice: string | null
   /** One-shot flag set after submitting an offer (product page → toast/redirect). */
   offerJustSubmitted: boolean
   login: (email: string, password: string) => Promise<boolean>
@@ -337,8 +339,9 @@ export const useStore = create<AppState>((set, get) => ({
   theme: resolveInitialTheme(),
   showAuthModal: false,
   authError: null,
+  authNotice: null,
   login: async (email: string, password: string) => {
-    set({ authError: null })
+    set({ authError: null, authNotice: null })
     try {
       const { accessToken, user } = await customerAuth.login({ email, password })
       setCustomerToken(accessToken)
@@ -351,11 +354,19 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   register: async (name, email, password, phone, company, country) => {
-    set({ authError: null })
+    set({ authError: null, authNotice: null })
     try {
-      const { accessToken, user } = await customerAuth.register({ name, email, password, phone, company, country })
-      setCustomerToken(accessToken)
-      set({ isLoggedIn: true, user, showAuthModal: false, authError: null })
+      const result = await customerAuth.register({ name, email, password, phone, company, country })
+      // The backend deliberately returns the same 201 for a new and an
+      // already-registered address. Only a real new account carries tokens.
+      if (!result.accessToken || !result.user) {
+        set({
+          authNotice: result.message || 'If this email can be used, check your inbox to continue.',
+        })
+        return false
+      }
+      setCustomerToken(result.accessToken)
+      set({ isLoggedIn: true, user: result.user, showAuthModal: false, authError: null, authNotice: null })
       saveState('auth', true)
       return true
     } catch (err: any) {
@@ -420,7 +431,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   setShowAuthModal: (showAuthModal) => set({ showAuthModal }),
-  clearAuthErrors: () => set({ authError: null, adminLoginError: null }),
+  clearAuthErrors: () => set({ authError: null, authNotice: null, adminLoginError: null }),
 
   // Cart
   cart: loadState<CartItem[]>('cart', []),

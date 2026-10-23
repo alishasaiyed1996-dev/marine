@@ -100,6 +100,27 @@ function decodeHtml(value = '') {
     .replace(/&#(\d+);/g, (_m, code) => String.fromCodePoint(Number(code)))
 }
 
+/** Visible text of an HTML fragment, used for content-depth checks. */
+function bodyText(html = '') {
+  return decodeHtml(
+    String(html)
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      // Related-product lists and site navigation are not editorial product
+      // copy. Excluding them prevents link labels from polluting duplication
+      // and word-count measurements.
+      .replace(/<aside[^>]*id="related"[\s\S]*?<\/aside>/gi, ' ')
+      .replace(/<section[^>]*id="browse-more"[\s\S]*?<\/section>/gi, ' ')
+      .replace(/<[^>]+>/g, ' '),
+  )
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function countWords(text = '') {
+  return String(text).split(/\s+/).filter((word) => /[A-Za-z0-9]/.test(word)).length
+}
+
 /** Canonical URL represented by an index.html file. */
 function urlForFile(file) {
   const rel = relative(DIST, file).replace(/\\/g, '/')
@@ -174,7 +195,10 @@ async function main() {
 
   // ── 2. Per-page metadata, content, and links ─────────────────
   const titles = new Map()
+  const descriptions = new Map()
   const canonicals = new Map()
+  const productSentences = []
+  const faqQuestionPages = new Map()
   let aliasCount = 0
 
   for (const file of pageFiles) {
@@ -220,6 +244,8 @@ async function main() {
 
     if (description) {
       const decodedDescription = decodeHtml(description)
+      if (descriptions.has(decodedDescription)) warn(`duplicate meta description (${descriptions.get(decodedDescription)} + ${file})`)
+      descriptions.set(decodedDescription, file)
       if (decodedDescription.length < 50) warn(`${file}: meta description is short (${decodedDescription.length} chars)`)
       if (decodedDescription.length > 165) warn(`${file}: meta description is ${decodedDescription.length} chars (may truncate)`)
     }
@@ -284,7 +310,97 @@ async function main() {
       if (productLd.name && h1 && decodeHtml(productLd.name) !== decodeHtml(h1)) {
         warn(`${file}: JSON-LD name != H1 ("${productLd.name}" vs "${decodeHtml(h1)}")`)
       }
+
+      // Content depth: strip chrome and scripts, then measure the actual
+      // <article>. Google has no minimum word count, so the warning threshold
+      // is deliberately low; the corpus-wide boilerplate check below is the
+      // real guard against mass-produced filler.
+      const articleHtml = extract(html, /<article[^>]*>([\s\S]*?)<\/article>/i) || html
+      const articleText = bodyText(articleHtml)
+      const words = countWords(articleText)
+      if (words < 120) warn(`${file}: thin product copy (${words} words in <article>)`)
+
+      const h2Count = (articleHtml.match(/<h2\b/gi) || []).length
+      if (h2Count < 2) warn(`${file}: only ${h2Count} H2 section(s) in product article`)
+
+      if (!/class="product-specifications"/i.test(articleHtml)) {
+        fail(`${file}: no specifications table in product body`)
+      }
+
+      const sentences = articleText
+        .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+        .map((sentence) => sentence.trim())
+        .filter((sentence) => sentence.length >= 30)
+      productSentences.push({ file, sentences, words })
+
+      const visibleQuestions = [...articleHtml.matchAll(/<div class="faq-item"><h3>(.*?)<\/h3>/g)]
+        .map((match) => decodeHtml(match[1]))
+      for (const question of new Set(visibleQuestions)) {
+        if (!faqQuestionPages.has(question)) faqQuestionPages.set(question, [])
+        faqQuestionPages.get(question).push(file)
+      }
+
+      // If FAQPage markup is present, every answer must be visible on the
+      // page. Pages without FAQ markup are fine — generic FAQs are not
+      // required for rich results and are a scaled-content risk.
+      const faqLd = blocks.find((block) => block?.['@type'] === 'FAQPage')
+      if (faqLd) {
+        const questions = Array.isArray(faqLd.mainEntity) ? faqLd.mainEntity : []
+        if (questions.length < 2) warn(`${file}: FAQPage has fewer than 2 questions`)
+        const visibleFaqs = (articleHtml.match(/class="faq-item"/g) || []).length
+        if (visibleFaqs < questions.length) {
+          fail(`${file}: ${visibleFaqs} visible FAQ item(s) for ${questions.length} FAQPage question(s)`)
+        }
+      }
     }
+  }
+
+  // ── 2b. Corpus-wide content duplication ───────────────────────
+  // Product data is naturally templated, but long identical sentences on a
+  // large share of the catalog are the signature of scaled filler. Flag them
+  // so future copy changes cannot quietly reintroduce 40% boilerplate.
+  const sentencePages = new Map()
+  for (const page of productSentences) {
+    for (const sentence of new Set(page.sentences)) {
+      if (!sentencePages.has(sentence)) sentencePages.set(sentence, [])
+      sentencePages.get(sentence).push(page.file)
+    }
+  }
+  const productCount = productSentences.length
+  const repeatedProductSentences = [...sentencePages.entries()]
+    .map(([sentence, files]) => ({ sentence, count: files.length }))
+    .filter((entry) => entry.count >= Math.ceil(productCount * 0.15))
+    .sort((a, b) => b.count - a.count)
+
+  const repeatedSentenceSet = new Set(repeatedProductSentences.map((entry) => entry.sentence))
+  let totalProductWords = 0
+  let repeatedProductWords = 0
+  for (const page of productSentences) {
+    totalProductWords += page.words
+    for (const sentence of page.sentences) {
+      if (repeatedSentenceSet.has(sentence)) {
+        repeatedProductWords += countWords(sentence)
+      }
+    }
+  }
+  const boilerplateShare = totalProductWords > 0
+    ? (repeatedProductWords / totalProductWords) * 100
+    : 0
+  if (boilerplateShare > 20) {
+    warn(`product boilerplate is ${boilerplateShare.toFixed(1)}% of article words (target <= 20%)`)
+  } else {
+    console.log(`CONTENT: ${boilerplateShare.toFixed(1)}% repeated-sentence share across product articles`)
+  }
+  for (const entry of repeatedProductSentences.slice(0, 8)) {
+    warn(`sentence appears on ${entry.count}/${productCount} product pages: "${entry.sentence.slice(0, 120)}"`)
+  }
+
+  const repeatedFaqQuestions = [...faqQuestionPages.entries()]
+    .map(([question, files]) => ({ question, count: files.length }))
+    .filter((entry) => entry.count >= Math.ceil(productCount * 0.1))
+    .sort((a, b) => b.count - a.count)
+  for (const entry of repeatedFaqQuestions.slice(0, 8)) {
+    warn(`FAQ question appears on ${entry.count}/${productCount} product pages: "${entry.question}"`)
   }
 
   if (aliasCount > 0) console.log(`ALIASES: ${aliasCount} legacy UUID redirect document(s)`)

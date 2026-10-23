@@ -1,11 +1,13 @@
 import { SEO } from '../components/seo/SEO'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 
 export default function PrivacyPolicy() {
+  const seo = useStaticPageSeo('privacy-policy')
   return (
     <div className="min-h-screen bg-[var(--primary-bg)]">
       <SEO
-        title="Privacy Policy"
-        description="Alka Traders privacy policy. How we collect, use, share, and protect your personal information including cookies, data retention, and your rights."
+        title={seo.title}
+        description={seo.description}
         canonical="/privacy-policy"
       />
       <div className="max-w-4xl mx-auto px-4 py-16">
@@ -65,13 +67,13 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="font-display text-lg font-bold text-[var(--text-primary)] mb-3">5. Behavioral Advertising</h2>
             <p className="text-sm leading-relaxed">
-              We use Google Analytics Advertising Features for remarketing to advertise across the Internet. Remarketing will display relevant ads tailored to you based on what features of the Alka Traders website you have viewed by placing a cookie on your machine.
+              We use Google Analytics to understand how the site is used. Where advertising features and remarketing are enabled in our Google Analytics property, Google may place a cookie on your machine to show ads relevant to the pages you viewed. Google Analytics and any remarketing only run <strong>after you accept analytics cookies</strong> in the cookie notice — declining leaves the site fully usable and no analytics identifier is set.
             </p>
             <p className="text-sm leading-relaxed mt-3">
               THIS COOKIE DOES NOT IN ANY WAY IDENTIFY YOU OR GIVE ACCESS TO YOUR COMPUTER. The cookie is used to say "This person visited this page, so show them ads relating to that page."
             </p>
             <p className="text-sm leading-relaxed mt-3">
-              Google Analytics remarketing allows us to tailor our merchandising to better suit your needs and display ads that are relevant to you. If you do not wish to participate in our remarketing, you can opt-out by using the Google Analytics Opt-out Browser Add-on.
+              You can change your choice at any time by clearing this site's storage in your browser and choosing again in the cookie notice. You can also opt out of Google Analytics remarketing using the Google Analytics Opt-out Browser Add-on.
             </p>
           </section>
 

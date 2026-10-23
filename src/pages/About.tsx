@@ -5,17 +5,19 @@ import { MapPin, Clock } from 'lucide-react'
 import { offices, timelineEvents } from '../data/testimonials'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 
 export default function About() {
   const { t } = useTranslation()
+  const seo = useStaticPageSeo('about')
   const timelineRef = useRef<HTMLDivElement>(null!)
   const timelineInView = useInView(timelineRef, { once: true, amount: 0.2 })
 
   return (
     <div>
       <SEO
-        title="About Us — Marine Equipment Specialists"
-        description="Alka Traders — globally connected marine and industrial equipment supplier based in Bhavnagar, Gujarat, India. Since 1990 — 35+ years of industry expertise."
+        title={seo.title}
+        description={seo.description}
         canonical="/about"
       />
       <BreadcrumbJsonLd items={[{ name: 'Home', url: '/' }, { name: 'About', url: '/about' }]} />

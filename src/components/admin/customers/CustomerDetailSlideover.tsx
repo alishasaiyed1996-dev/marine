@@ -182,7 +182,7 @@ export function CustomerDetailSlideover({ customer, onClose, onStatusChange, onS
             {editingDetails ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2"><label className={detailLabelClass}>Full Name</label><input value={details.name} onChange={(e) => setDetail('name', e.target.value)} className={detailInputClass} /></div>
-                <div><label className={detailLabelClass}>Phone</label><input value={details.phone} onChange={(e) => setDetail('phone', e.target.value)} placeholder="+971 50 ..." className={detailInputClass} /></div>
+                <div><label className={detailLabelClass}>Phone</label><input value={details.phone} onChange={(e) => setDetail('phone', e.target.value)} placeholder="+91 98765 43210" className={detailInputClass} /></div>
                 <div><label className={detailLabelClass}>Company</label><input value={details.company} onChange={(e) => setDetail('company', e.target.value)} className={detailInputClass} /></div>
                 <div><label className={detailLabelClass}>Country</label><input value={details.country} onChange={(e) => setDetail('country', e.target.value)} className={detailInputClass} /></div>
                 <div><label className={detailLabelClass}>City</label><input value={details.city} onChange={(e) => setDetail('city', e.target.value)} className={detailInputClass} /></div>

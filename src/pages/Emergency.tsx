@@ -6,12 +6,14 @@ import { useStoreSettings } from '../hooks/useStoreSettings'
 import { usePersistentState } from '../hooks/usePersistentState'
 import { WhatsAppIcon } from '../components/ui/WhatsAppIcon'
 import { storefront } from '../lib/api'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 import { SEO } from '../components/seo/SEO'
 
 const INITIAL_EMERGENCY_FORM = { name: '', phone: '', partDescription: '', vesselName: '' }
 
 export default function Emergency() {
   const { t } = useTranslation()
+  const seo = useStaticPageSeo('emergency')
   const clockSectionRef = useRef<HTMLDivElement>(null!)
   const clockInView = useInView(clockSectionRef, { once: true, amount: 0.3 })
   const [submitted, setSubmitted] = useState(false)
@@ -24,8 +26,8 @@ export default function Emergency() {
   return (
     <div className="relative">
       <SEO
-        title="Emergency Procurement — 24/7 Marine Parts Support"
-        description="Emergency marine and industrial parts procurement — 24/7 support, 18-hour delivery record. Send part details via WhatsApp or phone for immediate response."
+        title={seo.title}
+        description={seo.description}
         canonical="/emergency"
       />
       {/* Dark red gradient overlay */}

@@ -6,6 +6,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useIndustries } from '../hooks/useApiQuery'
 import { useLocalizedPath } from '../lib/locale'
 import { SEO } from '../components/seo/SEO'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { Skeleton } from '../components/ui/Skeleton'
 
@@ -14,6 +15,7 @@ const iconMap: Record<string, LucideIcon> = {
 }
 
 export default function Industries() {
+  const seo = useStaticPageSeo('industries')
   const { t } = useTranslation()
   const lp = useLocalizedPath()
 
@@ -35,8 +37,8 @@ export default function Industries() {
   return (
     <div>
       <SEO
-        title="Industries Served — Marine, Oil & Gas, Power Generation"
-        description="Alka Traders serves marine shipping, oil and gas, power generation, manufacturing, chemical processing, shipbuilding, and mining industries with specialized equipment."
+        title={seo.title}
+        description={seo.description}
         canonical="/industries"
       />
       <BreadcrumbJsonLd items={[{ name: 'Home', url: '/' }, { name: 'Industries', url: '/industries' }]} />

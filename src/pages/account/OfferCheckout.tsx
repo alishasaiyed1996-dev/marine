@@ -9,6 +9,8 @@ import {
 import { storefront } from '../../lib/api'
 import { useLocalizedPath } from '../../lib/locale'
 import { usePayPalAvailability } from '../../hooks/usePayPalAvailability'
+import { useStoreSettings } from '../../hooks/useStoreSettings'
+import { formatMoney } from '../../lib/utils'
 import { useStore } from '../../store/useStore'
 import { OptimizedImage } from '../../components/ui/OptimizedImage'
 
@@ -41,10 +43,15 @@ export default function OfferCheckout() {
   const user = useStore((s) => s.user)
   const queryClient = useQueryClient()
   const { configured: paypalConfigured, loading: paypalScriptLoading } = usePayPalAvailability()
+  const settings = useStoreSettings()
+  const currency = settings.currency || 'USD'
+  const money = (value: number) => formatMoney(value, currency)
 
   const [shipping, setShipping] = useState<Shipping>(EMPTY_SHIPPING)
   const [errors, setErrors] = useState<Record<string, boolean>>({})
   const [order, setOrder] = useState<{ id: string; orderNumber: string } | null>(null)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [termsError, setTermsError] = useState(false)
   // PayPal callbacks are created when the buttons mount; state read inside
   // them can be stale. The ref always holds the order created for this approval
   // attempt without forcing the buttons to remount.
@@ -146,6 +153,11 @@ export default function OfferCheckout() {
 
   const startPayment = async (): Promise<string | null> => {
     if (!validateShipping()) return null
+    if (!termsAccepted) {
+      setTermsError(true)
+      return null
+    }
+    setTermsError(false)
     setPayError('')
     try {
       // Server prices the order from the stored offer; idempotent per offer.
@@ -157,7 +169,7 @@ export default function OfferCheckout() {
         state: shipping.state || undefined,
         postalCode: shipping.postalCode || undefined,
         country: shipping.country,
-      })
+      }, true)
       const created = res.order
       if (!created?.id) throw new Error('Failed to create payment order')
       orderRef.current = { id: created.id, orderNumber: created.orderNumber }
@@ -321,20 +333,50 @@ export default function OfferCheckout() {
             <div className="space-y-1.5 pt-2 border-t border-[var(--border)] text-sm">
               <div className="flex justify-between text-[var(--text-secondary)]">
                 <span>Listed price</span>
-                <span className={savings > 0 ? 'line-through text-[var(--text-muted)]' : ''}>${listed.toFixed(2)}</span>
+                <span className={savings > 0 ? 'line-through text-[var(--text-muted)]' : ''}>{money(listed)}</span>
               </div>
               <div className="flex justify-between font-semibold text-[var(--text-primary)]">
                 <span>Accepted offer</span>
-                <span className="text-[var(--success)]">${accepted.toFixed(2)}</span>
+                <span className="text-[var(--success)]">{money(accepted)}</span>
               </div>
               {savings > 0 && (
-                <p className="text-xs text-[var(--success)] font-semibold">You save ${(savings * qty).toFixed(2)}</p>
+                <p className="text-xs text-[var(--success)] font-semibold">You save {money(savings * qty)}</p>
               )}
             </div>
 
             <p className="text-[0.6875rem] text-[var(--text-muted)] leading-relaxed pt-2 border-t border-[var(--border)]">
               Shipping and tax are calculated by the server for your country and shown at PayPal before you approve the payment.
             </p>
+
+            <div className="pt-2 border-t border-[var(--border)]">
+              <div className="flex items-start gap-2.5">
+                <input
+                  id="offer-checkout-terms"
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => {
+                    setTermsAccepted(e.target.checked)
+                    if (e.target.checked) setTermsError(false)
+                  }}
+                  aria-invalid={termsError || undefined}
+                  aria-describedby={termsError ? 'offer-checkout-terms-error' : undefined}
+                  className="mt-0.5 w-4 h-4 accent-[var(--accent-primary)] cursor-pointer shrink-0"
+                />
+                <label htmlFor="offer-checkout-terms" className="text-[0.6875rem] text-[var(--text-secondary)] leading-relaxed cursor-pointer">
+                  {t('checkout.termsAccept')}{' '}
+                  <Link to={lp('/terms-of-service')} className="text-[var(--accent-primary)] underline">{t('checkout.termsLink')}</Link>
+                  {', '}
+                  <Link to={lp('/privacy-policy')} className="text-[var(--accent-primary)] underline">{t('checkout.privacyLink')}</Link>
+                  {', '}
+                  <Link to={lp('/refund-policy')} className="text-[var(--accent-primary)] underline">{t('checkout.refundLink')}</Link>
+                </label>
+              </div>
+              {termsError && (
+                <p id="offer-checkout-terms-error" className="mt-2 text-xs text-[var(--danger)]" role="alert">
+                  {t('checkout.termsAcceptError')}
+                </p>
+              )}
+            </div>
 
             {payError && <p className="text-xs text-[var(--danger)]">{payError}</p>}
 
@@ -354,6 +396,13 @@ export default function OfferCheckout() {
                     const paypalOrderId = await startPayment()
                     if (!paypalOrderId) throw new Error('Unable to start payment')
                     return paypalOrderId
+                  }}
+                  onClick={(_data, actions) => {
+                    if (!termsAccepted) {
+                      setTermsError(true)
+                      return actions.reject()
+                    }
+                    return actions.resolve()
                   }}
                   onApprove={handleApprove}
                   onError={() => setPayError('PayPal encountered an error. Please try again.')}

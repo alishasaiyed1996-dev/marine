@@ -2,16 +2,20 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { Truck, Shield, Loader2 } from 'lucide-react'
-import { useStore, type SkippedCartItem } from '../store/useStore'
-import { storefront } from '../lib/api'
+import { Truck, Shield, Loader2, AlertTriangle } from 'lucide-react'
+import { useStore } from '../store/useStore'
+import { storefront, ApiError } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
-import { calcShippingCost } from '../lib/shipping'
+import { calcShippingCost, findZoneForCountry } from '../lib/shipping'
+import { isDomesticCountry } from '../lib/tax'
 import { useLocalizedPath } from '../lib/locale'
 import { usePayPalAvailability } from '../hooks/usePayPalAvailability'
+import { requiresPostalCode, requiresState } from '../lib/address'
+import { loadOrderConfirmation, saveOrderConfirmation, clearOrderConfirmation } from '../lib/orderConfirmation'
+import { trackBeginCheckout, trackPurchase } from '../lib/analytics'
 import { SEO } from '../components/seo/SEO'
 import { CheckoutSuccess } from './checkout/CheckoutSuccess'
-import { CheckoutShipping } from './checkout/CheckoutShipping'
+import { CheckoutShipping, type ShippingDetails } from './checkout/CheckoutShipping'
 import { CheckoutPayment } from './checkout/CheckoutPayment'
 import { CheckoutReview } from './checkout/CheckoutReview'
 
@@ -29,7 +33,7 @@ export default function Checkout() {
     cancelReason, setCancelReason,
   } = useStore()
 
-  const [shipping, setShipping] = useState({
+  const [shipping, setShipping] = useState<ShippingDetails>({
     fullName: '',
     email: '',
     addressLine1: '',
@@ -38,12 +42,19 @@ export default function Checkout() {
     state: '',
     postalCode: '',
     country: 'IN',
+    phone: '',
+    company: '',
+    taxId: '',
   })
   const [paymentMethod, setPaymentMethod] = useState('bank-transfer')
   const [errors, setErrors] = useState<Record<string, boolean>>({})
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [termsError, setTermsError] = useState(false)
   const [cancelSubmitted, setCancelSubmitted] = useState(false)
   const [orderLoading, setOrderLoading] = useState(false)
   const [orderError, setOrderError] = useState('')
+  // Guest email restored from a previous confirmation (see orderConfirmation).
+  const [restoredGuestEmail, setRestoredGuestEmail] = useState<string | undefined>(undefined)
 
   // Real PayPal states
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null)
@@ -57,6 +68,10 @@ export default function Checkout() {
   // shipping, cart, or the payment method changes, that order must not be
   // reused — otherwise the customer confirms stale details.
   const createdOrderFingerprintRef = useRef('')
+  // Set when a 409 was already explained to the customer (unavailable cart
+  // lines). PayPal's onError must not replace that specific message with its
+  // generic "PayPal encountered an error" copy.
+  const checkoutErrorHandledRef = useRef(false)
 
   // PayPal's redirect flow (used when the popup is blocked or a redirect-only
   // funding source is chosen) comes back to /checkout?paypal=success&orderId=…
@@ -68,6 +83,11 @@ export default function Checkout() {
     () => searchParams.get('paypal') === 'success'
       && Boolean(searchParams.get('orderId') && searchParams.get('token'))
   )
+
+  const settings = useStoreSettings()
+  const currency = settings.currency || 'USD'
+  const bankDetails = settings.bankDetails
+  const letterOfCredit = settings.letterOfCredit
 
   useEffect(() => {
     const paypalStatus = searchParams.get('paypal')
@@ -114,7 +134,7 @@ export default function Checkout() {
             shippingCost: Number(result.shippingCost ?? 0),
             tax: Number(result.tax ?? 0),
             total: Number(result.total ?? 0),
-            currency: result.currency || 'USD',
+            currency: result.currency || currency,
             shippingEmail: result.shippingEmail ?? null,
           })
         } else {
@@ -138,7 +158,7 @@ export default function Checkout() {
     })()
 
     return () => { active = false }
-  }, [searchParams, setSearchParams, isSessionLoading, setOrderPlaced, setOrderSummary, clearCart, setCheckoutStep])
+  }, [searchParams, setSearchParams, isSessionLoading, setOrderPlaced, setOrderSummary, clearCart, setCheckoutStep, currency])
 
   const checkoutFingerprint = useCallback(() => JSON.stringify({
     paymentMethod,
@@ -160,9 +180,30 @@ export default function Checkout() {
         ...prev,
         fullName: prev.fullName || user.name,
         email: prev.email || user.email || '',
+        phone: prev.phone || user.phone || '',
+        company: prev.company || user.company || '',
       }))
     }
   }, [user])
+
+  // Restore a previous order confirmation after a refresh. Without this the
+  // success page is empty and the checkout bounces the customer to /products.
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (restoredRef.current) return
+    restoredRef.current = true
+    if (orderPlaced) return
+    const stored = loadOrderConfirmation()
+    if (!stored) return
+    useStore.setState({
+      orderId: stored.orderId,
+      orderSummary: stored.orderSummary,
+      orderSkippedItems: stored.orderSkippedItems ?? [],
+      orderPlaced: true,
+    })
+    setRestoredGuestEmail(stored.guestEmail)
+    setCheckoutStep(1)
+  }, [orderPlaced, setCheckoutStep])
 
   // Redirect if empty cart (guest checkout is allowed). While a PayPal return
   // is being captured the order may already be placed and the cart cleared.
@@ -172,7 +213,6 @@ export default function Checkout() {
     }
   }, [cart.length, orderPlaced, paypalReturnRestoring, navigate, lp])
 
-  const settings = useStoreSettings()
   const subtotal = getCartTotal()
   // Display-only estimate — the server recalculates and enforces the real
   // totals. Shipping is priced from the admin-configured zones for the chosen
@@ -184,11 +224,23 @@ export default function Checkout() {
     baseShippingCost: settings.shippingCost,
     freeShippingThreshold: settings.freeShippingThreshold,
   })
-  const tax = Math.round(subtotal * settings.taxRate * 100) / 100
+  const tax = isDomesticCountry(shipping.country, settings.country)
+    ? Math.round(subtotal * settings.taxRate * 100) / 100
+    : 0
   const total = subtotal + shippingCost + tax
+  // Delivery estimate comes from the shipping zone for the chosen country.
+  const deliveryEstimate = findZoneForCountry(settings.shippingZones, shipping.country)?.estimatedDays
 
-  // Only offer payment methods the admin has enabled in Settings. L/C is an
-  // offline arrangement, so it is presented alongside bank transfer.
+  // Only offer payment methods the admin has enabled in Settings AND that the
+  // customer can actually use.
+  //   - Bank transfer is only offered when the store has configured a payable
+  //     account — an order without payment instructions is a dead end.
+  //   - Letter of credit is a separate offline arrangement and is offered on
+  //     its own, with the accepting banks and the document list.
+  const bankTransferPayable = Boolean(bankDetails.accountNumber && bankDetails.accountName)
+  const letterOfCreditAvailable = Boolean(
+    letterOfCredit.acceptingBanks || letterOfCredit.documentsRequired,
+  )
   const availablePaymentMethods = useMemo(() => {
     const ids = new Set<string>()
     for (const pm of settings.paymentMethods) {
@@ -197,23 +249,30 @@ export default function Checkout() {
       // still loading, keep it listed to avoid a visible flicker.
       if (pm.type === 'paypal') {
         if (paypalConfigured || paypalScriptLoading) ids.add('paypal')
-      } else if (pm.type === 'bank' || pm.type === 'lc') {
-        ids.add('bank-transfer')
+      } else if (pm.type === 'bank') {
+        if (bankTransferPayable) ids.add('bank-transfer')
+      } else if (pm.type === 'lc') {
+        if (letterOfCreditAvailable) ids.add('lc')
       }
     }
-    // Never leave the customer with no way to pay: if no methods are configured
-    // or every one is disabled, fall back to the built-in methods.
+    // Never leave the customer with no way to pay — but never offer a method
+    // that cannot be paid either.
     if (ids.size === 0) {
-      ids.add('bank-transfer')
+      if (bankTransferPayable) ids.add('bank-transfer')
       if (paypalConfigured) ids.add('paypal')
     }
     return ids
-  }, [settings.paymentMethods, paypalConfigured, paypalScriptLoading])
+  }, [settings.paymentMethods, paypalConfigured, paypalScriptLoading, bankTransferPayable, letterOfCreditAvailable])
 
   // Keep the selection valid as settings load / change.
   useEffect(() => {
     if (!availablePaymentMethods.has(paymentMethod)) {
-      setPaymentMethod(availablePaymentMethods.has('bank-transfer') ? 'bank-transfer' : 'paypal')
+      const fallback = availablePaymentMethods.has('bank-transfer')
+        ? 'bank-transfer'
+        : availablePaymentMethods.has('lc')
+          ? 'lc'
+          : 'paypal'
+      if (availablePaymentMethods.size > 0) setPaymentMethod(fallback)
     }
   }, [availablePaymentMethods, paymentMethod])
 
@@ -222,10 +281,14 @@ export default function Checkout() {
     if (!shipping.fullName.trim()) e.fullName = true
     if (!user && !shipping.email.trim()) e.email = true
     if (!user && shipping.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shipping.email)) e.email = true
+    // A phone number is mandatory: the freight forwarder and the receiving
+    // dock cannot work without it.
+    if (!shipping.phone.trim()) e.phone = true
     if (!shipping.addressLine1.trim()) e.addressLine1 = true
     if (!shipping.city.trim()) e.city = true
-    if (!shipping.state.trim()) e.state = true
-    if (!shipping.postalCode.trim()) e.postalCode = true
+    // State and postal code are only required where the country uses them.
+    if (requiresState(shipping.country) && !shipping.state.trim()) e.state = true
+    if (requiresPostalCode(shipping.country) && !shipping.postalCode.trim()) e.postalCode = true
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -241,6 +304,29 @@ export default function Checkout() {
     setCheckoutStep(step)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+
+  // begin_checkout fires once, when the customer reaches the review step.
+  const beginCheckoutTrackedRef = useRef(false)
+  useEffect(() => {
+    if (checkoutStep !== 3 || beginCheckoutTrackedRef.current) return
+    beginCheckoutTrackedRef.current = true
+    trackBeginCheckout(
+      cart.map((item) => {
+        const price = item.product.onSale && item.product.salePrice ? item.product.salePrice : item.product.price
+        return {
+          item_id: item.product.id,
+          item_name: item.product.name,
+          price,
+          quantity: item.quantity,
+          currency,
+          item_brand: item.product.brand,
+          item_category: item.product.category,
+        }
+      }),
+      total,
+      currency,
+    )
+  }, [checkoutStep, cart, total, currency])
 
   const createStoreOrder = useCallback(async () => {
     // No demo-mode fallback: on any backend failure the error propagates to the
@@ -263,12 +349,18 @@ export default function Checkout() {
         state: shipping.state || undefined,
         postalCode: shipping.postalCode || undefined,
         country: shipping.country,
+        phone: shipping.phone.trim() || undefined,
+        company: shipping.company.trim() || undefined,
+        taxId: shipping.taxId.trim() || undefined,
       },
       paymentMethod,
       // Server-side idempotency: a retried/double-submitted checkout with the
       // same key returns the already-created order instead of creating a second
       // one. Fresh key per checkout session (regenerated after each success).
       idempotencyKey: idempotencyKeyRef.current,
+      // The server enforces this; sending it documents the exact acceptance
+      // the customer made on the review step.
+      termsAccepted: true,
       subtotal,
       tax,
       total,
@@ -278,25 +370,10 @@ export default function Checkout() {
       throw new Error('Failed to create order: no order ID returned from server')
     }
 
-    // The server skips (never prices) lines whose products are no longer in the
-    // catalog — diff the cart against the returned order so the customer can
-    // see exactly which products were dropped from their order.
-    const orderedProductIds = new Set(
-      (result.order?.items ?? []).map((i) => i.productId).filter((id): id is string => Boolean(id))
-    )
-    const skippedItems: SkippedCartItem[] = cart
-      .filter((item) => !orderedProductIds.has(item.product.id))
-      .map((item) => ({
-        productId: item.product.id,
-        productName: item.product.name,
-        quantity: item.quantity,
-      }))
-
     useStore.setState({
       orderId: serverOrderId,
-      orderSkippedItems: skippedItems,
-      // Server-authoritative totals (they differ from the client estimate when
-      // items were skipped) — shown on the confirmation page.
+      orderSkippedItems: [],
+      // Server-authoritative totals — shown on the confirmation page.
       orderSummary: result.order
         ? {
             orderNumber: result.order.orderNumber,
@@ -304,15 +381,82 @@ export default function Checkout() {
             shippingCost: Number(result.order.shippingCost),
             tax: Number(result.order.tax),
             total: Number(result.order.total),
-            currency: result.order.currency || 'USD',
+            currency: result.order.currency || currency,
+            shippingEmail: result.order.shippingEmail ?? null,
           }
         : null,
     })
     createdOrderFingerprintRef.current = checkoutFingerprint()
     return serverOrderId
-  }, [cart, shipping, paymentMethod, subtotal, tax, total, checkoutFingerprint])
+  }, [cart, shipping, paymentMethod, subtotal, tax, total, checkoutFingerprint, currency])
+
+  /** Fires the GA4 purchase event once per order. */
+  const trackOrderPurchase = useCallback((orderNumber: string, orderTotal: number) => {
+    trackPurchase({
+      transaction_id: orderNumber,
+      value: orderTotal,
+      currency,
+      items: cart.map((item) => {
+        const price = item.product.onSale && item.product.salePrice ? item.product.salePrice : item.product.price
+        return {
+          item_id: item.product.id,
+          item_name: item.product.name,
+          price,
+          quantity: item.quantity,
+          currency,
+          item_brand: item.product.brand,
+          item_category: item.product.category,
+        }
+      }),
+    })
+  }, [cart, currency])
+
+  /** Persists the confirmation so a refresh does not lose the order. */
+  const persistConfirmation = useCallback((orderIdValue: string, guestEmail?: string) => {
+    const state = useStore.getState()
+    saveOrderConfirmation({
+      orderId: orderIdValue,
+      orderSummary: state.orderSummary,
+      orderSkippedItems: state.orderSkippedItems,
+      guestEmail,
+    })
+  }, [])
+
+  /**
+   * The server refuses an order, before writing anything, when a cart line is
+   * no longer purchasable (deleted, unpublished, or out of stock). Its 409
+   * response lists the exact product ids in `details`; remove only those lines
+   * so the customer can review the corrected cart and place the order again.
+   *
+   * Returns true when the error was handled, so callers don't overwrite the
+   * specific message with a generic failure.
+   */
+  const handleUnavailableItems = (err: unknown): boolean => {
+    if (!(err instanceof ApiError) || err.status !== 409 || !err.details?.length) return false
+
+    const removedNames: string[] = []
+    for (const detail of err.details) {
+      const item = useStore.getState().cart.find((line) => line.product.id === detail.field)
+      if (!item) continue
+      removedNames.push(item.product.name)
+      useStore.getState().removeFromCart(detail.field)
+    }
+
+    setOrderError(
+      removedNames.length > 0
+        ? t('checkout.itemsUnavailable', { items: removedNames.join(', ') })
+        : err.message,
+    )
+    return true
+  }
 
   const handlePlaceOrder = async () => {
+    // Legal acceptance is mandatory: no order without it.
+    if (!termsAccepted) {
+      setTermsError(true)
+      return
+    }
+    setTermsError(false)
     setOrderLoading(true)
     setOrderError('')
     try {
@@ -328,9 +472,17 @@ export default function Checkout() {
       clearCart()
       setCheckoutStep(1)
       idempotencyKeyRef.current = `ck-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const guestEmail = user ? undefined : (shipping.email.trim() || undefined)
+      persistConfirmation(useStore.getState().orderId, guestEmail)
+      trackOrderPurchase(
+        useStore.getState().orderSummary?.orderNumber || useStore.getState().orderId,
+        useStore.getState().orderSummary?.total ?? total,
+      )
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err: unknown) {
-      setOrderError(err instanceof Error ? err.message : 'Failed to place order. Please try again.')
+      if (!handleUnavailableItems(err)) {
+        setOrderError(err instanceof Error ? err.message : 'Failed to place order. Please try again.')
+      }
     } finally {
       setOrderLoading(false)
     }
@@ -338,6 +490,14 @@ export default function Checkout() {
 
   // PayPal Smart Buttons callbacks
   const handleCreatePaypalOrder = async (_data: unknown, _actions: unknown) => {
+    // The same acceptance gate as the bank-transfer path. PayPal's button can
+    // be clicked without submitting the normal order button, so this must be
+    // checked here too — and the server checks it again.
+    if (!termsAccepted) {
+      setTermsError(true)
+      throw new Error(t('checkout.termsAcceptError'))
+    }
+    setTermsError(false)
     // First create the store order if not already created. Reuse is only safe
     // while every input that was baked into it is unchanged.
     const fingerprint = checkoutFingerprint()
@@ -353,7 +513,10 @@ export default function Checkout() {
         if (!currentOrderId) throw new Error('Failed to create order')
         setCreatedOrderId(currentOrderId)
       } catch (err: unknown) {
-        setOrderError(err instanceof Error ? err.message : 'Failed to create order')
+        checkoutErrorHandledRef.current = handleUnavailableItems(err)
+        if (!checkoutErrorHandledRef.current) {
+          setOrderError(err instanceof Error ? err.message : 'Failed to create order')
+        }
         throw err
       } finally {
         setCreatingOrder(false)
@@ -387,9 +550,16 @@ export default function Checkout() {
       clearCart()
       setCheckoutStep(1)
       idempotencyKeyRef.current = `ck-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      persistConfirmation(orderId, user ? undefined : (shipping.email.trim() || undefined))
+      trackOrderPurchase(
+        useStore.getState().orderSummary?.orderNumber || orderId,
+        useStore.getState().orderSummary?.total ?? total,
+      )
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err: unknown) {
-      setOrderError(err instanceof Error ? err.message : 'Payment failed. Please try again.')
+      if (!handleUnavailableItems(err)) {
+        setOrderError(err instanceof Error ? err.message : 'Payment failed. Please try again.')
+      }
     } finally {
       setOrderLoading(false)
     }
@@ -397,12 +567,17 @@ export default function Checkout() {
 
   const handlePaypalError = (err: unknown) => {
     console.error('PayPal error:', err)
+    if (checkoutErrorHandledRef.current) {
+      checkoutErrorHandledRef.current = false
+      return
+    }
     setOrderError('PayPal encountered an error. Please try again.')
   }
 
   const handleContinueShopping = () => {
     setOrderPlaced(false)
     useStore.setState({ orderSkippedItems: [], orderSummary: null })
+    clearOrderConfirmation()
     setCheckoutStep(1)
     navigate(lp('/products'))
   }
@@ -429,7 +604,12 @@ export default function Checkout() {
         setCancelReason={setCancelReason}
         setCancelSubmitted={setCancelSubmitted}
         handleContinueShopping={handleContinueShopping}
-        guestEmail={!user ? shipping.email.trim() || undefined : undefined}
+        guestEmail={!user ? (shipping.email.trim() || restoredGuestEmail) : restoredGuestEmail}
+        paymentMethod={paymentMethod}
+        bankDetails={bankDetails}
+        letterOfCredit={letterOfCredit}
+        currency={currency}
+        deliveryEstimate={deliveryEstimate}
       />
     )
   }
@@ -444,11 +624,40 @@ export default function Checkout() {
     )
   }
 
+  // No usable payment method at all — the customer must not be able to place
+  // an order that cannot be paid. Point them at the sales team instead.
+  if (availablePaymentMethods.size === 0) {
+    return (
+      <div className="py-24">
+        <div className="max-w-[560px] mx-auto px-4 sm:px-6 text-center">
+          <SEO
+            title="Checkout — Payment Unavailable"
+            description="Complete your order for marine and industrial equipment."
+            canonical="/checkout"
+            noindex
+          />
+          <AlertTriangle size={32} className="mx-auto mb-4 text-[var(--danger)]" />
+          <h1 className="heading-lg mb-3">{t('checkout.noPaymentMethods')}</h1>
+          <p className="text-sm text-[var(--text-secondary)] mb-6">
+            {t('checkout.bankUnavailable')}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate(lp('/contact'))}
+            className="px-7 py-3.5 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] transition-all rounded-xl cursor-pointer"
+          >
+            {t('contact.title')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <SEO
         title="Checkout — Secure Payment"
-        description="Complete your order for marine and industrial equipment. Secure checkout with credit card, PayPal, or bank transfer."
+        description="Complete your order for marine and industrial equipment. Secure checkout with PayPal or bank transfer."
         canonical="/checkout"
         noindex
       />
@@ -531,6 +740,10 @@ export default function Checkout() {
               setPaymentMethod={handlePaymentMethodChange}
               availableMethods={Array.from(availablePaymentMethods)}
               goToStep={goToStep}
+              bankDetails={bankDetails}
+              letterOfCredit={letterOfCredit}
+              amount={total}
+              currency={currency}
             />
           )}
 
@@ -545,6 +758,8 @@ export default function Checkout() {
               shippingCost={shippingCost}
               tax={tax}
               total={total}
+              taxRate={settings.taxRate}
+              currency={currency}
               orderError={orderError}
               orderLoading={orderLoading}
               creatingOrder={creatingOrder}
@@ -555,6 +770,18 @@ export default function Checkout() {
               handleCreatePaypalOrder={handleCreatePaypalOrder}
               handleApprovePaypalOrder={handleApprovePaypalOrder}
               handlePaypalError={handlePaypalError}
+              termsAccepted={termsAccepted}
+              setTermsAccepted={(accepted) => {
+                setTermsAccepted(accepted)
+                if (accepted) setTermsError(false)
+                // Withdrawing acceptance must not leave a pre-created order
+                // waiting to be charged.
+                else resetPreparedOrder()
+              }}
+              termsError={termsError}
+              setTermsError={setTermsError}
+              bankDetails={bankDetails}
+              letterOfCredit={letterOfCredit}
             />
           )}
         </div>

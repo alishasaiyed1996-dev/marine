@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom'
 import { useLocalizedPath } from '../../lib/locale'
 import { useTranslation } from 'react-i18next'
 import { OptimizedImage } from '../ui/OptimizedImage'
-import { getProductImageUrl, isLightColor } from '../../lib/utils'
+import { getProductImageUrl, isLightColor, formatMoney } from '../../lib/utils'
+import { useStoreSettings } from '../../hooks/useStoreSettings'
 import { buildImageAlt } from '../../lib/seo/productSeo'
 import type { Product } from '../../types'
 
@@ -13,6 +14,7 @@ interface RelatedProductsProps {
 export function RelatedProducts({ products }: RelatedProductsProps) {
   const { t } = useTranslation()
   const lp = useLocalizedPath()
+  const { currency: storeCurrency } = useStoreSettings()
 
   if (products.length === 0) return null
 
@@ -68,11 +70,11 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
                   <div className="flex items-center gap-2">
                     {item.onSale && item.salePrice && regularPrice > item.salePrice ? (
                       <>
-                        <span className="font-display font-bold text-sm text-[var(--danger)]">${item.salePrice.toFixed(2)}</span>
-                        <span className="font-display font-bold text-xs text-[var(--text-muted)] line-through">${regularPrice.toFixed(2)}</span>
+                        <span className="font-display font-bold text-sm text-[var(--danger)]">{formatMoney(item.salePrice, item.currency || storeCurrency)}</span>
+                        <span className="font-display font-bold text-xs text-[var(--text-muted)] line-through">{formatMoney(regularPrice, item.currency || storeCurrency)}</span>
                       </>
                     ) : (
-                      <span className="font-display font-bold text-sm text-[var(--accent-primary)]">${itemPrice.toFixed(2)}</span>
+                      <span className="font-display font-bold text-sm text-[var(--accent-primary)]">{formatMoney(itemPrice, item.currency || storeCurrency)}</span>
                     )}
                   </div>
                   <Link to={lp(`/product/${item.slug || item.id}`)} className="text-xs font-semibold text-[var(--accent-primary)] hover:underline">

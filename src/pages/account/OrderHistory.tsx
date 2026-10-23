@@ -4,6 +4,8 @@ import { Package, Eye, Clock, Truck, CheckCircle, XCircle, ChevronRight } from '
 import { useOrders } from '../../hooks/useApiQuery'
 import { useStore } from '../../store/useStore'
 import { useLocalizedPath } from '../../lib/locale'
+import { useStoreSettings } from '../../hooks/useStoreSettings'
+import { formatMoney } from '../../lib/utils'
 import { Skeleton } from '../../components/ui/Skeleton'
 
 const statusConfig: Record<string, { color: string; icon: typeof Package }> = {
@@ -21,6 +23,7 @@ const statusConfig: Record<string, { color: string; icon: typeof Package }> = {
 export default function OrderHistory() {
   const user = useStore((s) => s.user)
   const lp = useLocalizedPath()
+  const { currency } = useStoreSettings()
   const [page, setPage] = useState(1)
   const { data, isLoading, isFetching, isError, error } = useOrders(user?.id, page)
   const orders = data?.orders ?? []
@@ -111,7 +114,7 @@ export default function OrderHistory() {
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="font-display text-lg font-bold text-[var(--text-primary)]">
-                          ${Number(order.total || 0).toFixed(2)}
+                          {formatMoney(Number(order.total || 0), order.currency || currency)}
                         </span>
                         <Link
                           to={lp(`/track-order?id=${encodeURIComponent(order.orderNumber)}`)}

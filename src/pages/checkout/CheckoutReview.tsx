@@ -1,9 +1,13 @@
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import { PayPalButtons } from '@paypal/react-paypal-js'
 import { Package, CreditCard, ChevronLeft, ClipboardCheck, Shield, MapPin, Loader2 } from 'lucide-react'
 import type { CartItem } from '../../types'
-import { getProductImageUrl } from '../../lib/utils'
+import { getProductImageUrl, formatMoney } from '../../lib/utils'
 import { OptimizedImage } from '../../components/ui/OptimizedImage'
+import { BankTransferDetails } from '../../components/checkout/BankTransferDetails'
+import type { BankDetails, LetterOfCreditDetails } from '../../hooks/useStoreSettings'
+import { useLocalizedPath } from '../../lib/locale'
 
 interface Shipping {
   fullName: string
@@ -14,6 +18,9 @@ interface Shipping {
   state: string
   postalCode: string
   country: string
+  phone?: string
+  company?: string
+  taxId?: string
 }
 
 interface CheckoutReviewProps {
@@ -25,6 +32,8 @@ interface CheckoutReviewProps {
   shippingCost: number
   tax: number
   total: number
+  taxRate: number
+  currency: string
   orderError: string
   orderLoading: boolean
   creatingOrder: boolean
@@ -35,6 +44,13 @@ interface CheckoutReviewProps {
   handleCreatePaypalOrder: (data: unknown, actions: unknown) => Promise<string>
   handleApprovePaypalOrder: (data: unknown, actions: unknown) => Promise<void>
   handlePaypalError: (err: unknown) => void
+  /** Legal acceptance — the order cannot be placed without it. */
+  termsAccepted: boolean
+  setTermsAccepted: (accepted: boolean) => void
+  termsError: boolean
+  setTermsError: (error: boolean) => void
+  bankDetails: BankDetails
+  letterOfCredit: LetterOfCreditDetails
 }
 
 export function CheckoutReview({
@@ -46,6 +62,8 @@ export function CheckoutReview({
   shippingCost,
   tax,
   total,
+  taxRate,
+  currency,
   orderError,
   orderLoading,
   creatingOrder,
@@ -56,8 +74,16 @@ export function CheckoutReview({
   handleCreatePaypalOrder,
   handleApprovePaypalOrder,
   handlePaypalError,
+  termsAccepted,
+  setTermsAccepted,
+  termsError,
+  setTermsError,
+  bankDetails,
+  letterOfCredit,
 }: CheckoutReviewProps) {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
+  const money = (value: number) => formatMoney(value, currency)
 
   return (
     <div className="space-y-6">
@@ -87,7 +113,7 @@ export function CheckoutReview({
                 </div>
                 <div className="text-right">
                   <span className="text-xs text-[var(--text-muted)]">×{item.quantity}</span>
-                  <p className="text-sm font-semibold">${(price * item.quantity).toFixed(2)}</p>
+                  <p className="text-sm font-semibold">{money(price * item.quantity)}</p>
                 </div>
               </div>
             )
@@ -97,16 +123,16 @@ export function CheckoutReview({
         {/* Totals */}
         <div className="mt-6 pt-4 border-t border-[var(--border)] space-y-2">
           <div className="flex justify-between text-sm text-[var(--text-secondary)]">
-            <span>{t('checkout.subtotal')}</span><span>${subtotal.toFixed(2)}</span>
+            <span>{t('checkout.subtotal')}</span><span>{money(subtotal)}</span>
           </div>
           <div className="flex justify-between text-sm text-[var(--text-secondary)]">
-            <span>{t('checkout.shipping')}</span><span>${shippingCost.toFixed(2)}</span>
+            <span>{t('checkout.shipping')}</span><span>{money(shippingCost)}</span>
           </div>
           <div className="flex justify-between text-sm text-[var(--text-secondary)]">
-            <span>{t('checkout.tax')}</span><span>${tax.toFixed(2)}</span>
+            <span>{t('checkout.tax', { rate: (taxRate * 100).toFixed(taxRate * 100 % 1 === 0 ? 0 : 2) })}</span><span>{money(tax)}</span>
           </div>
           <div className="flex justify-between text-base font-bold text-[var(--text-primary)] pt-3 mt-2 border-t border-[var(--border)]">
-            <span>{t('checkout.grandTotal')}</span><span>${total.toFixed(2)}</span>
+            <span>{t('checkout.grandTotal')}</span><span>{money(total)}</span>
           </div>
         </div>
       </div>
@@ -118,6 +144,7 @@ export function CheckoutReview({
             <MapPin size={14} className="text-[var(--accent-primary)]" /> {t('checkout.shippingSummary')}
           </h4>
           <button
+            type="button"
             onClick={() => goToStep(1)}
             className="text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] transition-colors bg-transparent border-none cursor-pointer"
           >
@@ -125,10 +152,12 @@ export function CheckoutReview({
           </button>
         </div>
         <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-          {shipping.fullName}<br />
+          {shipping.company ? `${shipping.company} · ` : ''}{shipping.fullName}<br />
           {shipping.addressLine1}{shipping.addressLine2 ? `, ${shipping.addressLine2}` : ''}<br />
-          {shipping.city}, {shipping.state} {shipping.postalCode}<br />
+          {shipping.city}{shipping.state ? `, ${shipping.state}` : ''}{shipping.postalCode ? ` ${shipping.postalCode}` : ''}<br />
           {shipping.country}
+          {shipping.phone ? <><br />{t('checkout.phone')}: {shipping.phone}</> : null}
+          {shipping.taxId ? <><br />{t('checkout.taxId')}: {shipping.taxId}</> : null}
         </p>
       </div>
 
@@ -139,6 +168,7 @@ export function CheckoutReview({
             <CreditCard size={14} className="text-[var(--accent-primary)]" /> {t('checkout.paymentSummary')}
           </h4>
           <button
+            type="button"
             onClick={() => goToStep(2)}
             className="text-xs text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] transition-colors bg-transparent border-none cursor-pointer"
           >
@@ -148,12 +178,94 @@ export function CheckoutReview({
         <p className="text-xs text-[var(--text-secondary)]">
           {paymentMethod === 'paypal'
             ? t('checkout.paymentPaypal')
-            : t('checkout.paymentBank')}
+            : paymentMethod === 'lc'
+              ? t('checkout.paymentLc')
+              : t('checkout.paymentBank')}
         </p>
       </div>
 
+      {/* Bank transfer instructions — the customer must be able to pay. */}
+      {paymentMethod === 'bank-transfer' && (
+        <BankTransferDetails
+          details={bankDetails}
+          amount={total}
+          currency={currency}
+          compact
+        />
+      )}
+
+      {/* Letter of credit — the arrangement the seller published. */}
+      {paymentMethod === 'lc' && (
+        <div className="bg-[var(--surface)] border border-[var(--accent-primary)]/40 rounded-xl p-5 text-left">
+          <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-3">{t('checkout.lcHeading')}</h4>
+          <dl className="space-y-2">
+            {letterOfCredit.acceptingBanks && (
+              <div className="flex items-start justify-between gap-4">
+                <dt className="text-xs text-[var(--text-muted)] shrink-0">{t('checkout.lcAcceptingBanks')}</dt>
+                <dd className="text-xs text-[var(--text-primary)] text-right break-all font-semibold">
+                  {letterOfCredit.acceptingBanks}
+                </dd>
+              </div>
+            )}
+            {letterOfCredit.documentsRequired && (
+              <div className="flex items-start justify-between gap-4">
+                <dt className="text-xs text-[var(--text-muted)] shrink-0">{t('checkout.lcDocuments')}</dt>
+                <dd className="text-xs text-[var(--text-primary)] text-right break-all">
+                  {letterOfCredit.documentsRequired}
+                </dd>
+              </div>
+            )}
+          </dl>
+          {letterOfCredit.notes && (
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed mt-3">{letterOfCredit.notes}</p>
+          )}
+          <p className="text-sm font-semibold text-[var(--text-primary)] mt-3">
+            {t('checkout.lcValue')}: {money(total)}
+          </p>
+        </div>
+      )}
+
+      {/* Legal acceptance — required before the order can be placed. */}
+      <div className="bg-[var(--surface)] border border-[var(--border)] p-5">
+        <div className="flex items-start gap-3">
+          <input
+            id="checkout-terms"
+            type="checkbox"
+            checked={termsAccepted}
+            onChange={(e) => setTermsAccepted(e.target.checked)}
+            aria-invalid={termsError || undefined}
+            aria-describedby={termsError ? 'checkout-terms-error' : undefined}
+            className="mt-0.5 w-4 h-4 accent-[var(--accent-primary)] cursor-pointer shrink-0"
+          />
+          <label htmlFor="checkout-terms" className="text-xs text-[var(--text-secondary)] leading-relaxed cursor-pointer">
+            {t('checkout.termsAccept')}{' '}
+            <Link to={lp('/terms-of-service')} className="text-[var(--accent-primary)] underline">{t('checkout.termsLink')}</Link>
+            {', '}
+            <Link to={lp('/privacy-policy')} className="text-[var(--accent-primary)] underline">{t('checkout.privacyLink')}</Link>
+            {', '}
+            <Link to={lp('/refund-policy')} className="text-[var(--accent-primary)] underline">{t('checkout.refundLink')}</Link>
+          </label>
+        </div>
+        {termsError && (
+          <p id="checkout-terms-error" className="mt-2 text-xs text-[var(--danger)]" role="alert">
+            {t('checkout.termsAcceptError')}
+          </p>
+        )}
+      </div>
+
+      {/* Heavy freight / proforma path. The zone rates cover standard
+          parcels; a shipowner moving heavy equipment should not be forced
+          through a consumer cart (C-4). */}
+      <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-4 text-xs text-[var(--text-secondary)]">
+        <strong className="text-[var(--text-primary)]">{t('checkout.freightQuoteTitle')}</strong>{' '}
+        {t('checkout.freightQuoteBody')}{' '}
+        <Link to={lp('/rfq')} className="text-[var(--accent-primary)] underline font-semibold">
+          {t('checkout.freightQuoteLink')}
+        </Link>
+      </div>
+
       {/* Actions */}
-      {orderError && <p className="text-xs text-[var(--danger)] mb-4 text-center">{orderError}</p>}
+      {orderError && <p className="text-xs text-[var(--danger)] mb-4 text-center" role="alert">{orderError}</p>}
       <div className="grid grid-cols-2 gap-5">
         <button
           type="button"
@@ -182,6 +294,13 @@ export function CheckoutReview({
                 createOrder={handleCreatePaypalOrder}
                 onApprove={handleApprovePaypalOrder}
                 onError={handlePaypalError}
+                onClick={(_data, actions) => {
+                  if (!termsAccepted) {
+                    setTermsError(true)
+                    return actions.reject()
+                  }
+                  return actions.resolve()
+                }}
                 disabled={orderLoading || creatingOrder}
               />
             ) : null}

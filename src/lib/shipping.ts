@@ -2,6 +2,12 @@
  * Shipping-zone pricing for the storefront checkout display estimate. The
  * authoritative charge is recalculated server-side in backend/src/utils/shipping.ts
  * (which mirrors this logic) — the client value is never trusted for pricing.
+ *
+ * The country-label lookup MUST match the server's implementation: the server
+ * resolves every country through ICU (`Intl.DisplayNames`), so a zone whose
+ * region is "Italy" matched on the server but not in a client limited to a
+ * hand-maintained country list. That divergence made the checkout show a
+ * different freight than the invoice charged.
  */
 import { countries } from '../data/countries'
 
@@ -19,6 +25,25 @@ export interface ShippingZone {
 const COUNTRY_LABELS: Record<string, string> = Object.fromEntries(
   countries.map((c) => [c.value, c.label]),
 )
+
+// Fallback for runtimes without Intl.DisplayNames.
+type RegionDisplayNames = { of: (code: string) => string | undefined }
+const DisplayNamesCtor = (Intl as unknown as {
+  DisplayNames?: new (locales: string[], options: { type: string }) => RegionDisplayNames
+}).DisplayNames
+const regionNames = DisplayNamesCtor
+  ? new DisplayNamesCtor(['en'], { type: 'region' })
+  : null
+
+function countryLabel(code: string): string | undefined {
+  try {
+    const label = regionNames?.of(code)
+    if (label && label !== code) return label
+  } catch {
+    // Invalid/unknown region code — fall through to the static subset.
+  }
+  return COUNTRY_LABELS[code]
+}
 
 // Common zone spellings that differ from the country label.
 const REGION_ALIASES: Record<string, string> = {
@@ -54,7 +79,7 @@ export function findZoneForCountry(zones: ShippingZone[], country: string): Ship
   const candidates = new Set<string>()
   if (country) candidates.add(normalizeRegion(country))
   if (code) candidates.add(normalizeRegion(code))
-  const label = COUNTRY_LABELS[code]
+  const label = countryLabel(code)
   if (label) candidates.add(normalizeRegion(label))
 
   return zones.find(

@@ -3,8 +3,9 @@ import { ShoppingCart, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { OptimizedImage } from '../ui/OptimizedImage'
 import { ProductCardSkeleton } from '../ui/Skeleton'
-import { isLightColor, getProductImageUrl } from '../../lib/utils'
+import { isLightColor, getProductImageUrl, formatMoney } from '../../lib/utils'
 import { useLocalizedPath } from '../../lib/locale'
+import { useStoreSettings } from '../../hooks/useStoreSettings'
 import { buildImageAlt } from '../../lib/seo/productSeo'
 import type { Product } from '../../types'
 
@@ -18,6 +19,8 @@ interface ProductGridProps {
 function ProductCard({ product, addedIds, onAddToCart, priority = false }: { product: Product; addedIds: Set<string>; onAddToCart: (product: Product) => void; priority?: boolean }) {
   const { t } = useTranslation()
   const lp = useLocalizedPath()
+  const { currency: storeCurrency } = useStoreSettings()
+  const priceCurrency = product.currency || storeCurrency
   const effPrice = product.onSale && product.salePrice ? product.salePrice : product.price
   const regularPrice = product.regularPrice ?? product.price
   const isAdded = addedIds.has(product.id)
@@ -81,15 +84,15 @@ function ProductCard({ product, addedIds, onAddToCart, priority = false }: { pro
               {product.onSale && product.salePrice ? (
                 <div className="flex items-center gap-2">
                   <span className="font-display font-bold text-xl tracking-tight tabular-nums text-[var(--danger)]">
-                    ${product.salePrice.toFixed(2)}
+                    {formatMoney(product.salePrice, priceCurrency)}
                   </span>
                   <span className="font-display font-bold text-sm text-[var(--text-muted)] line-through">
-                    ${regularPrice.toFixed(2)}
+                    {formatMoney(regularPrice, priceCurrency)}
                   </span>
                 </div>
               ) : (
                 <span className="font-display font-bold text-xl tracking-tight tabular-nums text-[var(--text-primary)]">
-                  ${effPrice.toFixed(2)}
+                  {formatMoney(effPrice, priceCurrency)}
                 </span>
               )}
             </div>

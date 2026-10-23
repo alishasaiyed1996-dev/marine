@@ -5,8 +5,5 @@
   "scripts": {
     "build": "cd .. && npm install --no-audit --no-fund && node ./node_modules/vite/bin/vite.js build && node scripts/prerender.mjs --dist frontend/dist && node scripts/generate-sitemap.mjs --dist frontend/dist",
     "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.21.2"
   }
 }

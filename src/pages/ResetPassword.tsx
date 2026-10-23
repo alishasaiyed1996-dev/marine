@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { Lock, Eye, EyeOff, CheckCircle } from 'lucide-react'
 import { customerAuth } from '../lib/api'
@@ -8,8 +8,16 @@ import { SEO } from '../components/seo/SEO'
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams()
-  const token = searchParams.get('token') || ''
+  const urlToken = searchParams.get('token') || ''
   const lp = useLocalizedPath()
+
+  // The reset ticket lives in memory only. The emailed token is exchanged for
+  // it on arrival and then removed from the URL, so the token never reaches
+  // the browser history, the access log, or the analytics page location.
+  const [ticket, setTicket] = useState('')
+  const [verifying, setVerifying] = useState(false)
+  const [ticketError, setTicketError] = useState('')
+  const exchangedRef = useRef(false)
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -18,9 +26,29 @@ export default function ResetPassword() {
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    if (!urlToken || exchangedRef.current) return
+    exchangedRef.current = true
+
+    // Strip the token from the address bar BEFORE the network call, so even a
+    // failed exchange leaves no token behind in the URL.
+    if (typeof window !== 'undefined') {
+      const clean = window.location.pathname + window.location.hash
+      window.history.replaceState({}, '', clean)
+    }
+
+    setVerifying(true)
+    customerAuth.verifyResetToken(urlToken)
+      .then((res) => setTicket(res.ticket))
+      .catch((err: unknown) => {
+        setTicketError(err instanceof Error ? err.message : 'This password reset link is invalid or has expired.')
+      })
+      .finally(() => setVerifying(false))
+  }, [urlToken])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!token) { setError('Invalid or missing reset token'); return }
+    if (!ticket) { setError('Invalid or missing reset token'); return }
     if (!password) { setError('Password is required'); return }
     if (password.length < 8) { setError('Password must be at least 8 characters'); return }
     if (password !== confirmPassword) { setError('Passwords do not match'); return }
@@ -28,7 +56,7 @@ export default function ResetPassword() {
     setLoading(true)
     setError('')
     try {
-      await customerAuth.resetPassword(token, password)
+      await customerAuth.resetPassword(ticket, password)
       setSuccess(true)
     } catch (err: any) {
       setError(err.message || 'Failed to reset password. The link may have expired.')
@@ -37,7 +65,7 @@ export default function ResetPassword() {
     }
   }
 
-  if (!token) {
+  if (!ticket && !verifying) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--primary-bg)] px-4">
         <div className="text-center">
@@ -47,8 +75,21 @@ export default function ResetPassword() {
             className="w-10 h-10 rounded-xl object-cover shadow-sm mx-auto mb-4"
           />
           <h2 className="font-display text-xl font-bold text-[var(--text-primary)] mb-2">Invalid Reset Link</h2>
-          <p className="text-sm text-[var(--text-secondary)] mb-4">This password reset link is invalid or has expired.</p>
+          <p className="text-sm text-[var(--text-secondary)] mb-4">
+            {ticketError || 'This password reset link is invalid or has expired.'}
+          </p>
           <Link to={lp('/')} className="text-sm font-semibold text-[var(--accent-primary)] hover:underline">← Back to Home</Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (verifying) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--primary-bg)] px-4" role="status" aria-live="polite">
+        <div className="text-center">
+          <div className="h-8 w-8 mx-auto rounded-full border-2 border-[var(--accent-primary)] border-t-transparent animate-spin" />
+          <p className="text-sm text-[var(--text-secondary)] mt-4">Verifying your reset link…</p>
         </div>
       </div>
     )

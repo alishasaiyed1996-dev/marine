@@ -1,10 +1,11 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Trash2, ShoppingBag, Plus, Minus } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { useLocalizedPath } from '../../lib/locale'
+import { useStoreSettings } from '../../hooks/useStoreSettings'
 import { OptimizedImage } from '../ui/OptimizedImage'
 
 
@@ -15,19 +16,7 @@ const backdropVariants = {
   exit: { opacity: 0 },
 } as const
 
-const drawerVariants = {
-  hidden: { x: '100%' },
-  visible: {
-    x: 0,
-    transition: { type: 'spring' as const, damping: 30, stiffness: 300 },
-  },
-  exit: {
-    x: '100%',
-    transition: { type: 'spring' as const, damping: 30, stiffness: 300 },
-  },
-} as const
-
-import { getProductImageUrl } from '../../lib/utils'
+import { getProductImageUrl, formatMoney } from '../../lib/utils'
 
 export function CartDrawer() {
   const { t } = useTranslation()
@@ -41,6 +30,27 @@ export function CartDrawer() {
   const clearCart = useStore((s) => s.clearCart)
   const getCartTotal = useStore((s) => s.getCartTotal)
   const getCartCount = useStore((s) => s.getCartCount)
+  const language = useStore((s) => s.language)
+  const { currency } = useStoreSettings()
+
+  // The drawer is anchored to the inline end of the page (right in LTR, left
+  // in RTL) and slides in from that side. A fixed `x: 100%` slid the drawer
+  // in from the wrong edge in Arabic.
+  const isRtl = language === 'ar'
+  const drawerVariants = useMemo(() => {
+    const offscreen = isRtl ? '-100%' : '100%'
+    return {
+      hidden: { x: offscreen },
+      visible: {
+        x: 0,
+        transition: { type: 'spring' as const, damping: 30, stiffness: 300 },
+      },
+      exit: {
+        x: offscreen,
+        transition: { type: 'spring' as const, damping: 30, stiffness: 300 },
+      },
+    }
+  }, [isRtl])
 
   const closeDrawer = useCallback(() => {
     setShowCartDrawer(false)
@@ -104,7 +114,7 @@ export function CartDrawer() {
           {/* Drawer */}
           <motion.aside
             key="cart-drawer"
-            className="fixed top-0 right-0 z-[60] flex h-full w-full max-w-[420px] flex-col border-l border-[var(--border)] bg-[var(--surface)] shadow-2xl"
+            className="fixed top-0 end-0 z-[60] flex h-full w-full max-w-[420px] flex-col border-e border-[var(--border)] bg-[var(--surface)] shadow-2xl"
             variants={drawerVariants}
             initial="hidden"
             animate="visible"
@@ -264,11 +274,11 @@ export function CartDrawer() {
                               {/* Line Total */}
                               <div className="text-right">
                                 <p className="text-sm font-semibold text-[var(--text-primary)]">
-                                  ${lineTotal.toFixed(2)}
+                                  {formatMoney(lineTotal, product.currency || currency)}
                                 </p>
                                 {quantity > 1 && (
                                   <p className="text-xs text-[var(--text-muted)]">
-                                    ${price.toFixed(2)} {t('cart.each')}
+                                    {formatMoney(price, product.currency || currency)} {t('cart.each')}
                                   </p>
                                 )}
                               </div>
@@ -288,7 +298,7 @@ export function CartDrawer() {
                       {t('cart.subtotal')}
                     </span>
                     <span className="text-lg font-bold text-[var(--text-primary)]">
-                      ${subtotal.toFixed(2)}
+                      {formatMoney(subtotal, currency)}
                     </span>
                   </div>
 

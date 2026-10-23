@@ -3,8 +3,10 @@ import { useSearchParams } from 'react-router-dom'
 import { Package, Truck, CheckCircle, Clock, XCircle, Search, Mail, LogIn } from 'lucide-react'
 import { storefront } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
+import { readPendingTrackEmail } from '../lib/orderConfirmation'
 import { useStore } from '../store/useStore'
 import { SEO } from '../components/seo/SEO'
+import { formatMoney } from '../lib/utils'
 
 const statusSteps = [
   { key: 'pending', label: 'Order Placed', icon: Clock },
@@ -21,12 +23,16 @@ const statusIndex: Record<string, number> = {
 }
 
 export default function TrackOrder() {
-  const { whatsappNumber } = useStoreSettings()
+  const { whatsappNumber, currency } = useStoreSettings()
   const user = useStore((s) => s.user)
   const setShowAuthModal = useStore((s) => s.setShowAuthModal)
   const [searchParams] = useSearchParams()
   const initialId = searchParams.get('id') || ''
-  const initialEmail = searchParams.get('email') || ''
+  // The guest email is NOT taken from the URL. It used to be passed as
+  // ?email=…, which put the customer's address in the browser history, the
+  // access log and the analytics page location. The checkout hands it over
+  // through sessionStorage instead (see lib/orderConfirmation.ts).
+  const [initialEmail] = useState(() => readPendingTrackEmail())
 
   const [orderNumber, setOrderNumber] = useState(initialId)
   const [email, setEmail] = useState(initialEmail)
@@ -108,7 +114,9 @@ export default function TrackOrder() {
           <div className="flex flex-col sm:flex-row gap-3 mb-8">
             <div className="relative flex-1">
               <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              <label htmlFor="track-order-number" className="sr-only">Order number</label>
               <input
+                id="track-order-number"
                 type="text"
                 value={orderNumber}
                 onChange={(e) => setOrderNumber(e.target.value)}
@@ -120,7 +128,9 @@ export default function TrackOrder() {
             {!user && (
               <div className="relative flex-1">
                 <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                <label htmlFor="track-order-email" className="sr-only">Email used at checkout</label>
                 <input
+                  id="track-order-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -187,7 +197,7 @@ export default function TrackOrder() {
                 </div>
                 <div className="flex gap-6 mt-4 text-xs text-[var(--text-muted)]">
                   <span>Placed: {new Date(order.createdAt).toLocaleDateString()}</span>
-                  <span>Total: <strong className="text-[var(--text-primary)]">${Number(order.total ?? order.grandTotal ?? 0).toFixed(2)}</strong></span>
+                  <span>Total: <strong className="text-[var(--text-primary)]">{formatMoney(Number(order.total ?? order.grandTotal ?? 0), order.currency || currency)}</strong></span>
                 </div>
               </div>
 

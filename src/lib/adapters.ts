@@ -114,6 +114,7 @@ export function apiProductToFrontend(api: ApiProduct): Product {
     categoryName: api.category?.name || undefined,
     categoryVisible: api.category ? api.category.isVisible !== false : false,
     industry: api.industries?.map((i) => i.industry.slug) || [],
+    industryNames: api.industries?.map((i) => i.industry.name).filter(Boolean) || [],
     availability: api.availability as Product['availability'],
     // Filter out empty spec values — admins sometimes save a name with no
     // value (e.g. "SCUPPER PLUG: ""), which renders as a junk row on the
@@ -126,6 +127,13 @@ export function apiProductToFrontend(api: ApiProduct): Product {
     description: api.description || api.shortDescription || '',
     shortDescription: api.shortDescription,
     conditionNotes: api.conditionNotes,
+    keyFeatures: api.keyFeatures || [],
+    compatibilityNotes: api.compatibilityNotes,
+    warrantyNotes: api.warrantyNotes,
+    includedItems: api.includedItems || [],
+    excludedItems: api.excludedItems || [],
+    leadTime: api.leadTime || null,
+    publicItemLocation: api.publicItemLocation || null,
     condition: api.condition as Product['condition'],
     price: effectivePrice,
     regularPrice: api.regularPrice != null ? Number(api.regularPrice) : undefined,

@@ -5,6 +5,7 @@ import { brandImages } from '../data/brandImages'
 import { useBrands } from '../hooks/useApiQuery'
 import { useLocalizedPath } from '../lib/locale'
 import { SEO } from '../components/seo/SEO'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { OptimizedImage } from '../components/ui/OptimizedImage'
 import type { Brand } from '../types'
@@ -14,6 +15,7 @@ const filters = ['All', 'Marine', 'Industrial', 'Automation', 'Pneumatic'] as co
 export default function Brands() {
   const { t } = useTranslation()
   const lp = useLocalizedPath()
+  const seo = useStaticPageSeo('brands')
   const [activeFilter, setActiveFilter] = useState<string>('All')
 
   // React Query caches brands — no manual loading/state management needed
@@ -49,8 +51,8 @@ export default function Brands() {
   return (
     <div className="overflow-x-hidden">
       <SEO
-        title="Brands — Marine & Industrial Equipment Suppliers"
-        description="Explore the brands we work with — ABB, Siemens, Parker Hannifin, Bosch Rexroth, Danfoss, Honeywell, and 100+ more leading manufacturers."
+        title={seo.title}
+        description={seo.description}
         canonical="/brands"
       />
       <BreadcrumbJsonLd items={[{ name: 'Home', url: '/' }, { name: 'Brands', url: '/brands' }]} />

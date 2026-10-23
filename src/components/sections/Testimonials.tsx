@@ -5,7 +5,13 @@ import { Star } from 'lucide-react'
 import { testimonials } from '../../data/testimonials'
 
 /**
- * Client Feedback — reviews collected from our eBay store.
+ * Marketplace feedback — verified reviews from our eBay store.
+ *
+ * These are buyers of the industrial tooling and surplus equipment we also
+ * sell on eBay, not marine procurement references. The copy says so explicitly
+ * so the section cannot be mistaken for marine customer proof (C-5/U-14);
+ * real marine references are still a manual task (MT-16).
+ *
  * Pure static data (src/data/testimonials.ts): nothing is read from or
  * written to the database for this section.
  */
@@ -21,6 +27,9 @@ export function Testimonials() {
           <SectionLabel>{t('testimonials.label')}</SectionLabel>
           <h2 className="font-display font-bold text-section tracking-tight">{t('testimonials.title')}</h2>
           <div className="gold-accent-bar mt-4" />
+          <p className="mt-4 max-w-2xl text-body-sm text-[var(--text-secondary)]">
+            {t('testimonials.note')}
+          </p>
         </div>
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {testimonials.map((review, i) => (

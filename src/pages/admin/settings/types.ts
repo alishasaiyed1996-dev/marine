@@ -60,15 +60,15 @@ export interface NotificationPrefs {
 
 export const defaultSite: SiteConfig = {
   companyName: 'Alka Traders',
-  tagline: 'Leading Supplier & Exporter of Used & Unbranded Marine Equipment',
+  tagline: 'Marine Spare Parts, Surplus & Industrial Equipment',
   email: 'sales@alkatraders.co',
-  phone: '+971 4 XXX XXXX',
+  phone: '+91 87990 95041',
   whatsappNumber: '918799095041',
   address: 'PLOT - 7 ALANG HOUSE, MOTITALAV ROAD, KHUMBHARWADA',
   city: 'BHAVNAGAR',
   country: 'India',
   currency: 'USD',
-  timezone: 'Asia/Dubai',
+  timezone: 'Asia/Kolkata',
   seoTitle: 'Marine Spare Parts & Ship Spares Supplier',
   seoDescription: 'Shop marine spare parts, ship spares, engine parts, hydraulic pumps, electrical automation and surplus industrial equipment from Bhavnagar and Alang, India.',
   googleAnalyticsId: '',
@@ -86,8 +86,15 @@ export const defaultZones: ShippingZone[] = [
 
 export const defaultPayments: PaymentMethod[] = [
   { id: 'p1', name: 'PayPal', type: 'paypal', enabled: true, testMode: true, config: { clientId: '', mode: 'sandbox' } },
-  { id: 'p2', name: 'Bank Transfer (Wire)', type: 'bank', enabled: true, testMode: false, config: { bankName: 'Emirates NBD', accountName: 'Alka Traders LLC', accountNumber: 'XXXX-XXXX-XXXX-1234', iban: 'AE07 0260 0010 1234 5678 901', swift: 'EBILAEAD' } },
-  { id: 'p3', name: 'Letter of Credit (L/C)', type: 'lc', enabled: true, testMode: false, config: { acceptingBanks: 'Emirates NBD, ADCB, Mashreq', documentsRequired: 'Commercial Invoice, Packing List, B/L, Certificate of Origin' } },
+  // Deliberately empty: bank transfer is only offered at checkout when real
+  // account details are configured (bankDetailsService.isBankTransferPayable).
+  // Shipping invented bank details to a customer is worse than not offering
+  // the method — the previous defaults carried an Emirates NBD / UAE IBAN for
+  // an Indian company, which is a trust and payment-routing hazard.
+  { id: 'p2', name: 'Bank Transfer (Wire)', type: 'bank', enabled: true, testMode: false, config: { bankName: '', accountName: '', accountNumber: '', iban: '', swift: '', ifsc: '' } },
+  // L/C document requirements are generic and correct; the accepting-bank list
+  // is account-specific, so it starts empty until an admin fills it in.
+  { id: 'p3', name: 'Letter of Credit (L/C)', type: 'lc', enabled: true, testMode: false, config: { acceptingBanks: '', documentsRequired: 'Commercial Invoice, Packing List, B/L, Certificate of Origin' } },
 ]
 
 export const defaultNotifications: NotificationPrefs = {

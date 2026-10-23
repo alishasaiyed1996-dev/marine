@@ -6,7 +6,7 @@
  * lives in smaller sub-modules under `api/`.
  */
 
-export { api } from './api/core'
+export { api, ApiError } from './api/core'
 
 // Token management
 export {

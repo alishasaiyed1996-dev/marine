@@ -73,12 +73,14 @@ export const storefront = {
       partNumber?: string; brand?: string; quantity?: number
       deliveryLocation?: string; urgency?: string; notes?: string
       source?: string; consent: boolean
+      /** When the visitor gave consent — recorded with the request. */
+      consentAt?: string
     }) => api.post<{ message: string; rfqNumber: string; id: string }>('/storefront/rfq', data),
   },
 
   // Payments
   payments: {
-    clientId: () => api.get<{ clientId: string }>('/storefront/payments/client-id'),
+    clientId: () => api.get<{ clientId: string; currency?: string }>('/storefront/payments/client-id'),
     createPaypalOrder: (data: { orderId: string }) =>
       api.post<{ paypalOrderId: string }>('/storefront/payments/create-order', data, { auth: 'customer' }),
     capturePaypalOrder: (data: { paypalOrderId: string; orderId: string }) =>
@@ -111,7 +113,7 @@ export const storefront = {
     pay: (id: string, shipping: {
       fullName: string; addressLine1: string; addressLine2?: string
       city: string; state?: string; postalCode?: string; country: string
-    }) => api.post<{ order: ApiOrder }>(`/storefront/offers/${id}/pay`, { shipping }, { auth: 'customer' }),
+    }, termsAccepted: boolean) => api.post<{ order: ApiOrder }>(`/storefront/offers/${id}/pay`, { shipping, termsAccepted }, { auth: 'customer' }),
 
     // Accept an admin counter offer (counter becomes the payable price).
     acceptCounter: (id: string) =>
@@ -134,8 +136,10 @@ export const storefront = {
       shipping: {
         fullName: string; email?: string; addressLine1: string; addressLine2?: string
         city: string; state?: string; postalCode?: string; country: string
+        phone?: string; company?: string; taxId?: string
       }
       paymentMethod: string; customerNotes?: string; idempotencyKey?: string
+      termsAccepted: boolean
       subtotal?: number; tax?: number; total?: number
     }) => api.post<{ order: ApiOrder }>('/storefront/orders', data, { auth: 'customer' }),
 

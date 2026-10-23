@@ -19,13 +19,14 @@ import { useStoreSettings } from '../hooks/useStoreSettings'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { useProductDetail } from '../hooks/useApiQuery'
-import { parseDescription, buildProductSpecRows, sectionTitle, isUuidSku } from '../lib/description'
+import { isUuidSku } from '../lib/description'
 import { buildProductSeo } from '../lib/seo/productSeo'
 import { ProductImageGallery } from '../components/product/ProductImageGallery'
 import { OfferModal } from '../components/product/OfferModal'
 import { Skeleton } from '../components/ui/Skeleton'
 import { RelatedProducts } from '../components/product/RelatedProducts'
 import { useLocalizedPath, useLocale } from '../lib/locale'
+import { formatMoney } from '../lib/utils'
 
 export default function ProductDetail() {
   const { t } = useTranslation()
@@ -35,7 +36,7 @@ export default function ProductDetail() {
   const lp = useLocalizedPath()
   const navigate = useNavigate()
   const { addToCart } = useStore()
-  const { whatsappNumber } = useStoreSettings()
+  const { whatsappNumber, currency: storeCurrency } = useStoreSettings()
 
   const [added, setAdded] = useState(false)
   const [quantity, setQuantity] = useState(1)
@@ -136,72 +137,72 @@ export default function ProductDetail() {
     ? product.regularPrice
     : price
 
-  // ── Categorized content ────────────────────────────────────────
-  // The admin description is a free-text blob mixing "Label: value" spec
-  // lines and section headers (KEY FEATURES / CONDITION / INCLUDED). Parse it
-  // once so each kind of content renders in its proper place instead of one
-  // wall-of-text paragraph.
-  const parsedDesc = parseDescription(product.description)
-  const specRows = buildProductSpecRows(parsedDesc, product, product.specs)
-  const readableCategory = product.category.replace(/-/g, ' ')
+  // ── Generated page model ──────────────────────────────────────
+  // ONE shared engine builds the title, meta description, H1, specs, sections,
+  // FAQs and JSON-LD. The same module runs in the prerenderer and the Express
+  // server, so crawlers and visitors always see identical facts.
+  const productSeo = buildProductSeo(
+    {
+      id: product.id,
+      slug: product.slug,
+      name: product.name,
+      sku: product.sku,
+      brand: product.brand,
+      category: product.category,
+      categoryName: product.categoryName,
+      categoryVisible: product.categoryVisible,
+      condition: product.condition,
+      description: product.description,
+      shortDescription: product.shortDescription,
+      seoTitle: product.seoTitle,
+      seoDescription: product.seoDescription,
+      price: product.price,
+      regularPrice: product.regularPrice,
+      salePrice: product.salePrice,
+      currency: product.currency,
+      onSale: product.onSale,
+      inStock: product.inStock,
+      stockCount: product.stockCount,
+      images: (product.images || []).map((img) => ({ url: img.url, alt: img.alt })),
+      ogImageUrl: product.ogImageUrl,
+      makeOffer: product.makeOffer,
+      // Structured identity wins over description-parsed values
+      manufacturer: product.manufacturer,
+      modelNumber: product.modelNumber,
+      mpn: product.mpn,
+      gtin: product.gtin,
+      impaCode: product.impaCode,
+      specs: product.specs,
+      // Rich listing facts. Unknown values stay absent instead of becoming
+      // "N/A" rows or invented compatibility claims.
+      keyFeatures: product.keyFeatures,
+      compatibilityNotes: product.compatibilityNotes,
+      conditionNotes: product.conditionNotes,
+      warrantyNotes: product.warrantyNotes,
+      includedItems: product.includedItems,
+      excludedItems: product.excludedItems,
+      leadTime: product.leadTime,
+      publicItemLocation: product.publicItemLocation,
+      lastVerifiedAt: product.lastVerifiedAt,
+      industries: (product.industryNames || []).map((name) => ({ name })),
+    },
+    { locale, related },
+  )
+  const page = productSeo.page
+  const specRows = page.specs
+  const readableCategory = page.category.name || product.category.replace(/-/g, ' ')
   // Hidden category/brand hubs return 404, so never link to them from a live
   // product page. The names still render as plain text.
-  const categoryLinkVisible = product.categoryVisible !== false
-  // A short, fact-based overview above the fold. Imported products get this
-  // from the normalized short description; older products fall back to their
-  // first description paragraph.
-  const overview = (product.shortDescription || parsedDesc.paragraphs[0] || '').trim()
-  const overviewKey = overview.toLowerCase().replace(/\s+/g, ' ')
-  const descriptionParagraphs = parsedDesc.paragraphs.filter((paragraph) => {
-    if (!overviewKey) return true
-    const key = paragraph.trim().toLowerCase().replace(/\s+/g, ' ')
-    if (!key) return false
-    return !(
-      key === overviewKey ||
-      overviewKey.startsWith(key.slice(0, Math.min(80, key.length))) ||
-      key.startsWith(overviewKey.slice(0, Math.min(80, overviewKey.length)))
-    )
-  })
-  const hasDescriptionContent =
-    descriptionParagraphs.length > 0 || parsedDesc.features.length > 0 || parsedDesc.sections.length > 0
-  const hasParsedCondition = parsedDesc.sections.some((section) => section.key === 'condition')
+  const categoryLinkVisible = page.category.visible
+  const overview = page.overview[0] || product.shortDescription || ''
+  // "Overview" is the lead paragraph above the buy box; every other generated
+  // section is rendered in the long-form product content below.
+  const contentSections = page.sections.filter((section) => section.id !== 'overview')
+  const hasDescriptionContent = contentSections.length > 0
   const conditionDetail =
-    !hasParsedCondition && product.conditionNotes && product.conditionNotes.trim().length > 12
+    product.conditionNotes && product.conditionNotes.trim().length > 12
       ? product.conditionNotes.trim()
       : null
-  // ── SEO generation — deterministic, fact-grounded ──
-  // Titles/meta/JSON-LD derive from real product identity (structured fields +
-  // Item Specifics parsed from the admin description). No fabricated attributes:
-  // unknown values are omitted, IMPA is additionalProperty (never GTIN), and the
-  // brand is asserted only when a real manufacturer/brand is known.
-  const productSeo = buildProductSeo({
-    id: product.id,
-    slug: product.slug,
-    name: product.name,
-    sku: product.sku,
-    brand: product.brand,
-    category: product.category,
-    condition: product.condition,
-    description: product.description,
-    seoTitle: product.seoTitle,
-    seoDescription: product.seoDescription,
-    price: product.price,
-    currency: product.currency,
-    onSale: product.onSale,
-    salePrice: product.salePrice,
-    inStock: product.inStock,
-    stockCount: product.stockCount,
-    images: (product.images || []).map((img) => ({ url: img.url, alt: img.alt })),
-    ogImageUrl: product.ogImageUrl,
-    makeOffer: product.makeOffer,
-    // Structured identity wins over description-parsed values
-    manufacturer: product.manufacturer,
-    modelNumber: product.modelNumber,
-    mpn: product.mpn,
-    gtin: product.gtin,
-    impaCode: product.impaCode,
-    specs: product.specs,
-  })
 
   const handleAddToCart = () => {
     if (!product.inStock) return
@@ -223,7 +224,7 @@ export default function ProductDetail() {
       <SEO
         title={productSeo.title}
         description={productSeo.metaDescription}
-        canonical={`/${locale}/product/${product.slug || id}/`}
+        canonical={page.canonicalPath}
         ogImage={productSeo.ogImage}
         ogType="product"
         productPrice={productSeo.productPrice}
@@ -236,14 +237,7 @@ export default function ProductDetail() {
         ogImageAlt={productSeo.ogImageAlt}
         jsonLd={productSeo.jsonLd}
       />
-      <BreadcrumbJsonLd items={[
-        { name: 'Home', url: '/' },
-        { name: 'Products', url: '/products/' },
-        ...(categoryLinkVisible
-          ? [{ name: product.categoryName || readableCategory, url: `/categories/${product.category}/` }]
-          : []),
-        { name: product.name, url: `/product/${product.slug || id}/` },
-      ]} />
+      <BreadcrumbJsonLd items={page.breadcrumbs.map((crumb) => ({ name: crumb.name, url: crumb.path }))} />
       <div className="max-w-[1280px] mx-auto px-4 sm:px-6">
         {/* Back button */}
         <button
@@ -314,10 +308,10 @@ export default function ProductDetail() {
                 {product.onSale && product.salePrice ? (
                   <div className="flex items-center gap-3">
                     <span className="font-display font-bold text-4xl text-[var(--danger)] tabular-nums">
-                      ${product.salePrice.toFixed(2)}
+                      {formatMoney(product.salePrice, product.currency || storeCurrency)}
                     </span>
                     <span className="font-display font-bold text-xl text-[var(--text-muted)] line-through tabular-nums">
-                      ${originalPrice.toFixed(2)}
+                      {formatMoney(originalPrice, product.currency || storeCurrency)}
                     </span>
                     <span className="text-xs font-bold bg-[var(--danger)] text-[var(--btn-danger-text)] px-2 py-0.5 rounded">
                       {t('product.percentageOff', { percent: Math.max(0, Math.round((1 - product.salePrice / originalPrice) * 100)) })}
@@ -325,7 +319,7 @@ export default function ProductDetail() {
                   </div>
                 ) : (
                   <span className="font-display font-bold text-4xl text-[var(--accent-primary)] tabular-nums">
-                    ${effectivePrice.toFixed(2)}
+                    {formatMoney(effectivePrice, product.currency || storeCurrency)}
                   </span>
                 )}
               </div>
@@ -480,79 +474,85 @@ export default function ProductDetail() {
           </div>
         </div>
 
-        {/* DESCRIPTION SECTION — categorized content blocks */}
+        {/* LONG-FORM CONTENT — generated once by shared/product-page.mjs.
+            Every paragraph is fact-grounded in the listing; unknown attributes
+            are omitted instead of padded with generic claims. */}
         {hasDescriptionContent && (
-          <section className="mt-16 border-t border-[var(--border)] pt-10 text-left">
+          <section
+            aria-labelledby="product-details-heading"
+            className="mt-16 border-t border-[var(--border)] pt-10 text-left"
+          >
             <div className="border-b border-[var(--border)] mb-6">
-              <span className="inline-block border-b-2 border-[var(--accent-primary)] pb-2 font-semibold text-sm text-[var(--accent-primary)] tracking-wide uppercase">
+              <h2
+                id="product-details-heading"
+                className="inline-block border-b-2 border-[var(--accent-primary)] pb-2 font-semibold text-sm text-[var(--accent-primary)] tracking-wide uppercase"
+              >
                 {t('product.description')}
-              </span>
+              </h2>
             </div>
-            <div className="space-y-8 text-sm text-[var(--text-secondary)] leading-relaxed max-w-[800px]">
-              {/* Free-form overview paragraphs (the lead paragraph shown above
-                  the buy box is removed here to avoid repeating it). */}
-              {descriptionParagraphs.length > 0 && (
-                <div className="space-y-3">
-                  {descriptionParagraphs.map((para, i) => (
-                    <p key={i}>{para}</p>
-                  ))}
-                </div>
-              )}
-
-              {/* KEY FEATURES — bullet list with accent markers */}
-              {parsedDesc.features.length > 0 && (
-                <div>
-                  <h3 className="heading-lg uppercase tracking-wide mb-3">{t('product.keyFeatures')}</h3>
-                  <ul className="space-y-2">
-                    {parsedDesc.features.map((f, i) => (
-                      <li key={i} className="flex items-start gap-2.5">
-                        <Check size={14} className="text-[var(--accent-primary)] mt-0.5 shrink-0" aria-hidden />
-                        <span>{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Titled sections parsed from the blob (Condition notes, What's
-                  Included, Shipping, Warranty...) */}
-              {parsedDesc.sections.map((section, i) => (
-                <div
-                  key={`${section.key}-${i}`}
+            <div className="space-y-8 text-sm text-[var(--text-secondary)] leading-relaxed max-w-[820px]">
+              {contentSections.map((section) => (
+                <section
+                  key={section.id}
+                  id={`product-${section.id}`}
                   className="bg-[var(--secondary-bg)] border border-[var(--border)] p-5 rounded-xl"
                 >
-                  <h3 className="font-bold text-[var(--text-primary)] text-sm mb-2 uppercase tracking-wide">
-                    {section.title || sectionTitle(section.key)}
+                  <h3 className="font-bold text-[var(--text-primary)] text-sm mb-3 uppercase tracking-wide">
+                    {section.title}
                   </h3>
                   {section.paragraphs.length > 0 && (
-                    <div className="space-y-2">
-                      {section.paragraphs.map((para, j) => (
-                        <p key={j}>{para}</p>
+                    <div className="space-y-2.5">
+                      {section.paragraphs.map((paragraph, index) => (
+                        <p key={index}>{paragraph}</p>
                       ))}
                     </div>
                   )}
                   {section.bullets.length > 0 && (
-                    <ul className="list-disc list-inside space-y-1.5 mt-2">
-                      {section.bullets.map((b, j) => (
-                        <li key={j}>{b}</li>
+                    <ul className={section.id === 'features' ? 'space-y-2' : 'list-disc list-inside space-y-1.5'}>
+                      {section.bullets.map((bullet, index) => (
+                        <li key={index} className={section.id === 'features' ? 'flex items-start gap-2.5' : undefined}>
+                          {section.id === 'features' && (
+                            <Check size={14} className="text-[var(--accent-primary)] mt-0.5 shrink-0" aria-hidden />
+                          )}
+                          <span>{bullet}</span>
+                        </li>
                       ))}
                     </ul>
                   )}
-                </div>
+                </section>
               ))}
+            </div>
+          </section>
+        )}
 
-              {/* Static shipping info block (kept — it's storefront policy,
-                  not product content) */}
-              <div className="space-y-3 text-xs text-[var(--text-secondary)] bg-[var(--secondary-bg)] border border-[var(--border)] p-5 rounded-xl">
-                <h4 className="font-bold text-[var(--text-primary)] text-sm mb-2">{t('product.shippingInfo')}</h4>
-                <ul className="list-disc list-inside space-y-2">
-                  <li>{t('product.shippingLine1')}</li>
-                  <li>{t('product.shippingLine2')}</li>
-                  <li>{t('product.shippingLine3')}</li>
-                  <li>{t('product.shippingLine4')}</li>
-                  <li>{t('product.shippingLine5')}</li>
-                </ul>
-              </div>
+        {/* PRODUCT FAQs — visible answers match the FAQPage JSON-LD exactly.
+            Native <details> keeps the copy in the DOM for crawlers while
+            letting human visitors expand only what they need. */}
+        {page.faqs.length > 0 && (
+          <section
+            aria-labelledby="product-faq-heading"
+            className="mt-16 border-t border-[var(--border)] pt-10 text-left"
+          >
+            <h2
+              id="product-faq-heading"
+              className="inline-block border-b-2 border-[var(--accent-primary)] pb-2 font-semibold text-sm text-[var(--accent-primary)] tracking-wide uppercase mb-6"
+            >
+              Frequently asked questions
+            </h2>
+            <div className="max-w-[820px] divide-y divide-[var(--border)] border-y border-[var(--border)]">
+              {page.faqs.map((faq, index) => (
+                <details key={faq.question} className="group py-4" open={index === 0}>
+                  <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-sm font-semibold text-[var(--text-primary)] marker:hidden">
+                    <span>{faq.question}</span>
+                    <Plus
+                      size={16}
+                      aria-hidden
+                      className="mt-0.5 shrink-0 text-[var(--accent-primary)] transition-transform group-open:rotate-45"
+                    />
+                  </summary>
+                  <p className="mt-2.5 text-sm leading-relaxed text-[var(--text-secondary)]">{faq.answer}</p>
+                </details>
+              ))}
             </div>
           </section>
         )}
@@ -602,6 +602,36 @@ export default function ProductDetail() {
           </Link>
         </nav>
 
+        {/* Crawlable related-part references. These text links complement the
+            photo cards below and expose sibling part numbers to search engines. */}
+        {page.related.length > 0 && (
+          <nav
+            aria-labelledby="related-part-numbers"
+            className="mt-12 rounded-2xl border border-[var(--border)] bg-[var(--secondary-bg)] p-6 text-left"
+          >
+            <h2 id="related-part-numbers" className="font-display text-lg font-bold text-[var(--text-primary)]">
+              Related part numbers
+            </h2>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              Compare these listings against the numbers on your equipment or parts manual.
+            </p>
+            <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+              {page.related.map((item) => (
+                <li key={item.slug} className="text-sm">
+                  <Link to={lp(`/product/${item.slug}`)} className="font-semibold text-[var(--accent-primary)] no-underline hover:underline">
+                    {item.name}
+                  </Link>
+                  {(item.model || item.sku) && (
+                    <span className="ml-2 font-mono text-xs text-[var(--text-muted)]">
+                      {item.model || item.sku}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
+
         {/* RELATED PRODUCTS */}
         <RelatedProducts products={related} />
       </div>
@@ -623,7 +653,7 @@ export default function ProductDetail() {
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{product.name}</p>
               <p className="text-sm font-bold text-[var(--accent-primary)] tabular-nums">
-                ${effectivePrice.toFixed(2)}
+                {formatMoney(effectivePrice, product.currency || storeCurrency)}
               </p>
             </div>
             <button

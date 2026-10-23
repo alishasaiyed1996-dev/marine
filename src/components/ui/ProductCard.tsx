@@ -10,7 +10,7 @@ import { useSaleCountdown } from '../../hooks/useSaleCountdown'
 import { usePrefetchOnHover } from '../../hooks/usePrefetchOnHover'
 import { fetchProductDetail, productDetailQueryKey } from '../../hooks/useApiQuery'
 import { useLocalizedPath } from '../../lib/locale'
-import { isLightColor, getProductImageUrl } from '../../lib/utils'
+import { isLightColor, getProductImageUrl, formatMoney } from '../../lib/utils'
 
 interface ProductCardProps {
   product: Product
@@ -42,7 +42,8 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
   // A live sale window inside the next 24h gets an urgent "ends soon" highlight.
   const endsSoon = Boolean(countdown && !countdown.expired && countdown.days === 0)
   const canBuy = product.inStock && Boolean(onAddToCart)
-  const { whatsappNumber } = useStoreSettings()
+  const { whatsappNumber, currency: storeCurrency } = useStoreSettings()
+  const priceCurrency = product.currency || storeCurrency
   const whatsappText = encodeURIComponent('Hi, I need a quote for ' + product.name + ' (SKU: ' + product.sku + ').')
 
   // Warm the product-detail cache on hover so clicking the card opens the
@@ -190,15 +191,15 @@ export const ProductCard = memo(function ProductCard({ product, added = false, o
               {product.onSale && product.salePrice ? (
                 <div className="flex items-baseline gap-2">
                   <span className="font-display text-2xl font-black tabular-nums text-[var(--danger)]">
-                    {'$'}{product.salePrice.toFixed(2)}
+                    {formatMoney(product.salePrice, priceCurrency)}
                   </span>
                   <span className="font-display text-sm font-bold text-[var(--text-muted)] line-through">
-                    {'$'}{regularPrice.toFixed(2)}
+                    {formatMoney(regularPrice, priceCurrency)}
                   </span>
                 </div>
               ) : (
                 <span className="font-display text-2xl font-black tabular-nums text-[var(--text-primary)]">
-                  {'$'}{displayPrice.toFixed(2)}
+                  {formatMoney(displayPrice, priceCurrency)}
                 </span>
               )}
             </div>

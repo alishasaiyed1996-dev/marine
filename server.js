@@ -15,11 +15,23 @@
  * The Hostinger self-heal / warm-up-page logic has been removed: Railway runs
  * the build step before start, so the dist is always present at boot.
  */
+/**
+ * Production frontend server — the single entry point for the storefront.
+ *
+ * The legacy Hostinger entry (`frontend/server.js`) now delegates to this
+ * file, so there is exactly one implementation of the CSP, canonicalization,
+ * prerendered pages, sitemap proxy, security headers, compression and asset
+ * caching. `npm start` → `node server.js` (root `package.json`).
+ */
 import express from 'express'
 import path from 'path'
 import fs from 'fs'
 import crypto from 'crypto'
+import zlib from 'zlib'
 import { fileURLToPath } from 'url'
+import { buildProductPage, renderProductBodyHtml } from './shared/product-page.mjs'
+import { isIndexableRoute, SHIPPED_LOCALES } from './shared/route-i18n.mjs'
+import { STATIC_PAGE_META } from './shared/static-pages.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -37,7 +49,7 @@ const indexPath = path.join(distPath, 'index.html')
 // These are the only indexable storefront routes. Anything else under a
 // locale prefix is a true 404 instead of the old 200 SPA shell — a soft-404
 // pattern that wastes crawl budget and can index infinite junk URLs.
-const STOREFRONT_LOCALES = ['en', 'ar', 'es']
+const STOREFRONT_LOCALES = SHIPPED_LOCALES
 const STATIC_STOREFRONT_ROUTES = new Set([
   '', 'products', 'industries', 'brands', 'about', 'rfq', 'contact',
   'emergency', 'network', 'intelligence', 'privacy-policy',
@@ -48,62 +60,11 @@ const PRIVATE_STOREFRONT_ROUTES = new Set([
 ])
 const ACCOUNT_ROOT_ROUTES = new Set(['orders', 'offers', 'profile'])
 
-// Fallback metadata for the English static pages when a prerendered file is
-// missing from the deployed build. The prerenderer emits these same titles.
-const STATIC_PAGE_META = {
-  '': {
-    title: 'Marine Spare Parts & Ship Spares Supplier | Alka Traders',
-    description: 'Global supplier of marine spares, ship machinery, surplus equipment, hydraulics, pneumatics, electrical automation, and emergency procurement parts.',
-  },
-  products: {
-    title: 'Marine Spare Parts Catalog | Ship Spares & Engine Parts | Alka Traders',
-    description: 'Browse marine spare parts, ship spares, marine engine parts, hydraulic pumps, electrical automation, navigation equipment, safety gear, rigging, and industrial surplus stock.',
-  },
-  industries: {
-    title: 'Industries Served - Marine, Oil & Gas, Power Generation | Alka Traders',
-    description: 'Alka Traders serves marine shipping, oil and gas, power generation, manufacturing, chemical processing, shipbuilding, and mining industries with specialized equipment.',
-  },
-  brands: {
-    title: 'Brands - Marine & Industrial Equipment Suppliers | Alka Traders',
-    description: 'Explore the brands we work with - ABB, Siemens, Parker Hannifin, Bosch Rexroth, Danfoss, Honeywell, and more leading manufacturers.',
-  },
-  about: {
-    title: 'About Us - Marine Equipment Specialists | Alka Traders',
-    description: 'Alka Traders - globally connected marine and industrial equipment supplier based in Bhavnagar, Gujarat, India. Since 1990 - 35+ years of industry expertise.',
-  },
-  rfq: {
-    title: 'Request a Quote - RFQ for Marine & Industrial Parts | Alka Traders',
-    description: 'Submit a request for quotation for marine spares, industrial equipment, surplus machinery, and hard-to-find parts. Fast response within hours.',
-  },
-  contact: {
-    title: 'Contact Us - Alka Traders',
-    description: 'Get in touch with Alka Traders. Based in Bhavnagar, Gujarat, India. Reach us via email, phone, WhatsApp, or our contact form.',
-  },
-  emergency: {
-    title: 'Emergency Procurement - 24/7 Marine Parts Support | Alka Traders',
-    description: 'Emergency marine and industrial parts procurement - 24/7 support, 18-hour delivery record. Send part details via WhatsApp or phone for immediate response.',
-  },
-  network: {
-    title: 'Global Network - Alka Traders',
-    description: "Alka Traders' global network spans 18+ countries across Asia-Pacific, EMEA, and the Americas. Head office in Bhavnagar, Gujarat, India.",
-  },
-  intelligence: {
-    title: 'Market Intelligence - Marine & Industrial Sourcing Insights | Alka Traders',
-    description: 'Sourcing trends, regional availability data, emergency procurement benchmarks, and obsolescence management insights for marine and industrial buyers.',
-  },
-  'privacy-policy': {
-    title: 'Privacy Policy | Alka Traders',
-    description: 'Alka Traders privacy policy. How we collect, use, share, and protect your personal information including cookies, data retention, and your rights.',
-  },
-  'terms-of-service': {
-    title: 'Terms & Conditions | Alka Traders',
-    description: 'Alka Traders terms and conditions. Order terms, purchase price, title and delivery, inspection, warranties, cancellation policy, and shipping policy.',
-  },
-  'refund-policy': {
-    title: 'Return & Refund Policy | Alka Traders',
-    description: 'Alka Traders return and refund policy. 30-day return window, RMA required. Details on eligibility, process, damaged items, and refund timelines.',
-  },
-}
+// Static page metadata is NOT duplicated here: the same manifest the
+// prerenderer uses (`shared/static-pages.mjs`) is imported above, so the
+// fallback shell and the prerendered HTML can never describe a page
+// differently. See S-4/D-8 in "complete codebase fix.md".
+
 // Keep this in sync with public/robots.txt. These pages are accessible but
 // must never be indexed.
 const PRIVATE_ROUTE_RE = /^\/(en|ar|es)\/(search|checkout|track-order|forgot-password|reset-password|account)(\/|$)/
@@ -254,98 +215,6 @@ function applySiteSeo(html, seo) {
   }
 
   return output
-}
-
-function mapCondition(condition) {
-  switch (String(condition || '').toLowerCase()) {
-    case 'new':
-    case 'unused':
-      return 'https://schema.org/NewCondition'
-    case 'refurbished':
-    case 'reconditioned':
-      return 'https://schema.org/RefurbishedCondition'
-    default:
-      return 'https://schema.org/UsedCondition'
-  }
-}
-
-function isInStock(product) {
-  if (typeof product?.inStock === 'boolean') return product.inStock
-  return product?.availability !== 'out-of-stock'
-}
-
-const SPEC_PLACEHOLDER_RE =
-  /^(?:n\/?a|na|none|null|unknown|not\s+marked|not\s+applicable|does\s+not\s+apply|see\s+(?:photos?|pictures?|description)|as\s+shown|unbranded|generic|-+)$/i
-const SPEC_IGNORED_LABELS = new Set([
-  'unit', 'unit type', 'unit quantity', 'value', 'quantity',
-  'note usa buyers', 'seller notes', 'condition notes', 'ebay item',
-])
-
-function isPlaceholderValue(value) {
-  const text = cleanText(value)
-  return !text || SPEC_PLACEHOLDER_RE.test(text)
-}
-
-/** Internal import SKUs are often 32-char hex UUIDs; keep them out of public UI. */
-function isUuidSku(value) {
-  const text = cleanText(value)
-  return (
-    /^[0-9a-f]{24,}$/i.test(text) ||
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text)
-  )
-}
-
-/** Resolve a real manufacturer/brand name; never assert "Not Marked"/"Unbranded". */
-function realBrandName(product) {
-  const candidates = [product?.brand?.name, product?.manufacturer]
-  for (const candidate of candidates) {
-    const value = cleanText(candidate)
-    if (value && !isPlaceholderValue(value)) return value
-  }
-  return null
-}
-
-/** Public specs only, placeholder-free, de-duplicated by label. */
-function publicProductSpecs(product, limit = 12) {
-  const specs = Array.isArray(product?.specs) ? product.specs : []
-  const rows = []
-  const seen = new Set()
-  for (const spec of specs) {
-    const label = cleanText(spec?.name)
-      .replace(/^[•·▪◦*#\-–—]\s*/, '')
-      .replace(/^(?:ITEM|PRODUCT)\s+SPECIFICS\s+/i, '')
-      .replace(/:+$/, '')
-    const value = cleanText(
-      cleanText(spec?.value).replace(/\s*\(?\s*(?:size\s+)?not\s+marked\s*\)?/gi, ' '),
-    )
-    if (!label || !value || isPlaceholderValue(value)) continue
-    if (SPEC_IGNORED_LABELS.has(label.toLowerCase())) continue
-    if (label.toLowerCase() === 'custom bundle' && /^no$/i.test(value)) continue
-    const key = label.toLowerCase()
-    if (seen.has(key)) continue
-    const keyWords = key.split(/\s+/)
-    const valueKey = value.toLowerCase()
-    const redundant = rows.some((row) => {
-      const rowKey = row.label.toLowerCase()
-      const rowWords = rowKey.split(/\s+/)
-      const related =
-        rowKey === key ||
-        rowWords.every((word) => keyWords.includes(word)) ||
-        keyWords.every((word) => rowWords.includes(word))
-      if (!related) return false
-      const rowValue = row.value.toLowerCase()
-      return (
-        rowValue === valueKey ||
-        (valueKey.length >= 4 &&
-          (rowValue.includes(valueKey) || valueKey.includes(rowValue)))
-      )
-    })
-    if (redundant) continue
-    seen.add(key)
-    rows.push({ label, value })
-    if (rows.length >= limit) break
-  }
-  return rows
 }
 
 /** JSON-LD is tagged data-rh so react-helmet-async can replace it on hydration. */
@@ -534,10 +403,120 @@ app.use((_req, res, next) => {
   next()
 })
 
+// ─── Security headers ─────────────────────────────────────────────
+// The backend uses helmet, but visitors never reach the backend origin — they
+// reach this one. Without these headers the HTML origin had no HSTS, no
+// referrer policy, and no protection against MIME sniffing.
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN')
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=(self), interest-cohort=()')
+  // HSTS only over HTTPS — sending it over plain HTTP is ignored by browsers
+  // and would break local http development.
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+  }
+  next()
+})
+
+// Paths whose query string must never reach the access log: they carry
+// one-time secrets (password-reset tokens, guest tracking emails).
+const SENSITIVE_QUERY_PATHS = [/^\/(en\/)?reset-password/i, /^\/(en\/)?track-order/i]
+
+// ─── Compression ─────────────────────────────────────────────────
+// The frontend server sent every page, script and stylesheet uncompressed —
+// the backend uses compression(), the frontend did not, so the first load
+// depended entirely on the platform proxy.
+//
+// Implemented with Node's built-in zlib rather than an extra dependency: the
+// storefront serves buffered documents and static files, so a buffered
+// implementation is both simpler and safer than a streaming one.
+const COMPRESSIBLE_TYPE = /^(text\/|application\/(json|javascript|xml|xhtml\+xml|manifest\+json)|image\/svg\+xml)/
+const COMPRESSIBLE_PATH = /\.(html?|js|mjs|css|json|xml|svg|txt|map|webmanifest|ico)$/i
+/** Below this size the gzip header costs more than it saves. */
+const MIN_COMPRESS_BYTES = 1024
+
+function compressionMiddleware(req, res, next) {
+  const acceptEncoding = String(req.headers['accept-encoding'] || '')
+  if (!/\bgzip\b/.test(acceptEncoding)) return next()
+
+  const originalWrite = res.write.bind(res)
+  const originalEnd = res.end.bind(res)
+  const chunks = []
+  let buffering = false
+
+  const shouldCompress = () => {
+    const type = String(res.getHeader('Content-Type') || '')
+    return COMPRESSIBLE_TYPE.test(type) || COMPRESSIBLE_PATH.test(String(req.path || ''))
+  }
+
+  const toBuffer = (chunk, encoding) =>
+    Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, typeof encoding === 'string' ? encoding : 'utf8')
+
+  /** Compresses the buffered body and sends it. */
+  const finishBuffered = (callback) => {
+    const body = Buffer.concat(chunks)
+    if (body.length < MIN_COMPRESS_BYTES) {
+      // Too small to be worth the header — send it as-is.
+      res.removeHeader('Content-Encoding')
+      res.setHeader('Content-Length', String(body.length))
+      return originalEnd(body, callback)
+    }
+
+    let compressed
+    try {
+      compressed = zlib.gzipSync(body, { level: 6 })
+    } catch {
+      return originalEnd(body, callback)
+    }
+    res.setHeader('Content-Encoding', 'gzip')
+    res.setHeader('Vary', 'Accept-Encoding')
+    res.setHeader('Content-Length', String(compressed.length))
+    return originalEnd(compressed, callback)
+  }
+
+  res.write = (chunk, encoding, callback) => {
+    if (!buffering) {
+      if (!shouldCompress()) return originalWrite(chunk, encoding, callback)
+      buffering = true
+    }
+    if (chunk) chunks.push(toBuffer(chunk, encoding))
+    const cb = typeof encoding === 'function' ? encoding : callback
+    if (typeof cb === 'function') cb()
+    return true
+  }
+
+  res.end = (chunk, encoding, callback) => {
+    if (buffering) {
+      if (chunk) chunks.push(toBuffer(chunk, encoding))
+      return finishBuffered(callback)
+    }
+    // No prior write — Express's res.send() writes the whole body through
+    // res.end(), so the compressibility decision happens here.
+    if (chunk && shouldCompress()) {
+      buffering = true
+      chunks.push(toBuffer(chunk, encoding))
+      return finishBuffered(callback)
+    }
+    return originalEnd(chunk, encoding, callback)
+  }
+
+  next()
+}
+
+app.use(compressionMiddleware)
+
 app.use((req, res, next) => {
   const start = Date.now()
   res.on('finish', () => {
-    log(`[req] ${req.method} ${req.url} -> ${res.statusCode} (${Date.now() - start}ms)`)
+    // The query string can carry a one-time secret. Log the path only for
+    // those routes so a reset token never lands in the deploy logs.
+    const pathOnly = req.path || req.url.split('?')[0]
+    const isSensitive = SENSITIVE_QUERY_PATHS.some((re) => re.test(pathOnly))
+    const target = isSensitive ? pathOnly : req.url
+    log(`[req] ${req.method} ${target} -> ${res.statusCode} (${Date.now() - start}ms)`)
   })
   next()
 })
@@ -577,8 +556,18 @@ app.use((req, res, next) => {
 // noindex is emitted in BOTH X-Robots-Tag and (in the HTML shell) meta robots.
 // Header-only would be missed if a crawler reads only the document; meta-only
 // is missed for non-HTML responses. Transactional pages stay accessible.
+//
+// Arabic and Spanish pages are indexable when a verified translation exists
+// for them (the marketing and legal pages). Catalog pages carry English
+// product data, so their AR/ES variants stay noindex and point hreflang at
+// the English page — see shared/route-i18n.mjs.
 app.use((req, res, next) => {
-  if (/^\/(ar|es)(\/|$)/.test(req.path)) res.set('X-Robots-Tag', 'noindex, follow')
+  const localeMatch = req.path.match(/^\/(en|ar|es)(?=\/|$)/i)
+  if (localeMatch && localeMatch[1].toLowerCase() !== 'en') {
+    if (!isIndexableRoute(req.path, localeMatch[1].toLowerCase())) {
+      res.set('X-Robots-Tag', 'noindex, follow')
+    }
+  }
   if (isPrivateStorefrontPath(req.path)) res.set('X-Robots-Tag', 'noindex, follow')
   if (/^\/admin(\/|$)/.test(req.path)) res.set('X-Robots-Tag', 'noindex, nofollow')
   next()
@@ -778,147 +767,34 @@ function websiteSchema() {
 }
 
 function productHtml(template, product, related = [], locale = 'en') {
-  const slug = product.slug || product.id
-  const path = `/${locale}/product/${encodeURIComponent(slug)}/`
-  const canonical = `${SITE_ORIGIN}${path}`
-  const title = withBrandSuffix(product.seoTitle || product.name)
-  const rawDescription = product.seoDescription || product.shortDescription || product.description || `${product.name} marine and industrial spare supplied by Alka Traders.`
-  const description = cleanText(rawDescription, 160)
-  const schemaDescription = cleanText(rawDescription, 300)
-  const mainImage = product.images?.find((item) => item.isMain)?.url || product.images?.[0]?.url || ''
-  const image = absoluteUrl(mainImage)
-  // A dedicated social image can differ from the product photo; schema image
-  // stays the real product image, while og:image honours the override.
-  const socialImage = absoluteUrl(product.ogImageUrl || mainImage)
-  const imageAlt = product.images?.find((item) => item.isMain)?.altText || product.name
-  const gtin = String(product.gtin || '').replace(/\s+/g, '')
-  const validGtin = /^(\d{8}|\d{12,14})$/.test(gtin)
-  const inStock = isInStock(product)
-  const price = Number(product.price ?? (product.onSale && product.salePrice ? product.salePrice : product.regularPrice))
-  const priceValid = Number.isFinite(price) && price > 0
-  const brandName = realBrandName(product)
-  const specRows = publicProductSpecs(product, 24)
-  const schemaImages = (product.images || [])
-    .map((item) => absoluteUrl(item.url))
-    .filter(Boolean)
-    .slice(0, 10)
-  const identitySpecLabels = new Set([
-    'brand', 'manufacturer', 'make', 'model', 'mpn', 'gtin', 'impa', 'impa code',
-    'sku', 'condition', 'category', 'custom bundle', 'bundle description',
-  ])
-  const additionalProperties = []
-  if (product.impaCode) {
-    additionalProperties.push({
-      '@type': 'PropertyValue',
-      name: 'IMPA Code',
-      value: String(product.impaCode).replace(/\s+/g, ''),
-    })
-  }
-  for (const spec of specRows) {
-    if (additionalProperties.length >= 8) break
-    if (identitySpecLabels.has(spec.label.toLowerCase())) continue
-    additionalProperties.push({ '@type': 'PropertyValue', name: spec.label, value: spec.value })
-  }
-  const bodySpecRows = specRows.filter(
-    (spec) => !['sku', 'mpn', 'impa', 'impa code', 'brand', 'model', 'category', 'condition'].includes(spec.label.toLowerCase()),
-  )
+  // Single source of truth: the same shared module powers the React page, the
+  // build-time prerenderer and this runtime fallback. Titles, meta, H1, specs,
+  // sections, FAQs, breadcrumbs and JSON-LD therefore cannot drift apart.
+  const model = buildProductPage(product, {
+    baseUrl: SITE_ORIGIN,
+    locale,
+    related: Array.isArray(related) ? related : [],
+  })
 
-  const breadcrumbs = [
-    { name: 'Home', path: `/${locale}/` },
-    { name: 'Products', path: `/${locale}/products/` },
-    ...(product.category?.name && product.category?.slug && product.category.isVisible !== false
-      ? [{ name: product.category.name, path: `/${locale}/categories/${encodeURIComponent(product.category.slug)}/` }]
-      : []),
-    { name: product.name, path },
-  ]
+  const body = `<div class="seo-shell">${renderProductBodyHtml(model, { locale })}${shellFooter(locale)}</div>`
 
-  const productSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.name,
-    description: schemaDescription,
-    url: canonical,
-    mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
-    ...(product.sku && !isUuidSku(product.sku) ? { sku: product.sku } : {}),
-    ...(product.mpn ? { mpn: product.mpn } : {}),
-    ...(validGtin ? { gtin } : {}),
-    ...(product.modelNumber ? { model: product.modelNumber } : {}),
-    ...(product.manufacturer && !isPlaceholderValue(product.manufacturer)
-      ? { manufacturer: { '@type': 'Organization', name: product.manufacturer } }
-      : {}),
-    ...(brandName ? { brand: { '@type': 'Brand', name: brandName } } : {}),
-    ...(product.category?.name ? { category: product.category.name } : {}),
-    ...(additionalProperties.length > 0 ? { additionalProperty: additionalProperties } : {}),
-    ...(schemaImages.length > 0 ? { image: schemaImages } : image ? { image: [image] } : {}),
-    ...(priceValid
-      ? {
-          offers: {
-            '@type': 'Offer',
-            url: canonical,
-            priceCurrency: product.currency || 'USD',
-            price: price.toFixed(2),
-            availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-            itemCondition: mapCondition(product.condition),
-            seller: { '@type': 'Organization', '@id': `${SITE_ORIGIN}/#organization`, name: SITE_NAME },
-          },
-        }
-      : {}),
-  }
-
-  const relatedLinks = (related || [])
-    .filter((item) => item?.slug && item.slug !== slug)
-    .slice(0, 8)
-    .map((item) => `<li><a href="/${locale}/product/${encodeURIComponent(item.slug)}/">${escapeHtml(item.name)}</a>${item.sku && !isUuidSku(item.sku) ? ` — ${escapeHtml(item.sku)}` : ''}</li>`)
-    .join('')
-
-  const body = `<main class="seo-product">
-${breadcrumbNav(breadcrumbs)}
-<article>
-<h1>${escapeHtml(product.name)}</h1>
-${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" width="640" height="640" fetchpriority="high">` : ''}
-<p>${escapeHtml(description)}</p>
-<h2>Product details</h2>
-<dl>
-${product.sku && !isUuidSku(product.sku) ? `<dt>SKU</dt><dd>${escapeHtml(product.sku)}</dd>` : ''}
-${product.mpn ? `<dt>MPN</dt><dd>${escapeHtml(product.mpn)}</dd>` : ''}
-${product.modelNumber ? `<dt>Model</dt><dd>${escapeHtml(product.modelNumber)}</dd>` : ''}
-${product.impaCode ? `<dt>IMPA</dt><dd>${escapeHtml(product.impaCode)}</dd>` : ''}
-${brandName ? `<dt>Brand</dt><dd>${product.brand?.slug && product.brand.isVisible !== false && brandName === product.brand.name ? `<a href="/${locale}/brands/${encodeURIComponent(product.brand.slug)}/">${escapeHtml(brandName)}</a>` : escapeHtml(brandName)}</dd>` : ''}
-${product.manufacturer && product.manufacturer !== brandName && !isPlaceholderValue(product.manufacturer) ? `<dt>Manufacturer</dt><dd>${escapeHtml(product.manufacturer)}</dd>` : ''}
-${product.category?.name ? `<dt>Category</dt><dd>${product.category.slug && product.category.isVisible !== false ? `<a href="/${locale}/categories/${encodeURIComponent(product.category.slug)}/">${escapeHtml(product.category.name)}</a>` : escapeHtml(product.category.name)}</dd>` : ''}
-${product.condition ? `<dt>Condition</dt><dd>${escapeHtml(String(product.condition).charAt(0).toUpperCase() + String(product.condition).slice(1))}</dd>` : ''}
-${bodySpecRows.map((spec) => `<dt>${escapeHtml(spec.label)}</dt><dd>${escapeHtml(spec.value)}</dd>`).join('')}
-<dt>Availability</dt><dd>${inStock ? 'In stock' : 'Check availability'}</dd>
-</dl>
-${priceValid ? `<p>Price: ${price.toFixed(2)} ${escapeHtml(product.currency || 'USD')}</p>` : '<p>Contact us for price and availability.</p>'}
-<p><a href="/${locale}/rfq/">Request a quote for ${escapeHtml(product.name)}</a></p>
-</article>
-${relatedLinks ? `<aside><h2>Related parts</h2><ul>${relatedLinks}</ul></aside>` : ''}
-<section>
-<h2>Browse more</h2>
-<ul>
-<li><a href="/${locale}/products/">All marine and industrial spare parts</a></li>
-${product.category?.slug && product.category.isVisible !== false ? `<li><a href="/${locale}/categories/${encodeURIComponent(product.category.slug)}/">More ${escapeHtml(product.category.name || 'parts')}</a></li>` : ''}
-<li><a href="/${locale}/brands/">Equipment brands</a></li>
-<li><a href="/${locale}/emergency/">Emergency procurement</a></li>
-</ul>
-</section>
-</main>
-${shellFooter(locale)}`
-
-  const html = renderDocument(template, {
-    title,
-    description,
-    canonical,
+  return renderDocument(template, {
+    title: withBrandSuffix(model.title),
+    description: model.metaDescription,
+    canonical: model.canonicalUrl,
     robots: 'index,follow,max-image-preview:large',
     ogType: 'product',
-    ogImage: socialImage,
-    ogImageAlt: imageAlt,
-    jsonLd: [organizationSchema(), websiteSchema(), productSchema, breadcrumbSchema(breadcrumbs)],
+    ogImage: model.ogImage,
+    ogImageAlt: model.ogImageAlt,
+    jsonLd: [
+      organizationSchema(),
+      websiteSchema(),
+      ...model.jsonLd,
+      breadcrumbSchema(model.breadcrumbs),
+    ],
     body,
     lang: locale,
   })
-  return html
 }
 
 async function fetchPublishedProduct(key) {
@@ -1272,7 +1148,25 @@ app.use((req, res, next) => {
 // Serve assets directly, but let route handlers own root, sitemap and dynamic
 // product URLs. Disable Express's directory redirect so canonical slash policy
 // is explicit and consistent with the prerendered directory index files.
-app.use(express.static(distPath, { index: false, redirect: false }))
+// Vite emits content-hashed file names (About-CCsTB_xe.js), so those assets can
+// be cached immutably. Anything without a hash (images, fonts, the manifest)
+// gets a short cache with revalidation instead.
+const HASHED_ASSET = /[.-][0-9A-Za-z_-]{8,}\.[a-z0-9]+$/i
+
+app.use(express.static(distPath, {
+  index: false,
+  redirect: false,
+  setHeaders(res, filePath) {
+    const name = path.basename(filePath)
+    if (HASHED_ASSET.test(name)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+    } else if (/\.html?$/i.test(name)) {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate')
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800')
+    }
+  },
+}))
 
 // ─── SPA / prerender fallback ─────────────────────────────────────
 // Known public English routes serve their prerendered document, or a shell
@@ -1313,12 +1207,16 @@ app.get('/{*splat}', async (req, res) => {
     return redirectWithQuery(req, res, `${req.path}/`)
   }
 
+  // Indexability: a locale is indexable when a verified translation exists
+  // for that route. English is always indexable; AR/ES are indexable only for
+  // the translated marketing and legal pages (see shared/route-i18n.mjs).
   const translated = parsed.locale === 'en'
-  const noindex = privateRoute || !translated
+  const indexable = translated || isIndexableRoute(req.path, parsed.locale)
+  const noindex = privateRoute || !indexable
 
   try {
     const template = fs.readFileSync(indexPath, 'utf8')
-    const prerendered = translated && !privateRoute ? prerenderedIndexFor(req.path) : null
+    const prerendered = indexable && !privateRoute ? prerenderedIndexFor(req.path) : null
     let html
     if (prerendered) {
       html = fs.readFileSync(prerendered, 'utf8')

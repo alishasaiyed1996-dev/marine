@@ -11,6 +11,54 @@ export interface PaymentMethodSetting {
   config?: Record<string, string>
 }
 
+/**
+ * Bank-transfer payment instructions, resolved server-side. Empty fields mean
+ * the store has not configured them — bank transfer must then not be offered,
+ * because an order without payable instructions is a dead end.
+ */
+export interface BankDetails {
+  methodName: string
+  bankName: string
+  accountName: string
+  accountNumber: string
+  ifsc: string
+  swift: string
+  iban: string
+  referencePrefix: string
+  instructions: string
+}
+
+export const EMPTY_BANK_DETAILS: BankDetails = {
+  methodName: 'Bank Transfer',
+  bankName: '',
+  accountName: '',
+  accountNumber: '',
+  ifsc: '',
+  swift: '',
+  iban: '',
+  referencePrefix: '',
+  instructions: '',
+}
+
+/**
+ * Letter-of-credit arrangement. L/C is a different offline arrangement from a
+ * bank transfer — the buyer opens a credit with a nominated bank and the
+ * documents transfer title — so it gets its own option in the checkout.
+ */
+export interface LetterOfCreditDetails {
+  methodName: string
+  acceptingBanks: string
+  documentsRequired: string
+  notes: string
+}
+
+export const EMPTY_LETTER_OF_CREDIT_DETAILS: LetterOfCreditDetails = {
+  methodName: 'Letter of Credit (L/C)',
+  acceptingBanks: '',
+  documentsRequired: '',
+  notes: '',
+}
+
 interface StoreSettings {
   whatsappNumber: string
   shippingCost: number
@@ -25,6 +73,13 @@ interface StoreSettings {
   maintenanceMode: boolean
   shippingZones: ShippingZone[]
   paymentMethods: PaymentMethodSetting[]
+  bankDetails: BankDetails
+  /** Letter-of-credit arrangement, when the seller has published one. */
+  letterOfCredit: LetterOfCreditDetails
+  /** Single settlement currency for the whole store. */
+  currency: string
+  /** Store's domestic country (site.country) — used for the tax estimate. */
+  country: string
 }
 
 const DEFAULTS: StoreSettings = {
@@ -42,6 +97,10 @@ const DEFAULTS: StoreSettings = {
   maintenanceMode: false,
   shippingZones: [],
   paymentMethods: [],
+  bankDetails: EMPTY_BANK_DETAILS,
+  letterOfCredit: EMPTY_LETTER_OF_CREDIT_DETAILS,
+  currency: 'USD',
+  country: 'IN',
 }
 
 /** Numeric setting with a fallback; keeps a legitimate 0 (free shipping, 0% tax). */
@@ -62,6 +121,37 @@ function parsePaymentMethods(raw: unknown): PaymentMethodSetting[] {
     }
   }
   return Array.isArray(value) ? (value as PaymentMethodSetting[]) : []
+}
+
+/** Bank details arrive as an object (already normalized server-side). */
+function parseBankDetails(raw: unknown): BankDetails {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return EMPTY_BANK_DETAILS
+  const src = raw as Record<string, unknown>
+  const str = (key: keyof BankDetails) => (typeof src[key] === 'string' ? String(src[key]).trim() : '')
+  return {
+    methodName: str('methodName') || EMPTY_BANK_DETAILS.methodName,
+    bankName: str('bankName'),
+    accountName: str('accountName'),
+    accountNumber: str('accountNumber'),
+    ifsc: str('ifsc'),
+    swift: str('swift'),
+    iban: str('iban'),
+    referencePrefix: str('referencePrefix'),
+    instructions: str('instructions'),
+  }
+}
+
+/** Letter-of-credit details arrive as an object (already normalized server-side). */
+function parseLetterOfCredit(raw: unknown): LetterOfCreditDetails {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return EMPTY_LETTER_OF_CREDIT_DETAILS
+  const src = raw as Record<string, unknown>
+  const str = (key: keyof LetterOfCreditDetails) => (typeof src[key] === 'string' ? String(src[key]).trim() : '')
+  return {
+    methodName: str('methodName') || EMPTY_LETTER_OF_CREDIT_DETAILS.methodName,
+    acceptingBanks: str('acceptingBanks'),
+    documentsRequired: str('documentsRequired'),
+    notes: str('notes'),
+  }
 }
 
 let cachedSettings: StoreSettings = { ...DEFAULTS }
@@ -98,6 +188,10 @@ async function fetchSettingsAndNotify(): Promise<StoreSettings> {
         maintenanceMode: s['site.maintenanceMode'] === true || s['site.maintenanceMode'] === 'true',
         shippingZones: parseShippingZones(s['store.shippingZones']),
         paymentMethods: parsePaymentMethods(s['store.paymentMethods']),
+        bankDetails: parseBankDetails(s['checkout.bankDetails']),
+        letterOfCredit: parseLetterOfCredit(s['checkout.letterOfCredit']),
+        currency: String(s['site.currency'] || DEFAULTS.currency).toUpperCase(),
+        country: String(s['site.country'] || DEFAULTS.country),
       }
       notifySubscribers(cachedSettings)
       return cachedSettings

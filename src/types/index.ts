@@ -80,6 +80,17 @@ export interface Product {
   impaCode?: string | null
   sourceUrl?: string | null
   lastVerifiedAt?: string | null
+  /** Industry names for application copy (agency slugs live in `industry`). */
+  industryNames?: string[]
+  // Rich listing facts used by the shared product-page engine. Missing values
+  // are omitted from the page rather than replaced with placeholders.
+  keyFeatures?: string[]
+  compatibilityNotes?: string | null
+  warrantyNotes?: string | null
+  includedItems?: string[]
+  excludedItems?: string[]
+  leadTime?: string | null
+  publicItemLocation?: string | null
 }
 
 export interface Brand {

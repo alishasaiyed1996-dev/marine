@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { admin } from '../lib/api'
 import { useToast } from '../components/admin/toast-context'
+import { useStoreSettings } from './useStoreSettings'
 import { toLocalInputValue, fromLocalInputValue, isSaleWindowValid, generateProductSku } from '../lib/utils'
 import { isValidGtin, meetsProductDescriptionMinimum } from '../lib/seo/productContent'
 import type { ApiProduct, ApiBrand, ApiCategory, ApiIndustry } from '../lib/api-types'
@@ -74,7 +75,7 @@ export const TABS: { id: TabId; label: string }[] = [
   { id: 'notes', label: 'Admin Notes' },
 ]
 
-function getEmptyForm(): ProductFormData {
+function getEmptyForm(currency = 'USD'): ProductFormData {
   return {
     name: '',
     sku: '',
@@ -94,7 +95,7 @@ function getEmptyForm(): ProductFormData {
     saleEndsAt: '',
     makeOfferEnabled: true,
     minimumOfferPrice: '',
-    currency: 'USD',
+    currency,
     stockCount: '1',
     lowStockThreshold: '10',
     warehouseLocation: '',
@@ -195,9 +196,10 @@ export function useProductForm() {
   const navigate = useNavigate()
   const isEditing = !!id && id !== 'new'
   const { toast } = useToast()
+  const { currency: storeCurrency } = useStoreSettings()
 
   const [activeTab, setActiveTab] = useState<TabId>('basics')
-  const [form, setForm] = useState<ProductFormData>(getEmptyForm())
+  const [form, setForm] = useState<ProductFormData>(() => getEmptyForm(storeCurrency))
   const [loadingProduct, setLoadingProduct] = useState(isEditing)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -549,7 +551,7 @@ export function useProductForm() {
         saleEndsAt: form.salePrice ? fromLocalInputValue(form.saleEndsAt) : null,
         makeOfferEnabled: form.makeOfferEnabled,
         minimumOfferPrice: form.makeOfferEnabled && form.minimumOfferPrice ? Number(form.minimumOfferPrice) : null,
-        currency: form.currency,
+        currency: isEditing ? form.currency : storeCurrency,
         stockCount: Number(form.stockCount) || 0,
         // 0 is a valid threshold (alert on the last unit); only blank/invalid
         // input falls back to the default.
@@ -652,7 +654,7 @@ export function useProductForm() {
     } finally {
       setSaving(false)
     }
-  }, [form, isEditing, id, navigate, toast, validate, updateField])
+  }, [form, isEditing, id, navigate, toast, validate, updateField, storeCurrency])
 
   return {
     id, isEditing, navigate, publicSlug,

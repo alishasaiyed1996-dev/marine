@@ -93,7 +93,12 @@ export const faqItems: FAQItem[] = [
   },
   {
     question: 'Do you verify product authenticity?',
-    answer: 'Every product we source comes with full traceability documentation. We only supply OEM and authorized distributor stock. If you require specific certificates of conformity, test reports, or material certificates, we provide them with every shipment.',
+    // Must match the Terms of Service and the Return & Refund Policy: most
+    // stock is used/surplus sold as inspected and without a manufacturer
+    // warranty, and certificates accompany an item only when the supplier
+    // issues them. The previous answer claimed OEM stock and certificates with
+    // every shipment, which the terms deny — see U-14/C-5.
+    answer: 'Every listing states the condition grade — new, refurbished, used, or surplus — and the part identity (brand, model, part number or IMPA code) recorded by our team. Most of our stock is used or surplus equipment that we inspect and describe as accurately as possible; these items are sold as inspected and are not covered by a manufacturer warranty, as set out in our Terms of Service. Where the supplier provides a certificate of conformity, test report, or material certificate, it accompanies the item and is listed in the quotation — certificates are not automatic for every shipment. Ask for any document you need before ordering and we will tell you whether it is available.',
   },
   {
     question: 'Can you handle emergency orders?',

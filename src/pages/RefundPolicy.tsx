@@ -1,11 +1,13 @@
 import { SEO } from '../components/seo/SEO'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 
 export default function RefundPolicy() {
+  const seo = useStaticPageSeo('refund-policy')
   return (
     <div className="min-h-screen bg-[var(--primary-bg)]">
       <SEO
-        title="Return & Refund Policy"
-        description="Alka Traders return and refund policy. 30-day return window, RMA required. Details on eligibility, process, damaged items, and refund timelines."
+        title={seo.title}
+        description={seo.description}
         canonical="/refund-policy"
       />
       <div className="max-w-4xl mx-auto px-4 py-16">

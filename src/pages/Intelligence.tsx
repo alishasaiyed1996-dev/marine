@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { TrendingUp, Globe, Clock, ChartBar } from 'lucide-react'
 import { SEO } from '../components/seo/SEO'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 
 const insights = [
   {
@@ -31,11 +32,12 @@ const insights = [
 
 export default function Intelligence() {
   const { t } = useTranslation()
+  const seo = useStaticPageSeo('intelligence')
   return (
     <div>
       <SEO
-        title="Market Intelligence — Marine & Industrial Sourcing Insights"
-        description="Sourcing trends, regional availability data, emergency procurement benchmarks, and obsolescence management insights for marine and industrial buyers."
+        title={seo.title}
+        description={seo.description}
         canonical="/intelligence"
       />
       <section className="py-20 bg-[var(--secondary-bg)] text-center">

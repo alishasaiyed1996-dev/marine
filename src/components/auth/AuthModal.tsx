@@ -42,6 +42,7 @@ export function AuthModal() {
   const login = useStore((s) => s.login)
   const register = useStore((s) => s.register)
   const authError = useStore((s) => s.authError)
+  const authNotice = useStore((s) => s.authNotice)
   const clearAuthErrors = useStore((s) => s.clearAuthErrors)
 
   const [activeTab, setActiveTab] = useState<AuthTab>('signin')
@@ -279,6 +280,18 @@ export function AuthModal() {
                   className="mt-3 text-xs text-center text-danger"
                 >
                   {authError}
+                </motion.p>
+              )}
+
+              {/* Neutral sign-up result (never reveals whether an email exists) */}
+              {authNotice && (
+                <motion.p
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-3 text-xs text-center text-[var(--success)]"
+                  role="status"
+                >
+                  {authNotice}
                 </motion.p>
               )}
 

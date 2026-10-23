@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { storefront } from '../../lib/api'
 import { useLocalizedPath } from '../../lib/locale'
+import { useStoreSettings } from '../../hooks/useStoreSettings'
+import { formatMoney } from '../../lib/utils'
 import { useStore } from '../../store/useStore'
 import { Skeleton } from '../../components/ui/Skeleton'
 import type { ApiOffer } from '../../lib/api-types'
@@ -30,6 +32,7 @@ function payableUnitPrice(offer: ApiOffer): number {
 export default function MyOffers() {
   const user = useStore((s) => s.user)
   const lp = useLocalizedPath()
+  const { currency } = useStoreSettings()
   const queryClient = useQueryClient()
   const [actingOn, setActingOn] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
@@ -150,12 +153,12 @@ export default function MyOffers() {
                         </p>
                         <p className="text-xs text-[var(--text-muted)] mt-0.5">
                           {new Date(offer.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                          {listed != null && <> · Listed ${listed.toFixed(2)}</>}
-                          {' '}· Your offer ${Number(offer.offeredPrice).toFixed(2)} × {qty}
+                          {listed != null && <> · Listed {formatMoney(listed, currency)}</>}
+                          {' '}· Your offer {formatMoney(Number(offer.offeredPrice), currency)} × {qty}
                         </p>
                         {counterPending && offer.counterPrice != null && (
                           <p className="text-xs text-[var(--accent-blue)] font-semibold mt-1">
-                            Our counter price: ${Number(offer.counterPrice).toFixed(2)} × {qty} = ${(Number(offer.counterPrice) * qty).toFixed(2)}
+                            Our counter price: {formatMoney(Number(offer.counterPrice), currency)} × {qty} = {formatMoney(Number(offer.counterPrice) * qty, currency)}
                           </p>
                         )}
                         {offer.expiresAt && payable && (
@@ -167,7 +170,7 @@ export default function MyOffers() {
 
                       <div className="flex flex-col items-start sm:items-end gap-2.5 shrink-0">
                         <span className="font-display text-lg font-bold text-[var(--text-primary)] tabular-nums">
-                          ${(unit * qty).toFixed(2)}
+                          {formatMoney(unit * qty, currency)}
                         </span>
 
                         {counterPending && (

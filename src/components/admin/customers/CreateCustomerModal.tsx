@@ -63,7 +63,7 @@ export function CreateCustomerModal({ open, onClose, onCreated, onToast, onCreat
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[0.625rem] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Phone</label>
-              <input value={newCustomer.phone} onChange={(e) => setNewCustomer((p) => ({ ...p, phone: e.target.value }))} placeholder="+971 50 XXXX" className={inputClass} />
+              <input value={newCustomer.phone} onChange={(e) => setNewCustomer((p) => ({ ...p, phone: e.target.value }))} placeholder="+91 98765 43210" className={inputClass} />
             </div>
             <div>
               <label className="block text-[0.625rem] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Country</label>

@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SEO } from '../components/seo/SEO'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 
 const GlobeScene = lazy(() => import('../components/three/GlobeScene'))
 
@@ -27,11 +28,12 @@ const regions = [
 
 export default function Network() {
   const { t } = useTranslation()
+  const seo = useStaticPageSeo('network')
   return (
     <div>
       <SEO
-        title="Global Network — Alka Traders"
-        description="Alka Traders' global network spans 18+ countries across Asia-Pacific, EMEA, and the Americas. Head office in Bhavnagar, Gujarat, India."
+        title={seo.title}
+        description={seo.description}
         canonical="/network"
       />
       <section className="py-20 bg-[var(--secondary-bg)] text-center relative overflow-hidden">

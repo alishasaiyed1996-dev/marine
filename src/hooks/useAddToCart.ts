@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useStore } from '../store/useStore'
+import { trackAddToCart } from '../lib/analytics'
 import type { Product } from '../types'
 
 /**
@@ -30,6 +31,15 @@ export function useAddToCart() {
       // addToCart silently refuses once stock is exhausted; don't confirm an
       // add that never happened.
       if (after <= before) return
+      trackAddToCart([{
+        item_id: product.id,
+        item_name: product.name,
+        price: product.onSale && product.salePrice ? product.salePrice : product.price,
+        quantity,
+        currency: product.currency || 'USD',
+        item_brand: product.brand,
+        item_category: product.category,
+      }])
       setAddedIds((prev) => new Set(prev).add(product.id))
       if (timerRef.current.has(product.id)) {
         clearTimeout(timerRef.current.get(product.id))

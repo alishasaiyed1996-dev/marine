@@ -8,7 +8,12 @@ import { api } from './core'
 
 export const customerAuth = {
   register: (data: { name: string; email: string; password: string; phone?: string; company?: string; country?: string }) =>
-    api.post<{ accessToken: string; user: { id: string; name: string; email: string } }>('/auth/register', data),
+    api.post<{
+      accessToken?: string
+      user?: { id: string; name: string; email: string }
+      /** Returned instead of tokens when the address cannot be used for a new account. */
+      message?: string
+    }>('/auth/register', data),
 
   login: (data: { email: string; password: string }) =>
     api.post<{ accessToken: string; user: { id: string; name: string; email: string } }>('/auth/login', data),
@@ -24,6 +29,13 @@ export const customerAuth = {
 
   forgotPassword: (email: string) =>
     api.post<{ message: string }>('/auth/forgot-password', { email }),
+
+  /**
+   * Exchanges the emailed reset token for a short-lived ticket. The ticket is
+   * kept in memory only; the token is stripped from the URL right after.
+   */
+  verifyResetToken: (token: string) =>
+    api.post<{ ticket: string }>('/auth/reset-password/verify', { token }),
 
   resetPassword: (token: string, password: string) =>
     api.post<{ message: string }>('/auth/reset-password', { token, password }),

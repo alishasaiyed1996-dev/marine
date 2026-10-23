@@ -11,6 +11,8 @@ import { CatalogOfflineNotice } from '../components/ui/CatalogOfflineNotice'
 import { ProductCardSkeleton } from '../components/ui/Skeleton'
 import { SEO } from '../components/seo/SEO'
 import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
+import { useStoreSettings } from '../hooks/useStoreSettings'
+import { buildShippingPromise } from '../lib/shippingPromise'
 import type { Product } from '../types'
 
 interface CategoryWithCount {
@@ -23,6 +25,16 @@ interface CategoryWithCount {
 export default function Shop() {
   const { t } = useTranslation()
   const { handleAddToCart, addedIds } = useAddToCart()
+  const settings = useStoreSettings()
+  // The hero's shipping promise must match what checkout actually charges.
+  const shippingPromise = useMemo(
+    () => buildShippingPromise({
+      zones: settings.shippingZones,
+      freeShippingThreshold: settings.freeShippingThreshold,
+      currency: settings.currency,
+    }, t),
+    [settings.shippingZones, settings.freeShippingThreshold, settings.currency, t],
+  )
 
   // React Query provides caching, deduplication, and background refetching
   const newArrivalsQuery = useNewArrivals()
@@ -107,7 +119,7 @@ export default function Shop() {
               </p>
               <div className="flex flex-wrap gap-6 mt-8">
                 {[
-                  { icon: Truck, label: t('shop.freeShipping'), sub: t('shop.freeShippingSub') },
+                  { icon: Truck, label: t('shop.freeShipping'), sub: shippingPromise.label },
                   { icon: Clock, label: t('shop.timelyDelivery'), sub: t('shop.timelyDeliverySub') },
                   { icon: ShieldCheck, label: t('shop.securePayment'), sub: t('shop.securePaymentSub') },
                   { icon: Package, label: t('shop.easyReturns'), sub: t('shop.easyReturnsSub') },

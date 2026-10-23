@@ -247,6 +247,43 @@ export function currencyPrefix(currency: string): string {
     case 'GBP': return '£'
     case 'INR': return '₹'
     case 'AED': return 'د.إ'
+    case 'SGD': return 'S$'
+    case 'JPY': return '¥'
     default: return '$'
+  }
+}
+
+/**
+ * Builds the payment reference a customer must quote on a bank transfer.
+ * Mirrors `buildPaymentReference` in the backend so the screen and the email
+ * show the same reference.
+ */
+export function buildPaymentReference(
+  details: { referencePrefix?: string } | null | undefined,
+  orderNumber: string,
+): string {
+  const prefix = (details?.referencePrefix || '').trim()
+  if (!prefix) return orderNumber
+  const separator = prefix.endsWith('-') || prefix.endsWith('/') ? '' : '-'
+  return `${prefix}${separator}${orderNumber}`
+}
+
+/**
+ * Formats a money amount in the store's settlement currency. Every displayed
+ * amount goes through this so the storefront, the checkout, and the emails
+ * agree on the currency and its symbol.
+ */
+export function formatMoney(amount: number, currency = 'USD'): string {
+  const code = (currency || 'USD').toUpperCase()
+  const safe = Number.isFinite(amount) ? amount : 0
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(safe)
+  } catch {
+    return `${currencyPrefix(code)}${safe.toFixed(2)}`
   }
 }

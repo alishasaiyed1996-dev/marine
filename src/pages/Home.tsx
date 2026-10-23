@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useMemo } from 'react'
 import { Anchor, ArrowRight, Clock, Cog, Droplets, Package, Search, ShieldCheck, Truck, Wrench, Zap } from 'lucide-react'
 import { WhatsAppIcon } from '../components/ui/WhatsAppIcon'
 import { useTranslation } from 'react-i18next'
 import { useAddToCart } from '../hooks/useAddToCart'
 import { useLocalizedPath } from '../lib/locale'
+import { buildShippingPromise } from '../lib/shippingPromise'
 import { SEO } from '../components/seo/SEO'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 import { useStoreSettings } from '../hooks/useStoreSettings'
 import { useNewArrivals } from '../hooks/useApiQuery'
 import { apiProductsToFrontend } from '../lib/adapters'
@@ -44,14 +46,26 @@ const highIntentSearches = [
   'ABB Siemens Parker Bosch Rexroth spares',
 ]
 
-const HOME_SEO_TITLE = 'Marine Spare Parts & Ship Spares Supplier'
-const HOME_SEO_DESCRIPTION = 'Shop marine spare parts, ship spares, marine engine parts, hydraulic pumps, electrical automation spares, navigation equipment, safety gear, rigging, and surplus industrial equipment from Bhavnagar and Alang, India.'
-
 export default function Home() {
   const { t } = useTranslation()
   const lp = useLocalizedPath()
+  // The home page is a static route too: its fallback metadata must come from
+  // the same shared manifest as the prerendered HTML and the server shell
+  // (S-4/D-8). Admin-configured SEO settings may still override it.
+  const staticSeo = useStaticPageSeo('')
   const { handleAddToCart, addedIds } = useAddToCart()
-  const { whatsappNumber, seoTitle, seoDescription } = useStoreSettings()
+  const settings = useStoreSettings()
+  const { whatsappNumber, seoTitle, seoDescription } = settings
+
+  // The shipping badge must match what the checkout actually charges.
+  const shippingPromise = useMemo(
+    () => buildShippingPromise({
+      zones: settings.shippingZones,
+      freeShippingThreshold: settings.freeShippingThreshold,
+      currency: settings.currency,
+    }, t),
+    [settings.shippingZones, settings.freeShippingThreshold, settings.currency, t],
+  )
 
   // Fetch new arrivals from backend API; fall back to static data if backend is unavailable
   const newArrivalsQuery = useNewArrivals()
@@ -67,8 +81,8 @@ export default function Home() {
   return (
     <>
       <SEO
-        title={seoTitle || HOME_SEO_TITLE}
-        description={seoDescription || HOME_SEO_DESCRIPTION}
+        title={seoTitle || staticSeo.title}
+        description={seoDescription || staticSeo.description}
         canonical="/en/"
         jsonLd={[
           {
@@ -184,7 +198,7 @@ export default function Home() {
         <div className="site-container">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { icon: Truck, label: t('topbar.freeShipping'), desc: t('topbar.freeShippingSub') },
+              { icon: Truck, label: shippingPromise.label, desc: shippingPromise.sub },
               { icon: Clock, label: t('topbar.timelyDelivery'), desc: t('topbar.timelyDeliverySub') },
               { icon: ShieldCheck, label: t('topbar.securePayment'), desc: t('topbar.securePaymentSub') },
               { icon: Package, label: t('topbar.easyReturns'), desc: t('topbar.easyReturnsSub') },

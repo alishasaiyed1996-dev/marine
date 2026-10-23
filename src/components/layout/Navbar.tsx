@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -11,6 +11,7 @@ import { prefetchNavData } from '../../hooks/useApiQuery'
 import { ThemeToggle } from '../ui/ThemeToggle'
 import { WhatsAppIcon } from '../ui/WhatsAppIcon'
 import { useLocale, useLocalizedPath, switchLocalePath } from '../../lib/locale'
+import { buildShippingPromise } from '../../lib/shippingPromise'
 import type { Language } from '../../types'
 
 const STATIC_NAV_LINKS = [
@@ -33,7 +34,6 @@ const TRUST_ITEMS = [
   { icon: Clock, labelKey: 'timelyDelivery' },
   { icon: Lock, labelKey: 'securePayment' },
 ]
-
 /** Shared style for the compact icon buttons in the action cluster. */
 const ICON_BTN =
   'nav-icon-btn flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--nav-btn-border)] bg-[var(--nav-btn-bg)] text-[var(--nav-text-muted)] transition-colors hover:border-[var(--nav-btn-hover-border)] hover:text-[var(--nav-text)] focus-visible:outline-2 focus-visible:outline-[var(--accent-primary)]'
@@ -85,6 +85,18 @@ export function Navbar() {
   const logout = useStore((s) => s.logout)
   const setShowAuthModal = useStore((s) => s.setShowAuthModal)
   const settings = useStoreSettings()
+
+  // The shipping promise is derived from the same configuration the server
+  // prices with. A static "Free shipping above $100" would contradict the
+  // checkout whenever shipping zones are configured.
+  const shippingPromise = useMemo(
+    () => buildShippingPromise({
+      zones: settings.shippingZones,
+      freeShippingThreshold: settings.freeShippingThreshold,
+      currency: settings.currency,
+    }, t),
+    [settings.shippingZones, settings.freeShippingThreshold, settings.currency, t],
+  )
 
   // ── Scroll tracking: shadow + mobile top-bar hide ──────────────
   const lastScrollY = useRef(0)
@@ -189,7 +201,7 @@ export function Navbar() {
                   is the headline of this bar — keep it visible at every width. */}
               <span className="hidden min-[640px]:max-[767px]:flex items-center gap-1.5 text-xs whitespace-nowrap">
                 <Truck size={12} className="shrink-0 text-[var(--accent-primary)]" />
-                {t('topbar.freeShipping')}
+                {shippingPromise.label}
               </span>
             </div>
             {/* Trust items compact from 768px — measured minimum width for the
@@ -203,7 +215,7 @@ export function Navbar() {
                   {i > 0 && <span className="h-3.5 w-px bg-[var(--header-utility-border)] max-[899px]:hidden" aria-hidden="true" />}
                   <span className="flex items-center gap-1.5 whitespace-nowrap max-[899px]:text-[11px]">
                     <item.icon size={13} className="shrink-0 text-[var(--accent-primary)]" />
-                    {t(`topbar.${item.labelKey}`)}
+                    {item.labelKey === 'freeShipping' ? shippingPromise.label : t(`topbar.${item.labelKey}`)}
                   </span>
                 </div>
               ))}
@@ -234,7 +246,7 @@ export function Navbar() {
                   {i > 0 && <span className="opacity-40" aria-hidden="true">•</span>}
                   <span className="flex items-center gap-1 whitespace-nowrap">
                     <item.icon size={12} className="shrink-0 text-[var(--accent-primary)]" />
-                    {t(`topbar.${item.labelKey}`)}
+                    {item.labelKey === 'freeShipping' ? shippingPromise.label : t(`topbar.${item.labelKey}`)}
                   </span>
                 </span>
               ))}

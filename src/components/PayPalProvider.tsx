@@ -24,6 +24,7 @@ function PayPalScriptStatus({ children }: { children: ReactNode }) {
  */
 export function PayPalProvider({ children }: { children: ReactNode }) {
   const [clientId, setClientId] = useState<string | null>(null)
+  const [currency, setCurrency] = useState('USD')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -39,6 +40,7 @@ export function PayPalProvider({ children }: { children: ReactNode }) {
           setClientId(null)
           return
         }
+        setCurrency(String(data.currency || 'USD').toUpperCase())
         setClientId(id)
       })
       .catch(() => {
@@ -86,7 +88,7 @@ export function PayPalProvider({ children }: { children: ReactNode }) {
     <PayPalScriptProvider
       options={{
         clientId,
-        currency: 'USD',
+        currency,
         intent: 'capture',
         'enable-funding': 'venmo,card',
         components: 'buttons',

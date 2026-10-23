@@ -6,12 +6,14 @@ import { storefront } from '../lib/api'
 import { useStoreSettings } from '../hooks/useStoreSettings'
 import { usePersistentState } from '../hooks/usePersistentState'
 import { SEO } from '../components/seo/SEO'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 import { WhatsAppIcon } from '../components/ui/WhatsAppIcon'
 
 const INITIAL_CONTACT_FORM = { name: '', email: '', subject: '', message: '' }
 
 export default function Contact() {
   const { t } = useTranslation()
+  const seo = useStaticPageSeo('contact')
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -42,8 +44,8 @@ export default function Contact() {
   return (
     <div>
       <SEO
-        title="Contact Us — Alka Traders"
-        description="Get in touch with Alka Traders. Based in Bhavnagar, Gujarat, India. Reach us via email, phone, WhatsApp, or our contact form."
+        title={seo.title}
+        description={seo.description}
         canonical="/contact"
       />
       <section className="py-20 bg-[var(--secondary-bg)] text-center">

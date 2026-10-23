@@ -10,6 +10,7 @@ import { countries } from '../data/countries'
 import { storefront } from '../lib/api'
 import { useLocalizedPath } from '../lib/locale'
 import { SEO } from '../components/seo/SEO'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 import { WhatsAppIcon } from '../components/ui/WhatsAppIcon'
 import { ResponseCountdown } from '../components/ui/ResponseCountdown'
 import { getRfqResponseDeadline } from '../lib/rfqSla'
@@ -46,6 +47,7 @@ const INITIAL_RFQ_FORM: RFQFormData = {
 export default function RFQ() {
   const { t } = useTranslation()
   const lp = useLocalizedPath()
+  const seo = useStaticPageSeo('rfq')
   const { rfqStep, setRfqStep, rfqSubmitted, rfqId, setRfqSubmitted, generateRfqId, rfqDeadline, setRfqDeadline } = useStore()
   const { whatsappNumber, phoneNumber, rfqEmail } = useStoreSettings()
   // Draft persists across hard refresh — a multi-step inquiry is never lost.
@@ -161,8 +163,8 @@ export default function RFQ() {
   }  return (
     <div>
       <SEO
-        title="Request a Quote — RFQ for Marine & Industrial Parts"
-        description="Submit a request for quotation for marine spares, industrial equipment, surplus machinery, and hard-to-find parts. Fast response within hours."
+        title={seo.title}
+        description={seo.description}
         canonical="/rfq"
       />
       <section className="py-20 text-center" style={{

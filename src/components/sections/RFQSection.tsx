@@ -41,6 +41,9 @@ export function RFQSection() {
   const [formData, setFormData] = usePersistentState<typeof INITIAL_RFQ>('alka-rfq-draft', INITIAL_RFQ)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  // Consent is a real, freely-given agreement — never a hardcoded `true`.
+  const [consentGiven, setConsentGiven] = useState(false)
+  const [consentError, setConsentError] = useState(false)
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isTouchDevice) return
@@ -51,6 +54,11 @@ export function RFQSection() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (submitting) return
+    if (!consentGiven) {
+      setConsentError(true)
+      return
+    }
+    setConsentError(false)
     setSubmitError('')
     setSubmitting(true)
     try {
@@ -65,6 +73,7 @@ export function RFQSection() {
         quantity: Math.max(1, Number(formData.quantity) || 1),
         urgency: formData.urgency,
         consent: true,
+        consentAt: new Date().toISOString(),
         source: 'home-rfq-section',
       })
       useStore.setState({ rfqId: result.rfqNumber || rfqId })
@@ -239,6 +248,30 @@ export function RFQSection() {
           {submitError && (
             <p className="mb-3 rounded-lg border border-[var(--danger)]/30 bg-[var(--danger)]/10 px-4 py-3 text-xs text-[var(--danger)]" role="alert">
               {submitError}
+            </p>
+          )}
+          {/* Consent must be freely given: the API used to receive a hardcoded
+              `consent: true`, which records no actual agreement and links to no
+              policy. */}
+          <div className="mb-5 flex items-start gap-3">
+            <input
+              id="rfq-consent"
+              type="checkbox"
+              required
+              checked={consentGiven}
+              onChange={(e) => setConsentGiven(e.target.checked)}
+              aria-invalid={consentError || undefined}
+              aria-describedby={consentError ? 'rfq-consent-error' : undefined}
+              className="mt-0.5 w-4 h-4 accent-[var(--accent-primary)] cursor-pointer shrink-0"
+            />
+            <label htmlFor="rfq-consent" className="text-xs text-[var(--text-secondary)] leading-relaxed cursor-pointer">
+              {t('rfq.consent')}{' '}
+              <a href="/en/privacy-policy" className="text-[var(--accent-primary)] underline">{t('rfq.consentPrivacy')}</a>
+            </label>
+          </div>
+          {consentError && (
+            <p id="rfq-consent-error" className="mb-3 text-xs text-[var(--danger)]" role="alert">
+              {t('rfq.consentError')}
             </p>
           )}
           <button

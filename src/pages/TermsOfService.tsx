@@ -1,14 +1,34 @@
 import { Link } from 'react-router-dom'
+import { useMemo } from 'react'
 import { SEO } from '../components/seo/SEO'
 import { useLocalizedPath } from '../lib/locale'
+import { useStoreSettings } from '../hooks/useStoreSettings'
+import { buildShippingTerms } from '../lib/shippingPromise'
+import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 
 export default function TermsOfService() {
   const lp = useLocalizedPath()
+  const seo = useStaticPageSeo('terms-of-service')
+  const settings = useStoreSettings()
+
+  // The shipping and tax terms are generated from the live configuration so
+  // the legal page can never contradict the invoice.
+  const shippingTerms = useMemo(
+    () => buildShippingTerms({
+      zones: settings.shippingZones,
+      baseShippingCost: settings.shippingCost,
+      freeShippingThreshold: settings.freeShippingThreshold,
+      currency: settings.currency,
+    }),
+    [settings.shippingZones, settings.shippingCost, settings.freeShippingThreshold, settings.currency],
+  )
+  const taxRateLabel = (settings.taxRate * 100).toFixed(settings.taxRate * 100 % 1 === 0 ? 0 : 2)
+
   return (
     <div className="min-h-screen bg-[var(--primary-bg)]">
       <SEO
-        title="Terms & Conditions"
-        description="Alka Traders terms and conditions. Order terms, purchase price, title and delivery, inspection, warranties, cancellation policy, and shipping policy."
+        title={seo.title}
+        description={seo.description}
         canonical="/terms-of-service"
       />
       <div className="max-w-4xl mx-auto px-4 py-16">
@@ -149,8 +169,12 @@ export default function TermsOfService() {
             <section className="mb-6">
               <h2 className="font-display text-lg font-bold text-[var(--text-primary)] mb-3">Shipping Charges</h2>
               <ul className="list-disc pl-5 space-y-1 text-sm">
-                <li>Orders below $100 will be charged a fixed $15 freight</li>
-                <li>Orders at or above $100 having weight up to 250 kgs will be charged $0 freight</li>
+                {/* Generated from the same shipping configuration the checkout
+                    prices with — the legal page must not promise a different
+                    freight than the invoice charges. */}
+                {shippingTerms.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
                 <li>Orders at or above $100 having weight above 250 kgs may attract extra freight. BUYER has to contact SELLER to choose shipping options from Airport delivery, Door delivery &amp; Sea delivery which may have different freight costs.</li>
               </ul>
             </section>
@@ -197,7 +221,7 @@ export default function TermsOfService() {
                 All shipments to locations outside of INDIA are shipped CNF (Cost and Freight).
               </p>
               <p className="text-sm leading-relaxed mt-3">
-                <strong>Domestic Buyers:</strong> There will be 18% GST applicable on the items purchased within INDIA.
+                <strong>Domestic Buyers:</strong> Tax of {taxRateLabel}% applies to the items purchased within INDIA. The exact rate charged on your order is shown at checkout and on your invoice.
               </p>
             </section>
           </div>
