@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { authenticateAdmin, AuthRequest } from '../../middleware/auth.js'
+import { revokeSessions } from '../../utils/sessionVersion.js'
 import { asyncHandler, validateBody } from '../../middleware/validate.js'
 import { z } from 'zod'
 import * as authService from '../../services/authService.js'
@@ -43,6 +44,9 @@ router.post('/logout', authenticateAdmin, asyncHandler(async (req: AuthRequest, 
   res.clearCookie(authService.ADMIN_REFRESH_COOKIE)
   res.clearCookie(authService.LEGACY_REFRESH_COOKIE)
   await authService.logoutAdmin(req.user, req.ip || '')
+  // Logging out must actually end the session: a stolen access token stayed
+  // usable for its whole lifetime before this.
+  await revokeSessions('admin', req.user!.id).catch(() => {})
   sendSuccess(res, { message: 'Logged out successfully' })
 }))
 

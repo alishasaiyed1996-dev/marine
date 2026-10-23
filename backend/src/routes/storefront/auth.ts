@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { authenticateCustomer, AuthRequest } from '../../middleware/auth.js'
+import { revokeSessions } from '../../utils/sessionVersion.js'
 import { asyncHandler, validateBody } from '../../middleware/validate.js'
 import { z } from 'zod'
 import * as authService from '../../services/authService.js'
@@ -46,6 +47,12 @@ const resetPasswordSchema = z.object({
 router.post('/register', registerLimiter, validateBody(registerSchema), asyncHandler(async (req, res) => {
   try {
     const result = await authService.registerCustomer(req.body)
+    if (!result.created) {
+      // 201 with no "already registered" error; the address owner receives a
+      // reset email and the caller gets a generic notice, not a session.
+      sendSuccess(res, { message: result.message }, 201)
+      return
+    }
     res.cookie(authService.CUSTOMER_REFRESH_COOKIE, result.refreshToken, result.cookieOptions)
     sendSuccess(res, { accessToken: result.accessToken, user: result.user }, 201)
   } catch (err: any) {
@@ -65,9 +72,12 @@ router.post('/login', loginLimiter, validateBody(loginSchema), asyncHandler(asyn
 }))
 
 // ─── Logout ────────────────────────────────────────────────────
-router.post('/logout', authenticateCustomer, asyncHandler(async (_req, res) => {
+router.post('/logout', authenticateCustomer, asyncHandler(async (req: AuthRequest, res) => {
   res.clearCookie(authService.CUSTOMER_REFRESH_COOKIE)
   res.clearCookie(authService.LEGACY_REFRESH_COOKIE)
+  // Logging out must actually end the session: a stolen access token stayed
+  // usable for its whole lifetime before this.
+  await revokeSessions('customer', req.user!.id).catch(() => {})
   sendSuccess(res, { message: 'Logged out' })
 }))
 
@@ -115,6 +125,18 @@ router.post('/forgot-password', passwordResetLimiter, validateBody(forgotPasswor
 }))
 
 // ─── Reset Password ───────────────────────────────────────────
+router.post('/reset-password/verify', passwordResetLimiter, validateBody(resetPasswordSchema), asyncHandler(async (req, res) => {
+  try {
+    // Exchange the emailed token for a short-lived ticket. The client keeps
+    // the ticket in memory and removes the token from the URL immediately, so
+    // the token never lingers in history, access logs, or analytics.
+    const result = await authService.exchangeResetToken(req.body.token)
+    sendSuccess(res, result)
+  } catch (err: any) {
+    sendError(res, err.message, err.status || 500)
+  }
+}))
+
 router.post('/reset-password', passwordResetLimiter, validateBody(resetPasswordSchema), asyncHandler(async (req, res) => {
   try {
     const result = await authService.resetPassword(req.body.token, req.body.password)

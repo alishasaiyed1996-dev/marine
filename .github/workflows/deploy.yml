@@ -62,14 +62,19 @@ jobs:
         run: npm ci
 
       - name: Type-check (root)
+        # Blocking. A type regression must not ship: CI runs the same check, and
+        # a green check that cannot fail is worse than no check at all.
         run: npx tsc -b --noEmit
-        continue-on-error: true
-        # Non-blocking advisory: the root typecheck currently passes, but it is
-        # kept non-blocking so an upcoming type regression cannot break deploys
-        # before it is triaged.
+
+      - name: Unit tests (root)
+        # Root tests only — the backend suite needs backend node_modules and
+        # runs in the backend job / CI.
+        run: npm run test
 
       - name: Build frontend
-        run: npm run build:frontend
+        # The deployable web artifact is the SPA plus prerendered routes,
+        # sitemap and the frontend/dist copy — not just Vite's output.
+        run: npm run build:frontend:full
 
   # ─── Deploy to Railway ───────────────────────────────────────
   # Triggers a Railway redeploy via the project's deploy hook URL.

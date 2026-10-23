@@ -11,6 +11,17 @@ export default defineConfig(({ mode }) => {
   // Vite leaves the literal %VAR% token in the shipped HTML and warns.
   // A real env var (Hostinger dashboard) or local .env still takes priority.
   const env = loadEnv(mode, process.cwd(), 'VITE_')
+  // Vite inlines every VITE_* value into the public JavaScript bundle. Fail the
+  // build rather than accidentally publishing a server-side credential.
+  const secretLikeViteVars = Object.keys(env).filter((key) =>
+    /(SECRET|PASSWORD|PASSWD|PRIVATE|DATABASE|CLIENT_SECRET|SERVICE_ROLE|ACCESS_TOKEN|REFRESH_TOKEN)/i.test(key),
+  )
+  if (secretLikeViteVars.length > 0) {
+    throw new Error(
+      `Refusing to build: secret-looking VITE_* variable(s) would be exposed in the frontend bundle: ` +
+      secretLikeViteVars.join(', '),
+    )
+  }
   process.env.VITE_DEFAULT_THEME ??= env.VITE_DEFAULT_THEME || 'light'
 
   return {

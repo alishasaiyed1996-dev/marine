@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto'
 import dotenv from 'dotenv'
 
 // ESM hoists imports, so any module that reads process.env at load time would run
@@ -17,18 +18,49 @@ const isProduction = process.env.NODE_ENV === 'production'
 
 if (!process.env.JWT_SECRET) {
   if (isProduction) {
-    // Never start production with a known/predictable signing key — the hardcoded
-    // development fallback below would let anyone forge JWTs. Refuse to boot.
+    // Never start production with a known/predictable signing key. Refuse to
+    // boot rather than silently falling back to a value that is in the repo.
     process.stderr.write(
-      'FATAL [startup] JWT_SECRET is required in production. Refusing to start with a fallback secret.\n' +
+      'FATAL [startup] JWT_SECRET is required in production. Refusing to start without a real secret.\n' +
       'Set JWT_SECRET in the hosting panel and redeploy.\n',
     )
     process.exit(1)
   }
+  // Local development convenience only. This is generated per process, so no
+  // secret is stored in source control and a leaked dev token cannot be replayed
+  // after a restart. Set JWT_SECRET in .env if you need tokens to survive one.
   process.stderr.write(
-    'WARN [startup] JWT_SECRET not set in environment. Using development fallback secret (local dev only).\n',
+    'WARN [startup] JWT_SECRET not set in environment. Generated an ephemeral development secret; tokens will be invalid after restart.\n',
   )
-  process.env.JWT_SECRET = '2b83abcc07ed401b23fff63cb06ca816464e8b4a4110adc53640cbc97aac49f8'
+  process.env.JWT_SECRET = randomBytes(32).toString('hex')
+}
+
+// The old development fallback was committed to git history. Treat it (and any
+// other known-leaked value added here) as unusable, not merely discouraged:
+// accepting it would let anyone with repository access forge admin/customer
+// JWTs. Values are stored as SHA-256 hashes so this file does not re-publish
+// the secret itself.
+const LEAKED_SECRET_HASHES = new Set([
+  'e4551f915d28efbc6e3ad995a83dfc2b575a7f0b56501d407421de89e2349583',
+])
+function isKnownLeakedSecret(value: string | undefined): boolean {
+  if (!value) return false
+  return LEAKED_SECRET_HASHES.has(createHash('sha256').update(value).digest('hex'))
+}
+
+for (const key of ['JWT_SECRET', 'CSRF_SECRET'] as const) {
+  if (!isKnownLeakedSecret(process.env[key])) continue
+  if (isProduction) {
+    process.stderr.write(
+      `FATAL [startup] ${key} matches a value that was committed to git history. ` +
+      'Rotate it in the hosting panel before deploying.\n',
+    )
+    process.exit(1)
+  }
+  process.stderr.write(
+    `WARN [startup] ${key} matches a value that was committed to git history. ` +
+    'Rotate it before using this environment for anything shared.\n',
+  )
 }
 
 // In production the frontend URL and CORS origin drive PayPal return URLs,

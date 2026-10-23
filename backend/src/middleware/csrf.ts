@@ -122,8 +122,25 @@ export function verifyCsrf(req: Request, res: Response, next: NextFunction) {
   const cookieToken = req.cookies?.[COOKIE_NAME]
   const headerToken = req.headers[HEADER_NAME] as string | undefined
 
-  // If no CSRF cookie is set, skip (first request or non-browser client)
+  // A request that carries NO session cookie is not cookie-authenticated: it
+  // is authenticated with a bearer token, which a cross-site form cannot
+  // forge. There is nothing for CSRF to protect there.
+  const sessionCookies = [
+    'customerRefreshToken',
+    'adminRefreshToken',
+    'refreshToken',
+  ] as const
+  const hasSessionCookie = sessionCookies.some((name) => Boolean(req.cookies?.[name]))
+
+  // Fail CLOSED for cookie-authenticated requests: a session cookie without a
+  // matching CSRF token is a forged cross-site request. The old behaviour
+  // skipped verification whenever the CSRF cookie was missing, which meant any
+  // future cookie-authenticated POST would have been unprotected the moment a
+  // user cleared their cookies.
   if (!cookieToken) {
+    if (hasSessionCookie) {
+      return res.status(403).json({ error: 'CSRF token missing. Include X-CSRF-Token header.' })
+    }
     return next()
   }
 

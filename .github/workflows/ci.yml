@@ -20,19 +20,29 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Must match the `engines.node` requirement in package.json — a build
+          # that passes on 20 and fails on 22 (or the reverse) is not a signal.
+          node-version: 22
           cache: npm
 
       - run: npm ci
 
       - name: TypeScript Check
-        run: npx tsc --noEmit
+        # The root tsconfig is a solution file (references only, no files of its
+        # own), so `tsc --noEmit` was a check that could not fail. `-b` builds
+        # the referenced projects and is what deploy blocks on.
+        run: npx tsc -b --noEmit
 
       - name: Lint
         run: npm run lint
 
       - name: Build
         run: npm run build
+
+      # Root unit tests are pure Node (no backend node_modules required):
+      # shared-manifest metadata contract + structured-data golden tests.
+      - name: Unit Tests
+        run: npm run test
 
   # ─── Backend ─────────────────────────────────────────────────
   backend:
@@ -48,7 +58,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
@@ -59,6 +69,10 @@ jobs:
       - name: TypeScript Check
         working-directory: backend
         run: npx tsc --noEmit
+
+      - name: Unit Tests
+        working-directory: backend
+        run: npm test
 
       - name: Build
         working-directory: backend

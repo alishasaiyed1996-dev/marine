@@ -7,6 +7,7 @@ import { sendWelcome, sendPasswordReset } from './email.js'
 import { notifyNewCustomer } from './adminNotifications.js'
 import logger from '../utils/logger.js'
 import { getFrontendUrl } from '../utils/env.js'
+import { revokeSessions } from '../utils/sessionVersion.js'
 import type { AuthUser } from '../middleware/auth.js'
 
 // JWT_SECRET availability is guaranteed by backend/src/utils/env.ts, which
@@ -28,11 +29,23 @@ function generateAccessToken(payload: { id: string; email: string; role: string;
   return jwt.sign(payload, JWT_SECRET, options)
 }
 
-function generateCustomerAccessToken(payload: { id: string; email: string; role: string; type: string }) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' })
+/**
+ * Customer access tokens live for one hour, not seven days.
+ *
+ * A seven-day access token stayed valid after the customer logged out, after
+ * the account was deactivated, and after the password was changed. With a
+ * token version stamped into the token (and checked per request), revocation
+ * works — but a short lifetime is what bounds the damage in the window
+ * between a stolen token and its expiry.
+ */
+function generateCustomerAccessToken(payload: { id: string; email: string; role: string; type: string; tv?: number }) {
+  const options: SignOptions = {
+    expiresIn: (process.env.CUSTOMER_TOKEN_EXPIRES_IN || '1h') as unknown as SignOptions['expiresIn'],
+  }
+  return jwt.sign(payload, JWT_SECRET, options)
 }
 
-function generateRefreshToken(payload: { id: string; email: string; role: string; type?: string }, expiresIn: string | undefined = undefined) {
+function generateRefreshToken(payload: { id: string; email: string; role: string; type?: string; tv?: number }, expiresIn: string | undefined = undefined) {
   const expiry = expiresIn || process.env.REFRESH_TOKEN_EXPIRES_IN || '7d'
   const options: SignOptions = { expiresIn: expiry as unknown as SignOptions['expiresIn'] }
   return jwt.sign({ ...payload, refresh: true }, JWT_SECRET, options)
@@ -49,16 +62,49 @@ function generateCookieOptions(maxAgeDays: number) {
 
 // ─── Customer Auth ─────────────────────────────────────────────
 
+/**
+ * Emails are normalized to lower case at the boundary.
+ *
+ * Postgres unique indexes are case-sensitive by default, so `User@x.com` and
+ * `user@x.com` used to be two different accounts: the second registration
+ * succeeded, the first account could no longer log in with the casing it was
+ * created with, and the offer-abuse limits (which count exact `customerEmail`
+ * values) could be multiplied by changing the case.
+ */
+export function normalizeEmail(email: string): string {
+  return String(email || '').trim().toLowerCase()
+}
+
+/** Case-insensitive customer lookup by email. */
+export async function findCustomerByEmail(email: string) {
+  const normalized = normalizeEmail(email)
+  if (!normalized) return null
+  return prisma.customer.findFirst({
+    where: { email: { equals: normalized, mode: 'insensitive' as const } },
+  })
+}
+
 export async function registerCustomer(data: { name: string; email: string; password: string; phone?: string; company?: string; country?: string }) {
   const { password, ...fields } = data
+  const email = normalizeEmail(fields.email)
 
-  const existing = await prisma.customer.findUnique({ where: { email: data.email } })
-  if (existing) throw Object.assign(new Error('Email already registered'), { status: 400 })
+  const existing = await findCustomerByEmail(email)
+  if (existing) {
+    // Never return an explicit "already registered" error: that turns the
+    // sign-up form into an email-enumeration oracle. The owner of the address
+    // gets a normal password-reset link by email, and the caller receives a
+    // generic "check your inbox" result instead of an existence confirmation.
+    await forgotPassword(email)
+    return {
+      created: false as const,
+      message: 'If this email can be used, check your inbox to continue.',
+    }
+  }
 
   const passwordHash = await bcrypt.hash(password, 12)
-  const customer = await prisma.customer.create({ data: { ...fields, passwordHash } })
+  const customer = await prisma.customer.create({ data: { ...fields, email, passwordHash } })
 
-  const tokenPayload = { id: customer.id, email: customer.email, role: 'customer', type: 'customer' as const }
+  const tokenPayload = { id: customer.id, email: customer.email, role: 'customer', type: 'customer' as const, tv: customer.tokenVersion }
   const accessToken = generateCustomerAccessToken(tokenPayload)
   const refreshToken = generateRefreshToken(tokenPayload, '14d')
 
@@ -76,6 +122,7 @@ export async function registerCustomer(data: { name: string; email: string; pass
   }).catch(err => logger.error({ err }, 'Admin new-customer notification failed'))
 
   return {
+    created: true as const,
     accessToken,
     refreshToken,
     cookieOptions,
@@ -84,7 +131,7 @@ export async function registerCustomer(data: { name: string; email: string; pass
 }
 
 export async function loginCustomer(email: string, password: string) {
-  const customer = await prisma.customer.findUnique({ where: { email } })
+  const customer = await findCustomerByEmail(email)
   if (!customer) throw Object.assign(new Error('Invalid email or password'), { status: 401 })
 
   const valid = await bcrypt.compare(password, customer.passwordHash)
@@ -95,7 +142,7 @@ export async function loginCustomer(email: string, password: string) {
 
   await prisma.customer.update({ where: { id: customer.id }, data: { lastLoginAt: new Date() } })
 
-  const tokenPayload = { id: customer.id, email: customer.email, role: 'customer', type: 'customer' as const }
+  const tokenPayload = { id: customer.id, email: customer.email, role: 'customer', type: 'customer' as const, tv: customer.tokenVersion }
   const accessToken = generateCustomerAccessToken(tokenPayload)
   const refreshToken = generateRefreshToken(tokenPayload, '14d')
 
@@ -140,8 +187,15 @@ export async function refreshCustomerToken(refreshToken: string | undefined) {
     if (!customer || customer.status === 'inactive') {
       throw Object.assign(new Error('Account not found or inactive'), { status: 401 })
     }
+    // A revoked session must not be able to mint a new one. Without this a
+    // password change (which bumps the version) would be undone by the very
+    // next refresh. A refresh token without a version predates token
+    // versioning and is no longer accepted.
+    if (decoded.tv !== customer.tokenVersion) {
+      throw Object.assign(new Error('Session has been revoked'), { status: 401 })
+    }
 
-    const tokenPayload = { id: customer.id, email: customer.email, role: 'customer', type: 'customer' as const }
+    const tokenPayload = { id: customer.id, email: customer.email, role: 'customer', type: 'customer' as const, tv: customer.tokenVersion }
     const accessToken = generateCustomerAccessToken(tokenPayload)
     const newRefreshToken = generateRefreshToken(tokenPayload, '14d')
 
@@ -153,7 +207,7 @@ export async function refreshCustomerToken(refreshToken: string | undefined) {
 }
 
 export async function forgotPassword(email: string) {
-  const customer = await prisma.customer.findUnique({ where: { email } })
+  const customer = await findCustomerByEmail(email)
 
   // Always return success to prevent email enumeration
   if (!customer) {
@@ -166,6 +220,9 @@ export async function forgotPassword(email: string) {
     { expiresIn: '1h' }
   )
 
+  // The link still carries the token (an emailed link must), but the token is
+  // exchanged for a short-lived ticket on arrival so it never lingers in the
+  // browser history, the access log, or the analytics page location.
   const resetUrl = `${getFrontendUrl()}/reset-password?token=${resetToken}`
 
   sendPasswordReset({ to: customer.email, name: customer.name, resetUrl }).catch(err => {
@@ -173,6 +230,41 @@ export async function forgotPassword(email: string) {
   })
 
   return { message: 'If an account exists with this email, a reset link has been sent.' }
+}
+
+/**
+ * Exchanges the emailed reset token for a short-lived reset ticket.
+ *
+ * The emailed token lives in the URL for as long as the browser keeps it:
+ * history, access logs, and analytics `page_location` all capture the query
+ * string. The ticket is held in memory only, expires in minutes, and is
+ * invalidated as soon as the password is changed (the ticket is signed with
+ * the current password hash).
+ */
+export async function exchangeResetToken(token: string): Promise<{ ticket: string }> {
+  const decoded = jwt.decode(token) as JwtPayload | null
+  if (!decoded || !decoded.id || !decoded.reset || decoded.type !== 'customer') {
+    throw Object.assign(new Error('Invalid reset token'), { status: 400 })
+  }
+
+  const customer = await prisma.customer.findUnique({ where: { id: decoded.id } })
+  if (!customer) {
+    throw Object.assign(new Error('Invalid or expired reset token'), { status: 400 })
+  }
+
+  try {
+    jwt.verify(token, JWT_SECRET + customer.passwordHash)
+  } catch {
+    logger.warn({ err: new Error('Invalid reset token') }, 'Password reset token verification failed')
+    throw Object.assign(new Error('Invalid or expired reset token'), { status: 400 })
+  }
+
+  const ticket = jwt.sign(
+    { id: customer.id, email: customer.email, type: 'customer', reset: true, ticket: true },
+    JWT_SECRET + customer.passwordHash,
+    { expiresIn: '15m' },
+  )
+  return { ticket }
 }
 
 export async function resetPassword(token: string, newPassword: string) {
@@ -198,6 +290,8 @@ export async function resetPassword(token: string, newPassword: string) {
     where: { id: decoded.id as string },
     data: { passwordHash },
   })
+  // A password change ends every existing session for that customer.
+  await revokeSessions('customer', decoded.id as string).catch(() => {})
 
   return { message: 'Password has been reset. You can now log in.' }
 }
@@ -209,7 +303,9 @@ export async function logoutCustomer() {
 // ─── Admin Auth ────────────────────────────────────────────────
 
 export async function loginAdmin(email: string, password: string, ipAddress: string, userAgent: string | undefined) {
-  const user = await prisma.adminUser.findUnique({ where: { email } })
+  const user = await prisma.adminUser.findFirst({
+    where: { email: { equals: normalizeEmail(email), mode: 'insensitive' as const } },
+  })
   if (!user) throw Object.assign(new Error('Invalid email or password'), { status: 401 })
   if (!user.isActive) throw Object.assign(new Error('Account is deactivated'), { status: 403 })
 
@@ -218,7 +314,7 @@ export async function loginAdmin(email: string, password: string, ipAddress: str
 
   await prisma.adminUser.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
 
-  const tokenPayload = { id: user.id, email: user.email, role: user.role }
+  const tokenPayload = { id: user.id, email: user.email, role: user.role, tv: user.tokenVersion }
   const accessToken = generateAccessToken(tokenPayload)
   const refreshToken = generateRefreshToken(tokenPayload)
 
@@ -250,8 +346,13 @@ export async function refreshAdminToken(refreshToken: string | undefined) {
 
     const user = await prisma.adminUser.findUnique({ where: { id: decoded.id } })
     if (!user || !user.isActive) throw Object.assign(new Error('User not found or deactivated'), { status: 401 })
+    // A revoked session must not be able to mint a new one. A refresh token
+    // without a version predates token versioning and is no longer accepted.
+    if (decoded.tv !== user.tokenVersion) {
+      throw Object.assign(new Error('Session has been revoked'), { status: 401 })
+    }
 
-    const tokenPayload = { id: user.id, email: user.email, role: user.role }
+    const tokenPayload = { id: user.id, email: user.email, role: user.role, tv: user.tokenVersion }
     const accessToken = generateAccessToken(tokenPayload)
     const newRefreshToken = generateRefreshToken(tokenPayload)
 

@@ -11,6 +11,7 @@
  * unavailable). All created rows are cleaned up in `finally`.
  */
 import 'dotenv/config'
+import { randomBytes } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
@@ -64,8 +65,11 @@ async function getCsrf() {
 }
 
 const suffix = Date.now().toString(36)
-const customerA = { email: `smoke-a-${suffix}@example.com`, password: 'SmokeTest!123', name: 'Smoke Buyer A' }
-const customerB = { email: `smoke-b-${suffix}@example.com`, password: 'SmokeTest!123', name: 'Smoke Buyer B' }
+// Throwaway accounts, but generate the password instead of committing one so
+// secret scanners and future copies of this script never inherit a credential.
+const smokePassword = randomBytes(24).toString('base64url')
+const customerA = { email: `smoke-a-${suffix}@example.com`, password: smokePassword, name: 'Smoke Buyer A' }
+const customerB = { email: `smoke-b-${suffix}@example.com`, password: smokePassword, name: 'Smoke Buyer B' }
 
 let customerIds: string[] = []
 let offerIds: string[] = []

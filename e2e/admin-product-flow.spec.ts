@@ -10,7 +10,9 @@ import { test, expect, type Page } from '@playwright/test'
 
 const BASE_URL = process.env.BASE_URL || 'https://alkatraders.co'
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@alkatraders.co'
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'
+// No default password is embedded here: this suite runs against the live site,
+// so a fallback would publish a real credential and could lock out production.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 
 const PRODUCT = {
   name: 'Syed Pump E2E Test',
@@ -74,6 +76,13 @@ async function adminLogin(page: Page) {
 // ─── Tests ────────────────────────────────────────────────────────
 
 test.describe('Admin Product Flow — Syed Pump', () => {
+
+  test.beforeEach(() => {
+    test.skip(
+      !ADMIN_PASSWORD,
+      'ADMIN_PASSWORD is required; this live-site suite intentionally has no default credential.',
+    )
+  })
 
   test('1: Admin login', async ({ page }) => {
     test.setTimeout(60_000)
