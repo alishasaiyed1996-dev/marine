@@ -21,6 +21,8 @@ model AdminUser {
   role         String    @default("viewer") @db.VarChar(50)
   avatarUrl    String?   @map("avatar_url") @db.Text
   isActive     Boolean   @default(true) @map("is_active")
+  // Bumped to end every admin session (logout, password change, deactivation).
+  tokenVersion Int       @default(0) @map("token_version")
   lastLoginAt  DateTime? @map("last_login_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
@@ -52,6 +54,9 @@ model Customer {
   address       String?   @db.Text
   website       String?   @db.VarChar(255)
   status        String    @default("active") @db.VarChar(20)
+  // Bumped to end every session for this customer (logout, password change,
+  // deactivation). Tokens carry the version they were issued with.
+  tokenVersion  Int       @default(0) @map("token_version")
   tags          String[]  @default([])
   internalNotes String?   @map("internal_notes") @db.Text
   lastLoginAt   DateTime? @map("last_login_at")
@@ -337,6 +342,10 @@ model Order {
   paymentMethod        String?   @map("payment_method") @db.VarChar(50)
   paymentStatus        String    @default("pending") @map("payment_status") @db.VarChar(20)
   paymentIntentId      String?   @map("payment_intent_id") @db.VarChar(255)
+  // True once stock for this order has been claimed (reserved before capture
+  // or decremented on the webhook). It is the ownership marker that stops the
+  // capture path and the webhook path from decrementing the same units twice.
+  stockReserved        Boolean   @default(false) @map("stock_reserved")
   subtotal             Decimal   @default(0) @db.Decimal(12, 2)
   shippingCost         Decimal   @default(0) @map("shipping_cost") @db.Decimal(12, 2)
   tax                  Decimal   @default(0) @db.Decimal(12, 2)
@@ -353,9 +362,24 @@ model Order {
   shippingState        String?   @map("shipping_state") @db.VarChar(100)
   shippingPostalCode   String?   @map("shipping_postal_code") @db.VarChar(20)
   shippingCountry      String?   @map("shipping_country") @db.VarChar(100)
+  // B2B / freight details. A phone number is needed by the forwarder and the
+  // receiving dock; a company name and tax/VAT id are needed on the invoice
+  // and for customs paperwork.
+  shippingPhone        String?   @map("shipping_phone") @db.VarChar(40)
+  shippingCompany      String?   @map("shipping_company") @db.VarChar(255)
+  shippingTaxId        String?   @map("shipping_tax_id") @db.VarChar(100)
   trackingNumber       String?   @map("tracking_number") @db.VarChar(100)
   courier              String?   @db.VarChar(100)
   customerNotes        String?   @map("customer_notes") @db.Text
+  // Dedicated idempotency key for checkout de-duplication. It replaces the
+  // "[idem:…]" marker that used to be stuffed into the customer-visible notes
+  // field and searched with a non-unique `contains`.
+  idempotencyKey       String?   @unique @map("idempotency_key") @db.VarChar(200)
+  // Proof that the customer accepted the published terms at checkout. The
+  // version is stamped by the server so a later terms edit cannot retroactively
+  // change what an existing order accepted. Null for legacy/admin-created orders.
+  termsAcceptedAt      DateTime? @map("terms_accepted_at")
+  termsVersion         String?   @map("terms_version") @db.VarChar(50)
   adminNotes           String?   @map("admin_notes") @db.Text
   cancelRequested      Boolean   @default(false) @map("cancel_requested")
   cancelReason         String?   @map("cancel_reason") @db.Text
@@ -442,6 +466,9 @@ model Rfq {
   assignedTo         String?   @map("assigned_to") @db.Uuid
   source             String?   @db.VarChar(50)
   consent            Boolean   @default(false)
+  // When the visitor gave consent. The boolean alone records no agreement —
+  // the client used to send `consent: true` without asking.
+  consentAt          DateTime? @map("consent_at")
   responseDeadline   DateTime? @map("response_deadline")
   firstResponseAt    DateTime? @map("first_response_at")
   internalNotes      String?   @map("internal_notes") @db.Text
