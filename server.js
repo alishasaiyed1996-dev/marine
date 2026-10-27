@@ -127,7 +127,7 @@ const ACCOUNT_ROOT_ROUTES = new Set(['orders', 'offers', 'profile'])
 // Static page metadata is NOT duplicated here: the same manifest the
 // prerenderer uses (`shared/static-pages.mjs`) is imported above, so the
 // fallback shell and the prerendered HTML can never describe a page
-// differently. See S-4/D-8 in "complete codebase fix.md".
+// differently (finding S-4/D-8 of the production audit).
 
 // Keep this in sync with public/robots.txt. These pages are accessible but
 // must never be indexed.
