@@ -25,6 +25,11 @@ coverage
 # Playwright test artifacts
 test-results/
 
+# Generated SEO audit reports (scripts/index-audit.mjs, catalog-seo-audit.mjs, gsc-index-audit.mjs)
+reports/
+# Generated download list (scripts/url-list.mjs writes both; only the .md doc is committed)
+seo-url-list.txt
+
 # Junk files
 *.zip
 # Ignore images outside of public/images (e.g. random downloads)

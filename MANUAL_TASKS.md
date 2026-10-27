@@ -339,15 +339,36 @@ window, and operator in the operations log after the test.
 ### MT-8 · Search Console API access (unlocks B10 automation)
 
 The sitemap is already auto-generated and MT-2 covers one-time submission.
-Automating Search Console (impressions/clicks pull, index-coverage monitoring)
-needs Google API credentials:
+Automating Search Console (index-coverage monitoring, impressions/clicks pull)
+needs Google API credentials. **The client is already written** —
+`npm run gsc:audit` (`scripts/gsc-index-audit.mjs`) drives the URL Inspection
+API over every sitemap URL and reports, per URL, the index verdict, coverage
+state, last crawl time and whether Google picked a different canonical. It is
+dependency-free (JWT signed with node:crypto) and needs no Railway deploy —
+it runs from this workstation against the public API.
+
+Setup (scratch start — the domain property is already verified):
 
 1. Google Cloud Console → create a project → enable the **Search Console API**.
-2. Create a **service account** (or OAuth client) and add its email as a
-   **property owner/delegated user** in Search Console.
-3. Put the JSON key in Railway (`GSC_SERVICE_ACCOUNT_JSON`, api service).
+2. Create a **service account**, then create a **JSON key** for it.
+3. In Search Console → Settings → Users and permissions, add the service
+   account's `...@....iam.gserviceaccount.com` email as a user (Full or
+   Restricted is enough for inspection).
+4. Put the JSON key where the script can read it:
+   - local: set `GSC_SERVICE_ACCOUNT_FILE=D:/path/to/key.json` in `.env`
+     (ignored) or export it in the shell;
+   - the script also accepts the raw JSON in `GSC_SERVICE_ACCOUNT_JSON`.
+5. Override the property if it is not a Domain property:
+   `--site https://alkatraders.co/` (default is `sc-domain:alkatraders.co`).
 
-Until then, review performance manually at search.google.com/search-console.
+No credentials yet? `npm run gsc:audit -- --dry-run` still enumerates and
+classifies every sitemap URL, so the tool is usable before setup.
+
+Quota: the URL Inspection API allows ~2,000 inspections per property per day
+and ~600 per minute. Use `--limit` and `--resume` for a full 1,125-URL pass.
+
+Until this is wired, review performance manually at
+search.google.com/search-console.
 
 ### MT-9 · Merchant Center Content API (unlocks automated feed push, B11)
 
