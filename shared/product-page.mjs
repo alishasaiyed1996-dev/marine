@@ -163,7 +163,9 @@ function isRealBrand(value) {
   return !/unbranded|unknown|not\s*marked|generic|oem\s*(?:\/|or)?\s*equivalent|aftermarket|no\s*brand|branded/i.test(text)
 }
 
-function isUuidSku(value) {
+/** Shared with server.js's hub renderer — keep the runtime and the
+ *  prerendered pages on one definition (mirrors src/lib/description.ts). */
+export function isUuidSku(value) {
   const text = cleanText(value)
   return UUID_SKU_RE.test(text)
 }

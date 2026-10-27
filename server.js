@@ -29,7 +29,7 @@ import fs from 'fs'
 import crypto from 'crypto'
 import zlib from 'zlib'
 import { fileURLToPath } from 'url'
-import { buildProductPage, renderProductBodyHtml } from './shared/product-page.mjs'
+import { buildProductPage, renderProductBodyHtml, isUuidSku } from './shared/product-page.mjs'
 import { isIndexableRoute, SHIPPED_LOCALES } from './shared/route-i18n.mjs'
 import { STATIC_PAGE_META } from './shared/static-pages.mjs'
 
