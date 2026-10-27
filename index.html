@@ -3,6 +3,71 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- Google tag (gtag.js) — GA4 measurement ID G-2556Z1FEES.
+         Present in the head of every page: the prerendered documents and the
+         server-rendered product/hub pages all inherit this head from this
+         build template, and the CSP allows this inline bootstrap through the
+         sha256 hash server.js computes from this file at startup.
+
+         Consent-gated. The tag is declared with type="text/plain", so the
+         browser neither fetches nor runs it, and the bootstrap below promotes
+         it to a live tag only after the visitor accepts cookies. The gate reads
+         the same alka-cookie-consent key as src/lib/consent.ts, so the cookie
+         banner and the privacy policy keep their promise that analytics does
+         not run before consent.
+
+         `send_page_view: false` because the storefront is a client-rendered
+         app: StoreAnalytics fires every page view, including SPA navigations. -->
+    <script
+      id="alka-ga4-static"
+      async
+      type="text/plain"
+      src="https://www.googletagmanager.com/gtag/js?id=G-2556Z1FEES"
+    ></script>
+    <script>
+      (function () {
+        var GA_ID = 'G-2556Z1FEES'
+        window.dataLayer = window.dataLayer || []
+        function gtag() { window.dataLayer.push(arguments) }
+        window.gtag = window.gtag || gtag
+        // Lets the React analytics component know this document already carries
+        // the tag, so it never injects a second one (Google: one tag per page).
+        window.__alkaStaticGaId = GA_ID
+
+        function consentGranted() {
+          try {
+            var raw = window.localStorage.getItem('alka-cookie-consent')
+            return !!raw && JSON.parse(raw).accepted === true
+          } catch (e) { return false }
+        }
+
+        // The reset-password URL carries a one-time token; it must never reach
+        // Google through page_location.
+        function excludedPath() {
+          return /^\/(en\/|ar\/|es\/)?reset-password/i.test(window.location.pathname)
+        }
+
+        window.__alkaActivateGa = function () {
+          if (!consentGranted() || excludedPath()) return
+          if (window.__alkaGaActive) return
+          window.__alkaGaActive = true
+          var live = document.createElement('script')
+          live.id = 'alka-ga4-live'
+          live.async = true
+          live.src = 'https://www.googletagmanager.com/gtag/js?id=' + GA_ID
+          document.head.appendChild(live)
+          gtag('js', new Date())
+          gtag('config', GA_ID, { send_page_view: false })
+        }
+
+        window.__alkaActivateGa()
+        window.addEventListener('alka:consent-change', function (event) {
+          if (event && event.detail && event.detail.accepted) window.__alkaActivateGa()
+        })
+      })()
+    </script>
+
     <link rel="icon" type="image/png" href="/images/alka-traders-logo-400.png" />
     <link rel="apple-touch-icon" href="/images/alka-traders-logo-400.png" />
     <link rel="manifest" href="/manifest.json" />

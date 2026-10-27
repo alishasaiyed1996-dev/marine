@@ -6,7 +6,12 @@ import { hasAnalyticsConsent, onConsentChange } from '../../lib/consent'
 import { trackPageView } from '../../lib/analytics'
 
 /**
- * Injects the Google Analytics 4 tag — but only with consent.
+ * Loads the Google Analytics 4 tag — but only with consent.
+ *
+ * The tag itself may be declared in index.html (see the gtag bootstrap there) or
+ * configured in admin settings. This component never creates a second tag when
+ * one is already in the document; it activates the hardcoded one and, either
+ * way, owns the page views the client-rendered storefront needs.
  *
  * Before, the tag loaded whenever a GA id was configured and never read the
  * consent key, so "Decline" in the cookie banner changed nothing while the
@@ -21,6 +26,22 @@ export function StoreAnalytics() {
   const location = useLocation()
 
   useEffect(() => {
+    // ─── Hardcoded tag (index.html) ──────────────────────────
+    // When the document already carries a Google tag, it owns loading. React
+    // must never inject a second one — Google's guidance is one tag per page,
+    // and two tags would double-count every page view. The inline bootstrap in
+    // index.html exposes __alkaActivateGa, which respects the same consent key.
+    if (window.__alkaStaticGaId) {
+      const unsubscribe = onConsentChange((accepted) => {
+        if (accepted) window.__alkaActivateGa?.()
+        // Declining stops the tag from sending anything further.
+        else window.dataLayer = []
+      })
+      window.__alkaActivateGa?.()
+      return unsubscribe
+    }
+
+    // ─── Admin-configured tag ───────────────────────────────
     const id = googleAnalyticsId?.trim()
     if (!id) return
 
@@ -77,7 +98,10 @@ export function StoreAnalytics() {
   // first page of a session — the storefront is a client-rendered app, so
   // navigation never triggered a document load.
   useEffect(() => {
-    if (!googleAnalyticsId?.trim()) return
+    // A tag may come from the admin setting or from index.html; page views are
+    // required either way because the tag is configured with send_page_view:false.
+    const hasTag = Boolean(googleAnalyticsId?.trim()) || Boolean(window.__alkaStaticGaId)
+    if (!hasTag) return
     if (/^\/(en\/|ar\/|es\/)?reset-password/i.test(location.pathname)) return
     if (!hasAnalyticsConsent()) return
     // The tag is configured with `send_page_view: false`, so the SPA is
