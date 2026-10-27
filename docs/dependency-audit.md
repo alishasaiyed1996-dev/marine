@@ -43,6 +43,16 @@ own change with its own test pass:
 None of these three can ship as a drive-by. Order when picked up: zod → nodemailer → prisma,
 one PR each, full backend test suite + a staging deploy between each.
 
+## Addendum (2026-10-28) — new qs advisory published after the first fix
+
+GHSA-6pq8-jhm2-2vcw (moderate): `qs.stringify` with `arrayFormat: 'comma'` throws
+an uncaught TypeError on array elements carrying a non-callable own `toString`
+(DoS). Vulnerable range 6.7.0–6.16.0 — which **includes the 6.16.0 pin set
+above** (the advisory did not exist yet when that pin was chosen). Both
+overrides now read `"qs": "6.17.0"`; `npm audit --omit=dev` after the bump:
+root **0**, backend **5 high** (unchanged — the three breaking packages above
+still need deliberate bumps; `npm audit fix --force` remains off-limits).
+
 ## Root — clean
 
 `brace-expansion` was already overridden (5.0.9) but that pin sat inside the vulnerable range
