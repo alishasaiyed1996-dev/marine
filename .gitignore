@@ -32,6 +32,8 @@ seo-url-list.txt
 
 # Junk files
 *.zip
+# Local-only audit working document (never publish internal audit notes)
+PRODUCTION_AUDIT.md
 # Ignore images outside of public/images (e.g. random downloads)
 # but ALLOW all formats inside public/images/ so they deploy to the site
 *.jpeg
@@ -61,6 +63,12 @@ public/hero.mp4
 
 # Freebuff assistant metadata
 .freebuff/
+
+# Codex review scratch directory
+.codex-review/
+
+# Lighthouse CI artifacts
+.lighthouseci/
 
 # Hostinger deployment build artifacts
 frontend-dist/

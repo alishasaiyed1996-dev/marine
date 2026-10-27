@@ -10,7 +10,7 @@ import { useLocale } from '../locale'
  * carried its own copy: the prerendered catalog page said "Marine Spare Parts &
  * Ship Spares Catalog", the server fallback said "Marine Spare Parts Catalog |
  * Ship Spares & Engine Parts", and several pages dropped the brand suffix
- * entirely once React mounted. See S-4/D-8 in "complete codebase fix.md".
+ * entirely once React mounted (finding S-4/D-8 of the production audit).
  *
  * Titles and descriptions come from `shared/static-pages.mjs` (English) and
  * `shared/static-pages-i18n.mjs` (Arabic, Spanish).

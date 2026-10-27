@@ -73,11 +73,13 @@ test('prerender.mjs and server.js emit hreflang through the shared policy, not l
  * The literal audit check: ONE prerendered product page on disk. Skips when
  * the dist has not been built (CI runs without a build).
  */
-test('the prerendered product page in dist declares no hreflang alternates', () => {
+test('the prerendered product page in dist declares no hreflang alternates', (t) => {
   const dist = path.join(repoRoot, 'frontend', 'dist')
   const productsDir = path.join(dist, 'en', 'product')
   if (!fs.existsSync(productsDir)) {
-    assert.skip('frontend/dist not built — run npm run build first')
+    // node:assert has no `skip` — the test runner context does. (assert.skip
+    // used to throw a TypeError here, failing the run instead of skipping.)
+    t.skip('frontend/dist not built — run npm run build first')
     return
   }
   const [productDir] = fs

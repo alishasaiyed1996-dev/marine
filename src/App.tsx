@@ -271,9 +271,14 @@ function AppContent() {
 export default function App() {
   return (
     <ToastProvider>
+    {/* PayPalProvider must sit INSIDE the router: it gates the PayPal SDK to
+        the checkout/offer-pay routes via useLocation (the SDK used to load on
+        every page in the store). */}
+    <BrowserRouter>
     <PayPalProvider>
-    <BrowserRouter><AppContent /></BrowserRouter>
+      <AppContent />
     </PayPalProvider>
+    </BrowserRouter>
     <CookieConsent />
     <WhatsAppFloat />
     </ToastProvider>

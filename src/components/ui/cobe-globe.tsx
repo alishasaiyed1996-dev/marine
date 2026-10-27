@@ -72,11 +72,20 @@ export function Globe({
   const phiOffsetRef = useRef(0)
   const thetaOffsetRef = useRef(0)
   const isPausedRef = useRef(false)
+  // Set by the WebGL effect's IntersectionObserver; lets the pointer handlers
+  // skip work for a globe that is scrolled out of view.
+  const offscreenRef = useRef(false)
+  // The animation loop lives inside the WebGL effect; drag handlers use this
+  // to wake it (e.g. reduced-motion keeps the loop stopped until a drag starts).
+  const resumeLoopRef = useRef<(() => void) | null>(null)
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     pointerInteracting.current = { x: e.clientX, y: e.clientY }
     if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing'
     isPausedRef.current = true
+    // A reduced-motion globe idles with the loop stopped — restart it so the
+    // canvas follows the pointer during this drag.
+    resumeLoopRef.current?.()
   }, [])
 
   const handlePointerMove = useCallback((e: PointerEvent) => {
@@ -103,11 +112,14 @@ export function Globe({
       thetaOffsetRef.current += dragOffset.current.theta
       dragOffset.current = { phi: 0, theta: 0 }
       lastPointer.current = null
+      // Reduced motion: no momentum coasting after release — the globe stops
+      // where the user leaves it and the loop settles immediately.
+      if (prefersReducedMotion) velocity.current = { phi: 0, theta: 0 }
     }
     pointerInteracting.current = null
     if (canvasRef.current) canvasRef.current.style.cursor = 'grab'
     isPausedRef.current = false
-  }, [])
+  }, [prefersReducedMotion])
 
   useEffect(() => {
     window.addEventListener('pointermove', handlePointerMove, { passive: true })
@@ -118,12 +130,87 @@ export function Globe({
     }
   }, [handlePointerMove, handlePointerUp])
 
+  // Serialize every option that drives the WebGL scene into one signature —
+  // object/array props (colors, markers, arcs) are recreated on each parent
+  // render, so depending on them directly destroyed and recreated the globe
+  // (a visible flicker) every time the page re-rendered while data was still
+  // loading. A stable signature re-runs the effect only when a VALUE actually
+  // changes, e.g. the theme flip.
+  const configKey = JSON.stringify([
+    markers, arcs, markerColor, baseColor, arcColor, glowColor, dark,
+    mapBrightness, markerSize, markerElevation, arcWidth, arcHeight,
+    speed, theta, diffuse, mapSamples,
+  ])
+
   useEffect(() => {
     if (!canvasRef.current) return
     const canvas = canvasRef.current
     let globe: ReturnType<typeof createGlobe> | null = null
-    let animationId: number
+    let animationId = 0
     let phi = 0
+
+    /** Render one frame with the current option values (cobe's render entry). */
+    function paint() {
+      globe!.update({
+        phi: phi + phiOffsetRef.current + dragOffset.current.phi,
+        theta: theta + thetaOffsetRef.current + dragOffset.current.theta,
+        dark,
+        mapBrightness,
+        markerColor,
+        baseColor,
+        arcColor,
+        markerElevation,
+        markers: markers.map((m) => ({
+          location: m.location,
+          size: markerSize,
+          id: m.id,
+        })),
+        arcs: arcs.map((a) => ({
+          from: a.from,
+          to: a.to,
+          id: a.id,
+        })),
+      })
+    }
+
+    function animate() {
+      animationId = 0
+      const spinning = !prefersReducedMotion && !isPausedRef.current
+      const momentum =
+        Math.abs(velocity.current.phi) > 0.0001 || Math.abs(velocity.current.theta) > 0.0001
+      // While dragged (paused), keep painting so the globe follows the pointer.
+      // With reduced motion and no drag the globe is static: the initial paint
+      // happened in init(), so the loop stops — an idle globe costs nothing.
+      if (spinning || momentum || isPausedRef.current) {
+        if (spinning) phi += speed
+        // Inertia decays regardless of the motion preference: it is the direct
+        // result of the user's own drag and settles in well under a second.
+        if (momentum) {
+          phiOffsetRef.current += velocity.current.phi
+          thetaOffsetRef.current += velocity.current.theta
+          velocity.current.phi *= 0.95
+          velocity.current.theta *= 0.95
+        }
+        if (spinning || momentum) {
+          const thetaMin = -0.4
+          const thetaMax = 0.4
+          if (thetaOffsetRef.current < thetaMin) {
+            thetaOffsetRef.current += (thetaMin - thetaOffsetRef.current) * 0.1
+          } else if (thetaOffsetRef.current > thetaMax) {
+            thetaOffsetRef.current += (thetaMax - thetaOffsetRef.current) * 0.1
+          }
+        }
+        paint()
+        animationId = requestAnimationFrame(animate)
+      }
+    }
+
+    /** Start the loop unless it is already running or the canvas is offscreen. */
+    function startLoop() {
+      if (animationId || offscreenRef.current || !globe) return
+      animationId = requestAnimationFrame(animate)
+    }
+    resumeLoopRef.current = startLoop
 
     function init() {
       const width = canvas.offsetWidth
@@ -158,46 +245,11 @@ export function Globe({
         arcHeight,
         opacity: 0.7,
       })
-      function animate() {
-        if (!isPausedRef.current && !prefersReducedMotion) {
-          phi += speed
-          if (Math.abs(velocity.current.phi) > 0.0001 || Math.abs(velocity.current.theta) > 0.0001) {
-            phiOffsetRef.current += velocity.current.phi
-            thetaOffsetRef.current += velocity.current.theta
-            velocity.current.phi *= 0.95
-            velocity.current.theta *= 0.95
-          }
-          const thetaMin = -0.4
-          const thetaMax = 0.4
-          if (thetaOffsetRef.current < thetaMin) {
-            thetaOffsetRef.current += (thetaMin - thetaOffsetRef.current) * 0.1
-          } else if (thetaOffsetRef.current > thetaMax) {
-            thetaOffsetRef.current += (thetaMax - thetaOffsetRef.current) * 0.1
-          }
-        }
-        globe!.update({
-          phi: phi + phiOffsetRef.current + dragOffset.current.phi,
-          theta: theta + thetaOffsetRef.current + dragOffset.current.theta,
-          dark,
-          mapBrightness,
-          markerColor,
-          baseColor,
-          arcColor,
-          markerElevation,
-          markers: markers.map((m) => ({
-            location: m.location,
-            size: markerSize,
-            id: m.id,
-          })),
-          arcs: arcs.map((a) => ({
-            from: a.from,
-            to: a.to,
-            id: a.id,
-          })),
-        })
-        animationId = requestAnimationFrame(animate)
-      }
-      animate()
+      // Always render one frame synchronously — cobe only paints on update(),
+      // so under reduced-motion (where the animate loop stops immediately)
+      // this is what puts the globe on screen.
+      paint()
+      startLoop()
       setTimeout(() => canvas && (canvas.style.opacity = '1'))
     }
 
@@ -213,12 +265,29 @@ export function Globe({
       ro.observe(canvas)
     }
 
+    // Stop the animation entirely while the globe is scrolled out of view —
+    // the WebGL loop kept burning GPU/battery behind the rest of the page.
+    const io = new IntersectionObserver((entries) => {
+      offscreenRef.current = !entries.some((e) => e.isIntersecting)
+      if (offscreenRef.current) {
+        if (animationId) {
+          cancelAnimationFrame(animationId)
+          animationId = 0
+        }
+      } else {
+        startLoop()
+      }
+    }, { threshold: 0 })
+    io.observe(canvas)
+
     return () => {
+      io.disconnect()
+      resumeLoopRef.current = null
       if (animationId) cancelAnimationFrame(animationId)
       if (globe) globe.destroy()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markers, arcs, markerColor, baseColor, arcColor, glowColor, dark, mapBrightness, markerSize, markerElevation, arcWidth, arcHeight, speed, theta, diffuse, mapSamples])
+  }, [configKey])
 
   return (
     <div className={`relative aspect-square select-none ${className}`}>
