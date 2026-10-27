@@ -18,7 +18,12 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB for logos
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml']
+    // S4: SVG is intentionally NOT accepted. An uploaded SVG can carry
+    // <script> that executes for every viewer of the asset URL (stored XSS);
+    // the pipeline re-encodes to webp anyway, so there is no legitimate SVG
+    // input left. The mimetype check below is the only gate — keep this list
+    // in sync with it.
+    const allowed = ['image/jpeg', 'image/png', 'image/webp']
     if (allowed.includes(file.mimetype)) cb(null, true)
     else cb(new Error(`Unsupported file type: ${file.mimetype}`))
   },
