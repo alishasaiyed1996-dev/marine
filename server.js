@@ -625,6 +625,19 @@ app.use((req, res, next) => {
   if (localeCase) {
     return redirectWithQuery(req, res, `/${localeCase[1].toLowerCase()}${localeCase[2] || '/'}`)
   }
+
+  // Legacy static-host URLs (S5): /en/brands.html 301s to /en/brands/. The
+  // redirect only fires when the extensionless route actually exists (the
+  // same policy the SPA fallback 404s against) — unknown .html paths keep
+  // falling through to the true 404. This must run BEFORE the dynamic
+  // product/hub handlers, otherwise /:locale/product/:key captures
+  // "some-slug.html" as a product key and 404s instead of redirecting.
+  if (/\.html?$/i.test(req.path)) {
+    const stripped = req.path.replace(/\.html?$/i, '')
+    if (isKnownStorefrontPath(stripped)) {
+      return redirectWithQuery(req, res, `${stripped}/`)
+    }
+  }
   next()
 })
 
