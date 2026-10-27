@@ -39,17 +39,34 @@ if (!process.env.JWT_SECRET) {
 // other known-leaked value added here) as unusable, not merely discouraged:
 // accepting it would let anyone with repository access forge admin/customer
 // JWTs. Values are stored as SHA-256 hashes so this file does not re-publish
-// the secret itself.
+// the secret itself. One hash per known-leaked value — add a hash with:
+//   node -e "console.log(require('node:crypto').createHash('sha256').update('VALUE').digest('hex'))"
+// (run it on the value you are retiring, then never store that plaintext).
+// The denylist covers ALL protected secrets — JWT_SECRET, CSRF_SECRET and
+// ADMIN_PASSWORD (MT-18: the leaked e2e fallback matched the production admin
+// password). Never store plaintext values in this file.
 const LEAKED_SECRET_HASHES = new Set([
   'e4551f915d28efbc6e3ad995a83dfc2b575a7f0b56501d407421de89e2349583',
 ])
-function isKnownLeakedSecret(value: string | undefined): boolean {
+export const PROTECTED_SECRET_KEYS = ['JWT_SECRET', 'CSRF_SECRET', 'ADMIN_PASSWORD'] as const
+
+export function isKnownLeakedSecret(
+  value: string | undefined,
+  hashes: ReadonlySet<string> = LEAKED_SECRET_HASHES,
+): boolean {
   if (!value) return false
-  return LEAKED_SECRET_HASHES.has(createHash('sha256').update(value).digest('hex'))
+  return hashes.has(createHash('sha256').update(value).digest('hex'))
 }
 
-for (const key of ['JWT_SECRET', 'CSRF_SECRET'] as const) {
-  if (!isKnownLeakedSecret(process.env[key])) continue
+/** Every protected key whose configured value matches a denylisted hash. */
+export function leakedSecretKeys(
+  env: NodeJS.ProcessEnv = process.env,
+  hashes: ReadonlySet<string> = LEAKED_SECRET_HASHES,
+): string[] {
+  return PROTECTED_SECRET_KEYS.filter((key) => isKnownLeakedSecret(env[key], hashes))
+}
+
+for (const key of leakedSecretKeys()) {
   if (isProduction) {
     process.stderr.write(
       `FATAL [startup] ${key} matches a value that was committed to git history. ` +
