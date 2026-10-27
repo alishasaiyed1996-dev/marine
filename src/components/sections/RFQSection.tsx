@@ -8,6 +8,8 @@ import { WhatsAppIcon } from '../ui/WhatsAppIcon'
 import { ResponseCountdown } from '../ui/ResponseCountdown'
 import { getRfqResponseDeadline } from '../../lib/rfqSla'
 import { usePersistentState } from '../../hooks/usePersistentState'
+import { trackRfqSubmit } from '../../lib/analytics'
+import { readLeadAttribution } from '../../lib/leadAttribution'
 
 // Stable initial shape so the persisted draft (usePersistentState) and the
 // reset-on-submit both reference the same defaults.
@@ -64,6 +66,10 @@ export function RFQSection() {
     try {
       // Real submission — the visitor must never see a success screen for an
       // RFQ that was only written to a local store flag.
+      // The placement tag stays when the visitor arrived directly; a tagged
+      // or referred visit records its source instead.
+      const attribution = readLeadAttribution()
+      const source = attribution.origin !== 'direct' ? attribution.origin : 'home-rfq-section'
       const result = await storefront.rfq.submit({
         fullName: formData.name,
         company: formData.company || undefined,
@@ -74,13 +80,25 @@ export function RFQSection() {
         urgency: formData.urgency,
         consent: true,
         consentAt: new Date().toISOString(),
-        source: 'home-rfq-section',
+        source,
       })
       useStore.setState({ rfqId: result.rfqNumber || rfqId })
       setRfqDeadline(getRfqResponseDeadline(formData.urgency))
       setSubmitted(true)
       // Draft fulfilled — clear it so the next visit starts clean.
       setFormData(INITIAL_RFQ)
+      // Non-PII lead conversion for GA4 (fires only with analytics consent).
+      trackRfqSubmit({
+        rfqNumber: result.rfqNumber,
+        page: window.location.pathname,
+        urgency: formData.urgency,
+        hasPartNumber: false,
+        origin: source,
+        utmSource: attribution.utmSource,
+        utmMedium: attribution.utmMedium,
+        utmCampaign: attribution.utmCampaign,
+        referrerHost: attribution.referrerHost,
+      })
     } catch (err) {
       setSubmitError(
         err instanceof Error && err.message

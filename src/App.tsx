@@ -41,6 +41,7 @@ const TermsOfService = lazy(() => import('./pages/TermsOfService'))
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
 import { CookieConsent } from './components/CookieConsent'
 import { StoreAnalytics } from './components/analytics/StoreAnalytics'
+import { captureLeadAttribution } from './lib/leadAttribution'
 import { useStoreSettings } from './hooks/useStoreSettings'
 import Maintenance from './pages/Maintenance'
 import { PayPalProvider } from './components/PayPalProvider'
@@ -201,6 +202,13 @@ function AppContent() {
     // Refresh any persisted cart against fresh product prices on boot.
     refreshCartPrices()
   }, [loadAdminSession, loadCustomerSession, refreshCartPrices])
+
+  // First-touch lead attribution: a visitor arriving on a tagged link
+  // (?utm_source=whatsapp, ?utm_source=directory/…) keeps that source for the
+  // whole session, so an RFQ submitted minutes later still carries it.
+  useEffect(() => {
+    captureLeadAttribution()
+  }, [])
 
   if (isSessionLoading || adminSessionLoading) {
     return (

@@ -9,6 +9,8 @@ import { faqItems } from '../data/testimonials'
 import { countries } from '../data/countries'
 import { storefront } from '../lib/api'
 import { useLocalizedPath } from '../lib/locale'
+import { trackRfqSubmit } from '../lib/analytics'
+import { readLeadAttribution } from '../lib/leadAttribution'
 import { SEO } from '../components/seo/SEO'
 import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
 import { WhatsAppIcon } from '../components/ui/WhatsAppIcon'
@@ -95,6 +97,10 @@ export default function RFQ() {
     setSubmitting(true)
     setSubmitError('')
     try {
+      // Machine attribution (UTM / referrer) fills the source only when the
+      // visitor did not choose one themselves — a self-declared source always
+      // wins, and `direct` carries no signal worth recording.
+      const attribution = readLeadAttribution()
       const result = await storefront.rfq.submit({
         fullName: formData.fullName,
         company: formData.company,
@@ -109,7 +115,7 @@ export default function RFQ() {
         deliveryLocation: formData.deliveryLocation,
         urgency: formData.urgency,
         notes: formData.notes || undefined,
-        source: formData.source || undefined,
+        source: formData.source || (attribution.origin !== 'direct' ? attribution.origin : undefined),
         consent: formData.consent,
       })
       // Use the server-assigned RFQ number if available
@@ -122,6 +128,19 @@ export default function RFQ() {
       setRfqSubmitted(true)
       setRfqStep(1) // Reset step for next submission
       setFormData(INITIAL_RFQ_FORM) // Draft fulfilled — start clean next time.
+      // Non-PII lead conversion for GA4 (fires only with analytics consent).
+      trackRfqSubmit({
+        rfqNumber: result.rfqNumber,
+        page: window.location.pathname,
+        urgency: formData.urgency,
+        hasPartNumber: Boolean(formData.partNumber.trim()),
+        country: formData.country,
+        origin: formData.source || attribution.origin,
+        utmSource: attribution.utmSource,
+        utmMedium: attribution.utmMedium,
+        utmCampaign: attribution.utmCampaign,
+        referrerHost: attribution.referrerHost,
+      })
     } catch (err: any) {
       setSubmitError(err.message || 'Failed to submit RFQ. Please try again or contact us via WhatsApp.')
     } finally {

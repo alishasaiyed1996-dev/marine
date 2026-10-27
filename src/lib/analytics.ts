@@ -73,3 +73,47 @@ export function trackPurchase(order: {
     items: order.items,
   })
 }
+
+export interface RfqSubmitParams {
+  /** Server-assigned RFQ number (non-PII, never a contact detail). */
+  rfqNumber?: string
+  /** Storefront page the form lived on (`/rfq`, `/en/`, …). */
+  page: string
+  urgency: string
+  hasPartNumber: boolean
+  country?: string
+  /** Same token persisted on the RFQ record (`Rfq.source`). */
+  origin?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  referrerHost?: string
+}
+
+/**
+ * RFQ submitted — the storefront's primary conversion.
+ *
+ * Register `rfq_submit` as a key event in the GA4 UI so it counts as a
+ * conversion, then register the attribution_* and rfq_* parameters as custom
+ * dimensions for drill-down (see MANUAL_TASKS.md). The payload deliberately
+ * carries no contact details — name, email, phone and the description live
+ * only in the admin console; analytics sees non-identifying lead context.
+ */
+export function trackRfqSubmit(params: RfqSubmitParams) {
+  const payload: Record<string, unknown> = {
+    rfq_id: params.rfqNumber,
+    rfq_page: params.page,
+    rfq_urgency: params.urgency,
+    rfq_has_part_number: params.hasPartNumber,
+    rfq_country: params.country,
+    rfq_origin: params.origin,
+    attribution_source: params.utmSource,
+    attribution_medium: params.utmMedium,
+    attribution_campaign: params.utmCampaign,
+    attribution_referrer: params.referrerHost,
+  }
+  trackEvent(
+    'rfq_submit',
+    Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined))
+  )
+}

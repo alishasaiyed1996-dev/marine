@@ -29,7 +29,14 @@ export async function createRfq(data: {
   source?: string; consent: boolean
   consentAt?: string
 }) {
-  const { notes, consentAt, ...dbFields } = data
+  // `Rfq.source` is VarChar(50) in Postgres while the request schema allows
+  // 200 characters — clamp here so an over-long client value can never fail
+  // the insert with a 500. (The storefront already truncates its generated
+  // attribution tokens; this protects against any other client.)
+  const { notes, consentAt, ...dbFields } = {
+    ...data,
+    source: data.source?.slice(0, 50),
+  }
   const rfq = await prisma.rfq.create({
     data: {
       rfqNumber: await generateRfqNumber(),
