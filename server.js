@@ -586,10 +586,23 @@ app.use((req, res, next) => {
 
 // ─── Host canonicalization ─────────────────────────────────────────
 // One canonical hostname. www and http variants 301 to the apex HTTPS URL so
-// backlinks consolidate into one URL instead of splitting authority. Only
-// apply this to our public hostnames — Railway's internal health checks use
-// a different Host header and must not be redirected.
+// backlinks consolidate into one URL instead of splitting authority (B3+B4).
+//
+// The canonical host comes from VITE_SITE_URL (default `https://alkatraders.co`,
+// i.e. the `alkatraders.co` apex) — set it on the Railway `marine` service if
+// the apex ever changes. The www→apex and http→https cases collapse into ONE
+// redirect hop because the target is always composed as the final https://
+// apex URL. Only public hostnames are redirected; Railway's internal health
+// checks use a different Host header and must not be redirected, and the
+// /health/* paths themselves never redirect in any case.
+const HEALTH_PATHS = new Set(['/health/live', '/health/ready'])
 app.use((req, res, next) => {
+  // Health endpoints answer requests instead of bouncing them — a 301 here
+  // would turn a platform healthcheck into a false negative.
+  if (HEALTH_PATHS.has(req.path)) return next()
+  // Local development and tests must never redirect (defense in depth — a
+  // localhost Host header already fails the isPublicHost check below).
+  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') return next()
   const host = String(req.headers.host || '').split(':')[0].toLowerCase()
   const isPublicHost = host === SITE_HOST || host === `www.${SITE_HOST}`
   if (!isPublicHost) return next()
