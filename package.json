@@ -56,8 +56,9 @@
     "zustand": "^5.0.14"
   },
   "overrides": {
-    "brace-expansion": "5.0.9",
-    "qs": "6.16.0"
+    "brace-expansion": "5.0.12",
+    "proxy-addr": "^2.0.8",
+    "qs": "6.17.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

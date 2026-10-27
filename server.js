@@ -30,7 +30,7 @@ import crypto from 'crypto'
 import zlib from 'zlib'
 import { fileURLToPath } from 'url'
 import { buildProductPage, renderProductBodyHtml, isUuidSku, hubCoverageSentence } from './shared/product-page.mjs'
-import { isIndexableRoute, SHIPPED_LOCALES } from './shared/route-i18n.mjs'
+import { isIndexableRoute, hreflangAlternatesFor, SHIPPED_LOCALES } from './shared/route-i18n.mjs'
 import { STATIC_PAGE_META } from './shared/static-pages.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -586,10 +586,23 @@ app.use((req, res, next) => {
 
 // ─── Host canonicalization ─────────────────────────────────────────
 // One canonical hostname. www and http variants 301 to the apex HTTPS URL so
-// backlinks consolidate into one URL instead of splitting authority. Only
-// apply this to our public hostnames — Railway's internal health checks use
-// a different Host header and must not be redirected.
+// backlinks consolidate into one URL instead of splitting authority (B3+B4).
+//
+// The canonical host comes from VITE_SITE_URL (default `https://alkatraders.co`,
+// i.e. the `alkatraders.co` apex) — set it on the Railway `marine` service if
+// the apex ever changes. The www→apex and http→https cases collapse into ONE
+// redirect hop because the target is always composed as the final https://
+// apex URL. Only public hostnames are redirected; Railway's internal health
+// checks use a different Host header and must not be redirected, and the
+// /health/* paths themselves never redirect in any case.
+const HEALTH_PATHS = new Set(['/health/live', '/health/ready'])
 app.use((req, res, next) => {
+  // Health endpoints answer requests instead of bouncing them — a 301 here
+  // would turn a platform healthcheck into a false negative.
+  if (HEALTH_PATHS.has(req.path)) return next()
+  // Local development and tests must never redirect (defense in depth — a
+  // localhost Host header already fails the isPublicHost check below).
+  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') return next()
   const host = String(req.headers.host || '').split(':')[0].toLowerCase()
   const isPublicHost = host === SITE_HOST || host === `www.${SITE_HOST}`
   if (!isPublicHost) return next()
@@ -611,6 +624,19 @@ app.use((req, res, next) => {
   const localeCase = req.path.match(/^\/(EN|AR|ES)(\/.*)?$/)
   if (localeCase) {
     return redirectWithQuery(req, res, `/${localeCase[1].toLowerCase()}${localeCase[2] || '/'}`)
+  }
+
+  // Legacy static-host URLs (S5): /en/brands.html 301s to /en/brands/. The
+  // redirect only fires when the extensionless route actually exists (the
+  // same policy the SPA fallback 404s against) — unknown .html paths keep
+  // falling through to the true 404. This must run BEFORE the dynamic
+  // product/hub handlers, otherwise /:locale/product/:key captures
+  // "some-slug.html" as a product key and 404s instead of redirecting.
+  if (/\.html?$/i.test(req.path)) {
+    const stripped = req.path.replace(/\.html?$/i, '')
+    if (isKnownStorefrontPath(stripped)) {
+      return redirectWithQuery(req, res, `${stripped}/`)
+    }
   }
   next()
 })
@@ -712,6 +738,14 @@ function renderDocument(template, options) {
   if (description) head.push(`<meta data-rh="true" name="description" content="${escapeHtml(description)}">`)
   if (robots) head.push(`<meta data-rh="true" name="robots" content="${escapeHtml(robots)}">`)
   if (canonical) head.push(`<link data-rh="true" rel="canonical" href="${escapeHtml(canonical)}">`)
+  // S6: emit the SAME hreflang alternates the sitemap carries for this route —
+  // all shipped locales + x-default for the translated static routes, nothing
+  // for products/hubs (the sitemap lists those without alternates).
+  if (canonical) {
+    for (const { hreflang, href } of hreflangAlternatesFor(canonical, SITE_ORIGIN)) {
+      head.push(`<link data-rh="true" rel="alternate" hreflang="${escapeHtml(hreflang)}" href="${escapeHtml(href)}">`)
+    }
+  }
   if (title) {
     head.push(`<meta data-rh="true" property="og:title" content="${escapeHtml(title)}">`)
     if (description) head.push(`<meta data-rh="true" property="og:description" content="${escapeHtml(description)}">`)

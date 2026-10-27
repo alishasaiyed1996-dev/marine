@@ -34,7 +34,7 @@ Completed from the workstation with Railway CLI access; recorded here because pa
    867 URLs listed in SEO_URL_LIST.md; they now serve 200 (was 503 + noindex).
 2. MT-8 service-account setup to run `gsc:audit` for real index verdicts per URL.
 
-### MT-19 · 🔴 URGENT — email delivery on Railway (SMTP ports are blocked)
+### MT-19 · ✅ verified working 2026-10-27 (audit e2e: `email_queue` sent, lastError null) — remaining: delete the audit test RFQ `AT-MVQQIAPGRYE3`, then mark ✅ (OWNER_ACTIONS.md §10)
 
 **Diagnosed 2026-10-23.** Railway blocks outbound SMTP ports 25/465/587/2525.
 The live `email_queue` shows four admin emails failed with `Connection timeout`

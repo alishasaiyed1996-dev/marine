@@ -182,10 +182,29 @@ const PRIORITY_LABELS = [
   'Storage', 'Country of Origin', 'IMPA Code', 'SKU',
 ]
 
-function tidy(value: string): string {
-  return String(value || '')
-    .normalize('NFKC')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+/**
+ * Replace C0 control characters (except tab/newline/CR, which the whitespace
+ * collapse below handles) and DEL with a space. Written as a code-point loop
+ * instead of a character-class regex: ESLint's no-control-regex rejects the
+ * escape form, and this keeps the stripped set exactly \u0000-\u0008,
+ * \u000B, \u000C, \u000E-\u001F, \u007F as before.
+ */
+function stripControlCharacters(value: string): string {
+  let out = ''
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0
+    if ((code <= 0x1f && code !== 0x09 && code !== 0x0a && code !== 0x0d) || code === 0x7f) {
+      out += ' '
+    } else {
+      out += ch
+    }
+  }
+  return out
+}
+
+/** Whitespace/entity hygiene applied to every piece of text the normalizer keeps. */
+export function tidy(value: string): string {
+  return stripControlCharacters(String(value || '').normalize('NFKC'))
     .replace(/\u00a0/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/\s+([,.;:!?])/g, '$1')

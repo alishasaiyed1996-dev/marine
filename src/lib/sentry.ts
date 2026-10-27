@@ -21,6 +21,14 @@ export function initSentry() {
         delete event.request.headers['authorization']
         delete event.request.headers['x-csrf-token']
       }
+      // B5: breadcrumb/network URLs can carry one-time reset tokens or guest
+      // tracking emails in the query string — strip the query before send.
+      for (const crumb of event.breadcrumbs ?? []) {
+        const url = crumb?.data?.['url']
+        if (typeof url === 'string') {
+          crumb.data['url'] = url.split('?')[0]
+        }
+      }
       return event
     },
   })
