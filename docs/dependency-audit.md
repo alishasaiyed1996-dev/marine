@@ -1,60 +1,50 @@
-# Dependency and supply-chain audit
+# Dependency Audit — B2 follow-up (2026-10-27)
 
-**Date:** 2026-10-23
-**Scope:** the checked-in lockfiles in this repository (`package-lock.json`,
-`backend/package-lock.json`). The frontend has no separate lockfile; it is built
-from the root package.
+State after `npm audit fix` (no `--force`) + the `proxy-addr` override on both packages.
+`npm audit --omit=dev` before/after:
 
-These results are a snapshot. Re-run the commands before acting on them; new
-advisories are published continuously.
+| Package | Before | After |
+|---|---|---|
+| root (storefront) | 10 (1 critical, 6 high, 2 moderate, 1 low) | **0** |
+| backend | 10 (1 critical, 9 high) | **5 high** |
 
-```powershell
-# from the repository root
-npm audit --json
+## proxy-addr (GHSA-jqcg-44mw-7w3h / CVE-2026-90711) — resolved
 
-# from backend/
-npm audit --json
-```
+Both `package.json` files now carry `"overrides": { "proxy-addr": "^2.0.8" }`; `npm ls proxy-addr`
+resolves `express@5.2.1 → proxy-addr@2.0.8` on both.
 
-## Result at audit time
+Exploitability assessment made during the fix: `backend/src/server.ts:169` sets
+`app.set('trust proxy', 1)` — a **hop count**, not a subnet. The CVE is only exploitable when a
+trust *subnet* is written in IPv4-mapped IPv6 form with an IPv4-sized prefix
+(e.g. `::ffff:10.0.0.0/8`); a hop count never evaluates subnet containment, so the pre-upgrade
+config was **not exploitable**. The upgrade is still correct: it clears the audit exit-1 and
+removes the sharp edge if anyone later switches to subnet-based trust.
 
-| Tree | Critical | High | Moderate | Low | Total |
-|---|---:|---:|---:|---:|---:|
-| Root (storefront + build tooling) | 1 | 10 | 3 | 0 | 14 |
-| Backend | 1 | 6 | 1 | 0 | 8 |
+## Remaining backend findings — all need breaking bumps (do NOT use `npm audit fix --force`)
 
-## Findings that matter in production
+`npm audit fix --force` would rip major versions out from under running code. Each bump is its
+own change with its own test pass:
 
-| Package | Severity | Path | Notes / fix |
-|---|---|---|---|
-| `proxy-addr` 2.0.7 | Critical | `express@5.2.1` → `proxy-addr` (both trees) | IP-spoofing advisory. `express@5.3.0` is available and resolves it. |
-| `sharp` < 0.35.5 | High | Direct dependency (both trees) | librsvg advisory. `sharp@0.35.5` is a patch upgrade. |
-| `vite` 8.1.5 | High | Build tooling (root only) | Several Windows/dev-server advisories. `vite@8.3.5` is available. |
-| `compression` 1.8.1 | High | Direct backend dependency | Denial-of-service advisory. `compression@1.8.2` is available. |
-| `nodemailer` 9.1.1 | High | Direct backend dependency | DNS-cache/parser advisories. Fixed in the 10.x line, so this is a **major** upgrade and needs an email-flow regression test. |
-| `multer` 2.3.0 | Moderate | Direct backend dependency | Denial-of-service advisory. `multer@2.5.0` is available. |
-| `prisma` / `@prisma/config` | High | Direct backend dependency (transitive `deepmerge-ts`) | Fixed only in the Prisma 7/8 line. A major ORM upgrade; do not fold it into an unrelated release. |
+1. **zod 3 → 4.6.7** (high: GHSA-mrhx-c7xc-m3w5, memory exhaustion on oversized constrained
+   collections). Breaking: v4 changes error shape (`ZodError.issues`), drops `.errors` alias,
+   strictens default coercion. Grep every `safeParse`/`z.string().email()` usage first; the
+   request validators in `src/routes/**` are the blast radius.
+2. **nodemailer 9 → 10.2.1** (high: 9 advisories incl. GHSA-6vj9-mwq6-2f5v cross-tenant TLS
+   `servername` reuse). Breaking: major bump; touchpoints are `src/utils/mailer.ts` /
+   Resend-over-HTTPS transport + `@types/nodemailer` (currently v8 — must move to v10 types in
+   the same change). The DNS-cache advisory is the urgent one for us: the email queue can hold
+   more than one transport config in one process.
+3. **deepmerge-ts → prisma 7.10.1** (high: GHSA-ggr8-5vv4-36mx stack exhaustion). deepmerge-ts
+   is pulled in by `@prisma/config` ← `prisma` (dev-time tooling only — it is not on the request
+   path and is not loaded by `dist/server.js`). Fix by upgrading `prisma`/`@prisma/client` 6 → 7
+   in one deliberate change: migrate `prisma migrate deploy` compatibility, regenerate the
+   client, re-run the contract tests, and re-verify `preDeploy` on Railway.
 
-The remaining root findings are transitive build-time packages (`braces`,
-`micromatch`, `chokidar`, `fast-glob`, `minimatch`, `source-map-js`,
-`postcss-nested`, `postcss-selector-parser`, `fast-uri`, `tailwindcss`). Most
-are expected to move when the direct build dependencies above are updated.
+None of these three can ship as a drive-by. Order when picked up: zod → nodemailer → prisma,
+one PR each, full backend test suite + a staging deploy between each.
 
-## Recommendation
+## Root — clean
 
-1. **Do not run `npm audit fix --force`.** It crosses major versions and would
-   mix an email/ORM migration into a routine deploy.
-2. Do a dedicated dependency PR:
-   - root: `express`, `sharp`, `vite`, and the transitive build packages;
-   - backend: `express`, `sharp`, `compression`, `multer`, and `nodemailer`
-     (with an email smoke test).
-3. Re-run both typechecks, the backend suite, the root suite, the production
-   build, and the checkout/PayPal/bank-transfer smoke path after the upgrade.
-4. Decide whether to enable automated update PRs (Dependabot/Renovate). That is
-   a repository-policy decision, not a code fix: it needs an owner, a review
-   cadence, and a rule for major versions.
-
-Until the dependency PR lands, the findings are tracked as an open item in
-`complete codebase fix.md` §16. None of them changes the storefront's
-application code, but the critical `proxy-addr` finding should be handled
-before the next infrastructure change.
+`brace-expansion` was already overridden (5.0.9) but that pin sat inside the vulnerable range
+(4.0.0–5.0.11); the override now points at the fixed 5.0.12. No other root findings remain in
+`npm audit --omit=dev`.
