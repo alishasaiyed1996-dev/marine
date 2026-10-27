@@ -30,7 +30,7 @@ import crypto from 'crypto'
 import zlib from 'zlib'
 import { fileURLToPath } from 'url'
 import { buildProductPage, renderProductBodyHtml, isUuidSku, hubCoverageSentence } from './shared/product-page.mjs'
-import { isIndexableRoute, SHIPPED_LOCALES } from './shared/route-i18n.mjs'
+import { isIndexableRoute, hreflangAlternatesFor, SHIPPED_LOCALES } from './shared/route-i18n.mjs'
 import { STATIC_PAGE_META } from './shared/static-pages.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -738,6 +738,14 @@ function renderDocument(template, options) {
   if (description) head.push(`<meta data-rh="true" name="description" content="${escapeHtml(description)}">`)
   if (robots) head.push(`<meta data-rh="true" name="robots" content="${escapeHtml(robots)}">`)
   if (canonical) head.push(`<link data-rh="true" rel="canonical" href="${escapeHtml(canonical)}">`)
+  // S6: emit the SAME hreflang alternates the sitemap carries for this route —
+  // all shipped locales + x-default for the translated static routes, nothing
+  // for products/hubs (the sitemap lists those without alternates).
+  if (canonical) {
+    for (const { hreflang, href } of hreflangAlternatesFor(canonical, SITE_ORIGIN)) {
+      head.push(`<link data-rh="true" rel="alternate" hreflang="${escapeHtml(hreflang)}" href="${escapeHtml(href)}">`)
+    }
+  }
   if (title) {
     head.push(`<meta data-rh="true" property="og:title" content="${escapeHtml(title)}">`)
     if (description) head.push(`<meta data-rh="true" property="og:description" content="${escapeHtml(description)}">`)

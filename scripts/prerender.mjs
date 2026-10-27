@@ -26,6 +26,7 @@ import { join, dirname } from 'path'
 import { getAllRoutes } from './prerender-routes.mjs'
 import { fetchPublishedProducts, fetchSiteSeoSettings } from './fetch-products.mjs'
 import { buildProductPage, renderProductBodyHtml } from '../shared/product-page.mjs'
+import { hreflangAlternatesFor } from '../shared/route-i18n.mjs'
 
 const distArgIndex = process.argv.indexOf('--dist')
 const DIST = distArgIndex !== -1 && process.argv[distArgIndex + 1]
@@ -72,37 +73,22 @@ const LOCALE_OG_MAP = { en: 'en_US', ar: 'ar_SA', es: 'es_ES' }
 const LOCALE_DIR_MAP = { en: 'ltr', ar: 'rtl', es: 'ltr' }
 
 // ─── Hreflang Tags ──────────────────────────────────────────────
-
-/** The locales that ship a translated equivalent of every page. */
-const HREFLANG_LOCALES = ['en', 'ar', 'es']
+// Policy lives in shared/route-i18n.mjs (hreflangAlternatesFor) — the same
+// single source the server, the sitemap and the SEO component read.
 
 /**
- * Generate hreflang <link> tags for all shipped locales plus x-default.
- *
- * The audit found the hreflang generator returning an empty string while AR
- * and ES pages were served to users. Every locale now has a translated
- * prerendered equivalent, so each page declares its reciprocal alternates and
- * the English page is the x-default.
+ * Generate hreflang <link> tags for a page — exactly the sitemap's alternates
+ * policy (shared/route-i18n.mjs `hreflangAlternatesFor`): all shipped locales
+ * plus x-default for the translated static routes, and NOTHING for product
+ * pages (the sitemap lists products without alternates — declaring ar/es
+ * alternates on an English-only product page pointed at noindex URLs).
  *
  * @param {string} path - The FULL locale-prefixed path, e.g. "/en/products/"
  */
 function hreflangTags(path) {
-  // Strip the locale prefix so the alternates point at the same page in
-  // every language: "/en/products/" → "/products/".
-  const withoutLocale = String(path || '/')
-    .replace(/^\/(en|ar|es)(?=\/|$)/, '')
-  const suffix = withoutLocale === '' ? '/' : withoutLocale
-
-  const tags = HREFLANG_LOCALES.map((locale) => {
-    // The English page is canonical under /en/ (the bare path 301s to it),
-    // so every alternate must carry its locale prefix.
-    const localePath = `/${locale}${suffix}`
-    return `<link rel="alternate" hreflang="${locale}" href="${BASE_URL}${localePath}" />`
-  })
-  // x-default points at the English page, which is the fallback for any
-  // language the site does not translate.
-  tags.push(`<link rel="alternate" hreflang="x-default" href="${BASE_URL}/en${suffix}" />`)
-  return tags.join('\n  ')
+  return hreflangAlternatesFor(path, BASE_URL)
+    .map(({ hreflang, href }) => `<link rel="alternate" hreflang="${hreflang}" href="${href}" />`)
+    .join('\n  ')
 }
 
 // ─── JSON-LD Generators ─────────────────────────────────────────
@@ -197,13 +183,14 @@ function seoHeadTags({ path, title, description, locale = 'en', extraJsonLd, bre
   })
 
   const ogLocale = LOCALE_OG_MAP[locale] || 'en_US'
+  const hreflangBlock = hreflangTags(path)
 
   const tags = [
     `<title data-rh="true">${esc(fullTitle)}</title>`,
     `<meta data-rh="true" name="description" content="${esc(fullDesc)}" />`,
     `<meta data-rh="true" name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />`,
     `<link data-rh="true" rel="canonical" href="${url}" />`,
-    hreflangTags(path),
+    ...(hreflangBlock ? [hreflangBlock] : []),
 
     `<!-- Open Graph -->`,
     `<meta data-rh="true" property="og:title" content="${esc(fullTitle)}" />`,

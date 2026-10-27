@@ -72,3 +72,30 @@ export function hasTranslatedRoute(pathname, locale) {
 export function isIndexableRoute(pathname, locale) {
   return hasTranslatedRoute(pathname, locale)
 }
+
+/**
+ * The hreflang alternates for ONE page — exactly the sitemap's policy
+ * (backend/src/services/sitemapService.ts `alternatesFor`): every shipped
+ * locale plus x-default (the English page) for routes in TRANSLATED_ROUTES,
+ * and NOTHING for pages the sitemap lists without alternates (products,
+ * brand/category hubs). Accepts a path ('/en/products/') or an absolute URL
+ * ('https://alkatraders.co/en/products/'). The server, the prerenderer and
+ * the sitemap all read this one policy, so the layers cannot drift.
+ */
+export function hreflangAlternatesFor(pathOrUrl, baseUrl) {
+  let pathname = String(pathOrUrl || '/')
+  try {
+    pathname = new URL(pathname).pathname
+  } catch {
+    // Relative path — use as-is.
+  }
+  const route = toRoutePath(pathname)
+  if (!TRANSLATED_ROUTES.includes(route)) return []
+  const base = String(baseUrl || '').replace(/\/+$/, '')
+  const links = SHIPPED_LOCALES.map((locale) => ({
+    hreflang: locale,
+    href: `${base}/${locale}${route}`,
+  }))
+  links.push({ hreflang: 'x-default', href: `${base}/en${route}` })
+  return links
+}
