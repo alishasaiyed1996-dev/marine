@@ -408,3 +408,90 @@ Console so Google sees the redirected URLs' replacements in one batch.
    searches for (`... | IMPA <code>` suffix, model/MPN in the lead of the meta description) —
    pattern-match a manufactured name instead and the page loses the only query it could win.
 
+## 13. 30-day execution plan — leads by source, free methods only
+
+Owner time budget: ~45–75 min/day. Nothing here is paid ads or link buying. Spam-policy risk is
+labelled per task; anything above "none" changes what we do, not just how we word it.
+
+### Week 1 (days 1–7) — measurement first, catalogue hygiene second
+
+| Task | Time | Spam-policy risk |
+|---|---|---|
+| Search Console: re-verify domain property (MT-23), submit `/sitemap.xml`, confirm robots.txt report green | 45 min | None (first-party) |
+| GA4: register `rfq_submit` as key event + 8 custom dimensions (MT-25) | 30 min | None (first-party) |
+| Verify RFQ tracking end-to-end: one test RFQ → check admin `source` column + GA4 DebugView, delete test | 30 min | None |
+| Approve normalizer: run dry-run on production, review sheets of proposed renames, approve `--apply` (MT-21) | 60–90 min | None — slug changes keep 301s via `product_slug_history` |
+| Google Business Profile: claim/complete Alka Traders (Bhavnagar), address, hours, photos, exact category | 60 min | None — GBP is a legitimate signal |
+| Bing Places: mirror the GBP listing | 30 min | None |
+| Fix the 48 products missing JSON-LD `brand` in admin (product identity fields) | 45 min | None |
+
+Deliverable of week 1: every RFQ from now on records its channel in the admin console (DB `source`,
+works without consent) and as a GA4 key event (with consent).
+
+### Week 2 (days 8–14) — part-number pages + directories batch 1
+
+| Task | Time | Spam-policy risk |
+|---|---|---|
+| Ship the top-10 priority part pages from the provisional demand base (provisional until MT-24 data) | 2–3 h | None |
+| Internal links: homepage → top part pages + buyer guide 1; brand/category hubs → those products | 60 min | None |
+| Buyer guide 1: "How to identify a spare part from a nameplate photo" (published, linked from /rfq) | 90 min | None |
+| Directory batch 1: 10 free-tier submissions (IndiaMART, TradeIndia, exportersindia.com, maritime-connector.com, kompass free, etc.) — verify each is genuinely free before submitting | 90 min | Low risk of rel=nofollow/sponsored — acceptable, they pass humans not PageRank; no bulk auto-submitters |
+| eBay: improve 5 of your oldest listings' titles/item-specifics (no URLs anywhere — see §13.4) | 60 min | None if policy followed; violation risk if URLs/private-info links appear |
+
+### Week 3 (days 15–21) — guides, outreach batch 1, broken links
+
+| Task | Time | Spam-policy risk |
+|---|---|---|
+| Buyer guide 2: "Genuine, surplus vs reconditioned — what to ask before you buy" (uses MT-22 facts) | 90 min | None |
+| Outreach batch 1 (10 targets: trade associations, marine suppliers lists, industrial portals): ask for a directory listing or article mention; send personally, no footers/spam mail-merge | 60–90 min | Low if genuinely relevant and personalized; becomes spam if bulk-sent |
+| Broken-link hunt: find 10 dead links on relevant marine resource pages; propose our matching page | 60 min | Low — must match destination value, never claim falsely |
+| Fix 455 thin product descriptions (batch 1 of N: 50 items, 10 min/day) | 10 min/day | None — real descriptions from real stock |
+| GSC review: which new queries appeared; feed winning part numbers back into the page queue | 30 min | None |
+
+### Week 4 (days 22–30) — batch 2, unlinked mentions, report the loop
+
+| Task | Time | Spam-policy risk |
+|---|---|---|
+| Directory batch 2 (next 10) +GBP post with a real stock photo | 60 min | Low — same rule as week 2 |
+| Unlinked brand mentions: search "Alka Traders Bhavnagar"/"Alka Traders spares", ask matching sites to link | 45 min | Low — only where a genuine mention already exists |
+| 1 guest-article pitch to a marine-readership venue (a real article about sourcing spares, our shop linked once as the author's firm) | 60 min | Low if the article is real value; guest posts purely for links = link-scheme signal |
+| Monthly report: RFQs by `Rfq.source` (admin) × GA4 `rfq_origin` → rank channels honestly | 30 min | None |
+| Re-submit the changed URLs in GSC (URL inspection → request indexing, top 20 only) | 30 min | None (bounded) |
+
+### What we refuse outright (said once, standing rule)
+
+No bought links, no link exchanges or link networks, no automated directory blasters, no comment
+spam or forum shilling, no fake reviews, no invented statistics/claims — and we say what we do
+instead: genuinely useful part-number content, honest directories, real outreach. One inbound
+mention from a relevant marine site beats a hundred spam links, and zero risk to the domain.
+
+### eBay listings ↔ the site (policy-verified 2026-10-27, eBay "Links policy" id=4248)
+
+- **No links from eBay to the site.** eBay: "listings or products can't contain links that direct
+  customers to a site other than eBay, **even if the link is not clickable**." Text of a web
+  address counts ("store names must not ... include '.com'") — so never write
+  `alkatraders.co` inside a listing, description or photo overlay.
+- Allowed in descriptions: only other eBay pages (other items, store pages, Follow seller),
+  product videos from the approved list (YouTube/Vimeo/…), eBay-approved freight-shipping
+  services, and legally required information — all HTTPS.
+- **The compliant trust transfer runs the other way**: the storefront may say what is factually
+  true — "the same stock is also listed on eBay" with a link to the eBay store, accurate
+  years/feedback figures from Seller Hub. Site→eBay is fine; eBay→site is not.
+- Video route: a 60-second safety/inspection clip on YouTube can be embedded in the eBay
+  description (allowed), and the same video's YouTube presence earns its own search surface.
+
+### Provisional demand base (until MT-24 arrives)
+
+Ranked from live evidence, marked provisional — replace with GSC + eBay order data when shared:
+1. IMPA-coded singles with thin SERPs: `IMPA 232483 scupper plug` (teryair listing live) —
+   SERP is marketplace/reseller pages, our page is winnable.
+2. Maker+MPN singles: `chris marine 11373 cylinder honing stone` (our own eBay listing currently
+   outranks the site — the normalizer + honest condition copy close that gap).
+3. Brand families with deep stock (strongest internal-link clusters of inspected items): RIDGID
+   (pipe wrenches/die heads/benders), WIKA (thermometers/gauges), Proto (124 items), Tomoe
+   (butterfly-valve seat rings), Stanley, Titan (chain tongs), Schneider.
+4. Equipment spares with model numbers: Toku (air chippers), Tohnichi (torque wrenches),
+   Teryair (valve seat cutters), Sykes Pickavant (thread restorers), Unitor (welding/cutting) —
+   MPN-prefixed queries with thin SERPs.
+
+

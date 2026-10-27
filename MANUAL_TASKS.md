@@ -476,6 +476,53 @@ ours. Owner inputs, then paste into site copy (About, RFQ, product pages):
 5. Alang/ship-recycling stock origin: confirm what we can truthfully claim
    about where parts come from before writing that positioning copy.
 
+### MT-23 · Search Console re-setup from scratch (owner deleted the old property — 2026-10-27)
+
+**What actually happened to Google's index:** deleting a Search Console property does NOT reset or
+de-index the site — Google's index and all current rankings stay exactly as they are. What is
+lost is the historical Performance data of the deleted property (queries/pages/countries before
+today). Going forward everything accrues fresh in the new property; no ranking benefit, no
+ranking penalty.
+
+Steps (owner, ~45 min):
+1. search.google.com/search-console → Add property → **Domain** → `alkatraders.co` (covers
+   `alkatraders.co`, `www`, and `api.` in one property).
+2. Verification: DNS TXT record — copy the string GSC gives, add it in the domain's DNS panel
+   (registrar/Cloudflare/wherever the alkatraders.co DNS is managed), press Verify. DNS can take
+   minutes to a few hours.
+3. Sitemaps → add `https://alkatraders.co/sitemap.xml`. The sitemap is served live from the API
+   (verified 200) and robots.txt already links to it; GSC's Settings → robots.txt report must
+   show the live file without errors.
+4. URL Inspection → Request indexing for: homepage, `/en/brands/`, 10 top brand hubs, 10 top
+   product pages (bounded — do not blast hundreds).
+5. When MT-8 (service account) is done, `gsc:audit` resumes — but the service account must be
+   granted on the NEW property (re-run the B10 grant if it was tied to the deleted one).
+
+### MT-24 · eBay: report buyer countries from Seller Hub (feeds the geo emphasis of hub pages)
+
+Two places, both free; keep the two signals separate in the report:
+1. **Who actually bought:** Seller Hub → Orders → date range **Last 2 years** → "Download"
+   (CSV) → Excel → the **Sold To / Ship-to country** column → PivotTable of country → order
+   count. Report the top 10 with counts.
+2. **Who visits:** Seller Hub → Marketing → Listing analytics → Traffic → **Geography**
+   (visitors by country) — demand signal, not sales.
+3. Paste the top-10 list to the agent → hub pages emphasise the real destinations
+   (SEO_RANKING_RESEARCH.md §13 provisional base).
+
+### MT-25 · GA4: register the new `rfq_submit` event as a key event
+
+The storefront now sends `rfq_submit` on every RFQ (both forms — /rfq page and the home
+section). The DB `Rfq.source` column records the channel even without analytics consent;
+GA4 sees the event only with consent. One-time owner steps (~30 min):
+1. analytics.google.com → Admin (property G-2556Z1FEES) → Events → after the first RFQ
+   submission `rfq_submit` appears in the events list → toggle **Mark as key event** (or create
+   the key-event rule manually before any submit arrives).
+2. Admin → Custom definitions → Create custom dimension (scope: **Event**) for:
+   `rfq_origin`, `rfq_page`, `rfq_urgency`, `rfq_has_part_number`, `rfq_country`,
+   `attribution_source`, `attribution_medium`, `attribution_campaign`, `attribution_referrer`.
+3. Admin → Data settings → Data retention → Events: **14 months** (free-tier maximum).
+4. Reports → Engagement → Events → `rfq_submit` row → counts must match the admin RFQ list.
+
 ---
 
 ## Decision records — group B (SEO architecture)
