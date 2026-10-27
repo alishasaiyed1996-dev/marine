@@ -27,8 +27,6 @@ const log = logger.child({ context: 'ebay-sync' })
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000
 const FIRST_RUN_DELAY_MS = 90 * 1000
 const BATCH_SIZE = 50
-/** Listings in sync-failed are terminal-ish; reconciliation re-enqueues on drift. */
-const RETRYABLE_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /** Job 1: pull recent orders (webhook-delivery net). */
 export async function pollRecentOrders(): Promise<number> {

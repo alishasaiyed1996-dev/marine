@@ -18,7 +18,7 @@ import { generateOrderNumber } from '../utils/helpers.js'
 import logger from '../utils/logger.js'
 import { decreaseStock, increaseStock } from './centralInventory.js'
 import { getOrder, listOrdersSince, isEbayConfigured, isRetryableError, type EbayApiOrder } from './ebayClient.js'
-import { extractOrderId, extractEventId, skuCandidates } from './ebayOrderEvents.js'
+import { extractOrderId, skuCandidates } from './ebayOrderEvents.js'
 
 // Re-exported for webhook route convenience.
 export { extractOrderId, extractEventId } from './ebayOrderEvents.js'
