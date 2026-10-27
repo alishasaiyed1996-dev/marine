@@ -45,6 +45,70 @@ const DEFAULT_OG_IMAGE = `${SITE_ORIGIN}/images/alka-traders-logo.png`
 const distPath = path.join(__dirname, 'frontend', 'dist')
 const indexPath = path.join(distPath, 'index.html')
 
+// ─── Server-to-server API calls ─────────────────────────────────
+// SSR fetches all originate from this process, so they share one IP and are
+// governed by the API's public visitor limiter (100 req/min/IP) even though a
+// Googlebot burst legitimately needs the whole catalog at crawler concurrency.
+// The api is built to exempt these read-only fetches when BOTH services set
+// SSR_API_TOKEN — the header is then skipped before any contributor counts.
+// See SEO_RANKING_RESEARCH.md §1 for the measured impact (937/1074 products
+// 503ing under a Googlebot crawl) and the Google crawling rules that turn a
+// 429/503 into de-indexing.
+const SSR_API_TOKEN = process.env.SSR_API_TOKEN || ''
+const SSR_TOKEN_HEADER = 'x-ssr-token'
+
+// The API's p95 under catalog-scale load measured ~924 ms, but cold Neon-style
+// database starts can take seconds, so the timeout is generous but bounded —
+// an unbounded fetch is outaged by proxy.
+const API_TIMEOUT_MS = Number(process.env.SSR_API_TIMEOUT_MS || 8000)
+const API_RETRIES = 2
+const API_RETRY_BACKOFF_MS = [400, 1200]
+
+function ssrHeaders(extra = {}) {
+  const headers = { accept: 'application/json', ...extra }
+  if (SSR_API_TOKEN) headers[SSR_TOKEN_HEADER] = SSR_API_TOKEN
+  return headers
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * GET an API resource with a hard timeout and bounded retry for transient
+ * failures (429 throttle, 5xx errors, network errors). Retrying is what keeps
+ * a cold database start or a rate-limit hiccup from becoming the 503 outage
+ * shell — the shell stays the last resort after retries are exhausted.
+ */
+async function apiFetch(pathname, { timeoutMs = API_TIMEOUT_MS, retries = API_RETRIES, headers = {}, redirect } = {}) {
+  let lastError = null
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) await sleep(API_RETRY_BACKOFF_MS[Math.min(attempt - 1, API_RETRY_BACKOFF_MS.length - 1)])
+    try {
+      // The timeout signal must be created per attempt: one shared signal
+      // would expire mid-retry and fail every subsequent attempt instantly.
+      const response = await fetch(`${API_ORIGIN}${pathname}`, {
+        headers: ssrHeaders(headers),
+        signal: AbortSignal.timeout(timeoutMs),
+        ...(redirect ? { redirect } : {}),
+      })
+      if (response.status === 429 || response.status >= 500) {
+        lastError = new Error(`API returned ${response.status} for ${pathname}`)
+        if (response.status === 429 && !SSR_API_TOKEN) {
+          // A 429 here is usually the SSR exemption missing on this service
+          // (misconfiguration, not traffic), so make it impossible to miss.
+          log(`[api] 429 on ${pathname} — is SSR_API_TOKEN set on BOTH services? See SEO_RANKING_RESEARCH.md §1.`)
+        }
+        continue
+      }
+      return response
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError || new Error(`API request failed: ${pathname}`)
+}
+
 // ─── Crawlable route policy ─────────────────────────────────────
 // These are the only indexable storefront routes. Anything else under a
 // locale prefix is a true 404 instead of the old 200 SPA shell — a soft-404
@@ -163,10 +227,9 @@ async function fetchSiteSeoSettings() {
 
   const fallback = siteSeoCache.value
   try {
-    const response = await fetch(`${API_ORIGIN}/api/v1/storefront/settings`, {
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(2000),
-    })
+    // No retry: settings have a 1-minute cache and their own fallback value,
+    // so two seconds of waiting is the right budget.
+    const response = await apiFetch('/api/v1/storefront/settings', { timeoutMs: 2000, retries: 0 })
     if (!response.ok) throw new Error(`settings API returned ${response.status}`)
     const payload = await response.json()
     const settings = payload?.settings || {}
@@ -798,9 +861,9 @@ function productHtml(template, product, related = [], locale = 'en') {
 }
 
 async function fetchPublishedProduct(key) {
-  const response = await fetch(`${API_ORIGIN}/api/v1/storefront/products/by-slug/${encodeURIComponent(key)}`, { headers: { accept: 'application/json' } })
+  const response = await apiFetch(`/api/v1/storefront/products/by-slug/${encodeURIComponent(key)}`)
   if (response.status === 404) {
-    const oldResponse = await fetch(`${API_ORIGIN}/api/v1/storefront/products/slug-history/${encodeURIComponent(key)}`, { headers: { accept: 'application/json' }, redirect: 'manual' })
+    const oldResponse = await apiFetch(`/api/v1/storefront/products/slug-history/${encodeURIComponent(key)}`, { redirect: 'manual' })
     if (oldResponse.status >= 300 && oldResponse.status < 400 && oldResponse.headers.get('location')) {
       const location = oldResponse.headers.get('location')
       try {
@@ -821,7 +884,7 @@ async function fetchPublishedProduct(key) {
 }
 
 async function fetchProductById(id) {
-  const response = await fetch(`${API_ORIGIN}/api/v1/storefront/products/${encodeURIComponent(id)}`, { headers: { accept: 'application/json' } })
+  const response = await apiFetch(`/api/v1/storefront/products/${encodeURIComponent(id)}`)
   if (response.status === 404) return null
   if (!response.ok) throw new Error(`Product API returned ${response.status}`)
   const payload = await response.json()
@@ -829,10 +892,10 @@ async function fetchProductById(id) {
 }
 
 async function fetchHub(type, slug) {
-  const response = await fetch(`${API_ORIGIN}/api/v1/storefront/${type}/${encodeURIComponent(slug)}`, { headers: { accept: 'application/json' } })
+  const response = await apiFetch(`/api/v1/storefront/${type}/${encodeURIComponent(slug)}`)
   if (response.status === 404) {
     // A renamed hub keeps its old URL alive with a 301 to the current slug.
-    const oldResponse = await fetch(`${API_ORIGIN}/api/v1/storefront/${type}/slug-history/${encodeURIComponent(slug)}`, { headers: { accept: 'application/json' }, redirect: 'manual' })
+    const oldResponse = await apiFetch(`/api/v1/storefront/${type}/slug-history/${encodeURIComponent(slug)}`, { redirect: 'manual' })
     if (oldResponse.status >= 300 && oldResponse.status < 400 && oldResponse.headers.get('location')) {
       const location = oldResponse.headers.get('location')
       try {
@@ -1104,7 +1167,7 @@ app.get('/:locale/:hubType/:slug', async (req, res, next) => {
 // error page or a stale file — the static pages are still valid.
 app.get('/sitemap.xml', async (_req, res) => {
   try {
-    const response = await fetch(`${API_ORIGIN}/api/v1/sitemap.xml`, { headers: { accept: 'application/xml' } })
+    const response = await apiFetch('/api/v1/sitemap.xml', { headers: { accept: 'application/xml' } })
     const xml = await response.text()
     if (!response.ok || !xml.trimStart().startsWith('<?xml')) throw new Error(`API sitemap returned ${response.status}`)
     const merged = mergeStaticSitemap(xml)

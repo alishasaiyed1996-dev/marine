@@ -62,6 +62,13 @@ if (process.env.NODE_ENV === 'production') {
   if (jwtSecret.includes('change') || jwtSecret.includes('dev') || jwtSecret.includes('placeholder')) {
     startupLogger.warn('JWT_SECRET contains insecure keywords. Replace with a strong random secret.')
   }
+  if (!process.env.SSR_API_TOKEN) {
+    // Config warning, not a hard failure: without the token the limiter still
+    // works, but the SSR frontend shares the public 100 req/min/IP limit and a
+    // crawler burst turns 429s into 503 + noindex product pages (see
+    // SEO_RANKING_RESEARCH.md §1). The token must be identical on both services.
+    startupLogger.warn('SSR_API_TOKEN is not set. The SSR frontend shares the public rate limit — crawler bursts will produce 503 + noindex pages.')
+  }
 }
 
 // Initialize Sentry before anything else
@@ -81,7 +88,7 @@ import { withTimeout } from './utils/withTimeout.js'
 import { wakeDatabase } from './utils/dbWake.js'
 import { sanitize } from './middleware/sanitize.js'
 import { verifyCsrf, issueCsrfToken } from './middleware/csrf.js'
-import { loginLimiter, registerLimiter, passwordResetLimiter } from './middleware/rateLimit.js'
+import { isSsrRequest, loginLimiter, registerLimiter, passwordResetLimiter } from './middleware/rateLimit.js'
 import { createUserAwareLimiter } from './middleware/perUserRateLimit.js'
 import { sendSuccess, sendError } from './middleware/response.js'
 import { apiDeprecationMiddleware, API_VERSION } from './middleware/api-version.js'
@@ -201,9 +208,14 @@ app.use(cors({
 }))
 
 // ─── Rate Limiting ─────────────────────────────────────────────
+// The SSR frontend ("marine" web service) is exempted from this limiter for
+// read-only GETs via the shared SSR_API_TOKEN — see the comment in
+// middleware/rateLimit.ts and SEO_RANKING_RESEARCH.md §1 for why a 429 that
+// becomes a 503 + noindex shell must never happen on a crawl burst.
 const publicLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: process.env.NODE_ENV === 'production' ? 100 : process.env.PLAYWRIGHT_TEST ? 10000 : 500,
+  skip: isSsrRequest,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
