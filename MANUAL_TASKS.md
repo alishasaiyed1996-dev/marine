@@ -11,6 +11,29 @@ separately in the agent todo list; this file only holds manual actions.
 
 ## 🔴 Pending now
 
+### MT-20 · ✅ DONE — SSR rate-limit exemption + brand discovery (2026-10-27)
+
+Completed from the workstation with Railway CLI access; recorded here because parts of it
+(verification cadence) recur after every deploy.
+
+**Automated/done:**
+- `SSR_API_TOKEN` is set (same value) on both Railway `api` and `marine`, and `preserve()`d
+  in `.railway/railway.ts` so config applies keep it. Rotation = new `openssl rand -hex 32`
+  value set on BOTH services (brief 503 burst on hubs until both land — deploy them together).
+- `npm run index:audit` after any frontend deploy: must stay `0 errors` across all sitemap
+  URLs. A reappearing 503 rate means the token drifted between the services.
+- Brand backfill ran on production via `railway ssh --service api`:
+  `tsx scripts/backfill-product-brands.ts --apply` — created 64 inventory brands
+  (PROTO 124 products, RIDGID…), linked 564/1,074 published products (52.5%), filled hub
+  reference copy. Brand hubs entered `/sitemap.xml` live. Brands left unlinked on purpose:
+  the ~40 below the 3-product gate (Makita, Milwaukee, Kawasaki, Daewoo, Motorola, …) —
+  widen with `--min-products=2` only when someone decides those hubs are worth pages.
+
+**Still manual:**
+1. Search Console → re-submit `/sitemap.xml` (the wizardery MT-5 gate) and re-validate the
+   867 URLs listed in SEO_URL_LIST.md; they now serve 200 (was 503 + noindex).
+2. MT-8 service-account setup to run `gsc:audit` for real index verdicts per URL.
+
 ### MT-19 · 🔴 URGENT — email delivery on Railway (SMTP ports are blocked)
 
 **Diagnosed 2026-10-23.** Railway blocks outbound SMTP ports 25/465/587/2525.

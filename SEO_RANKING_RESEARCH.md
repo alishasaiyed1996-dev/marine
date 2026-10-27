@@ -27,6 +27,22 @@ crawled cannot rank at all.
 
 ## 1. The blocker: a 429 becomes a 503, and a 503 de-indexes
 
+> **✅ STATUS 2026-10-27 (deployed & verified).** Fixes 1 and 2 from the list below are
+> implemented and live: `publicLimiter` exempts read-only SSR fetches that carry the shared
+> `SSR_API_TOKEN` (set on both Railway services; see `backend/src/middleware/rateLimit.ts`),
+> and `server.js` fetches the API with a hard timeout plus bounded retry/backoff for
+> 429/5xx (`apiFetch`). A separate crash was found while verifying: `isUuidSku` was never
+> defined in the hub renderer, so *every* brand/category hub 503ed at any concurrency —
+> fixed by reusing `shared/product-page.mjs`'s implementation.
+>
+> Post-fix `npm run index:audit --concurrency 8` (Googlebot-faithful crawl of the live
+> sitemap): **1,189 URLs, 0 errors** — products 1,074/1,074 OK, category hubs 12/12 OK,
+> and 64 brand hubs (new URL tier, see section 3) 64/64 OK. Reports:
+> `reports/index-audit-2026-10-27.json`.
+>
+> Remaining manual step for this section: none. Residual warnings (thin copy counts) are
+> catalog-quality work (sections 3–4), not availability failures.
+
 ### What was measured
 
 A full Googlebot crawl of the sitemap, run twice, at concurrency 8:
