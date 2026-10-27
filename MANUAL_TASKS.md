@@ -442,15 +442,51 @@ Alka actually wins on), write 2–4 factual paragraphs: what it is, materials,
 supplier standards, and how to request a quote. Paste into the category
 `description` field (admin) — the page renders it automatically.
 
+### MT-21 · Review the catalogue name/slug normalization plan, then approve --apply
+
+**Code delivered:** `backend/scripts/normalize-product-names.ts` (dry-run by
+default; writes only with `--apply`). It cleans stored product names of
+marketplace noise ("fast ship", "free shipping", …), regenerates slugs from
+the clean names, records every old slug in `product_slug_history` (permanent
+301s), and bumps `content_updated_at`.
+
+**Steps:**
+1. Dry-run in production and read the plan end to end:
+   `railway ssh --service api -- /app/node_modules/.bin/tsx scripts/normalize-product-names.ts`
+2. Check the "skipped, needs review" list — those titles are pure noise and
+   need a human-written name in admin.
+3. If the plan is acceptable either run it staged
+   (`--limit=200`) or full (`--apply`).
+4. After apply: `npm run index:audit` locally (old URLs must answer 301, new
+   ones 200), then resubmit `/sitemap.xml` in Search Console.
+
+**Gate:** do NOT run `--apply` without reading the plan — it rewrites up to
+~1,000 product URLs in one pass. Deliberate decision record B9.
+
+### MT-22 · Trust-layer facts only the owner can provide (SEO §10)
+
+Rank-worthy competitors state verifiable process facts; we cannot invent
+ours. Owner inputs, then paste into site copy (About, RFQ, product pages):
+1. Exact company registration (GSTIN / CIN) + registered address to publish.
+2. Our real inspection/QC steps before dispatch (what we check, tools, docs
+   we can supply: test/QC report, packing list, commercial invoice).
+3. The response-time SLA we can honestly keep on RFQs (hours).
+4. Which ports we actually ship to / agents we use — port pages only when
+   real (reduces the thin-content risk in SEO §12.4).
+5. Alang/ship-recycling stock origin: confirm what we can truthfully claim
+   about where parts come from before writing that positioning copy.
+
 ---
 
 ## Decision records — group B (SEO architecture)
 
-- **B9 · Slug/URL migration — deferred.** Current URLs are stable,
-  prerendered, and indexed (42 URLs, trailing-slash, sitemap'd). Changing slug
-  schemes forces 301 mapping + re-indexing for zero measurable gain on an
-  8-item catalog. Revisit only if the real catalog grows and identity-based
-  slugs (`/product/impa-232483-scupper-plug/`) become worth the migration.
+- **B9 · Product name/slug migration — decision revisited 2026-10-27.**
+  Originally deferred when the catalog was 8 items (re-index cost > gain).
+  The catalog is now 1,074 imported products, some with marketplace-junk
+  names/slugs (`-new-fast-ship-ffedex` tokens), and identity URLs are the core
+  ranking asset. `backend/scripts/normalize-product-names.ts` delivers the
+  migration with permanent 301s via `product_slug_history`; apply gate is
+  MT-21. See SEO_RANKING_RESEARCH.md §11/§12.
 - **B12 · Per-brand landing pages — deferred.** `Brands.tsx` is an honest
   showcase with live product counts; thin per-brand pages would hurt, not
   help, with 8 products. Revisit at ≥5 real brands.

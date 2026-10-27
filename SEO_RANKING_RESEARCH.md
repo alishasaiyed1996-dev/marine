@@ -303,3 +303,108 @@ terms like "marine spare parts", a 1,074-item imported catalogue with thin descr
 outrank established competitors on domain strength alone. The realistic early wins are the long-tail
 part-number and brand+model queries, which is exactly what actions 3–5 target, and which the
 existing backlink and citation plan in `SEO_BACKLINK_PLAN.md` supports over a 6–12 month horizon.
+
+---
+
+## 9. How part-number demand actually reaches a site
+
+Research findings from the July–October Waves, cross-checked against the Wärtsilä buyer's guide to
+ship spares, the IMPA Marine Stores Guide documentation, and how established suppliers structure
+their own catalogues (paraphrased; no competitor copy).
+
+**The query is the product.** A marine purchaser almost never shops by browsing. Requisitions and
+RFQs travel as *lists of identifiers* — a six-digit IMPA code (the Marine Stores Guide's unique
+product key, ~50,000 codes), an OEM/maker part number, or an equipment model number. The buyer's
+next step is to check whether some supplier site lists that identifier with enough facts to order
+against: condition, packaging/quantity, compatibility, lead time. What that implies for us:
+
+1. **Pages must exist for the identifier strings the catalogue actually contains** — exact IMPA
+   codes, MPNs and model numbers in our own product data. Each such page is a near-zero-volume
+   query with a buyer behind it. Coverage and completeness beat chasing a handful of head terms
+   ("marine spare parts") that are anyway dominated by marketplaces and OEMs.
+2. **The identifier must be crawl-visible text**, not only visible after hydration: title, H1,
+   body copy and JSON-LD (`sku`, `mpn`, `gtin`, `model`, IMPA as an `additionalProperty`). This was
+   already delivered in `shared/product-page.mjs` (single engine for React SSR, prerender and
+   Express SSR).
+3. **Plural/name-based searches route through hubs.** When a buyer does *not* have the code, they
+   search by family ("bearing puller", "torque wrench", "pipe cutter") plus a brand. That is
+   exactly the brand-hub layer (64 hubs) plus category hubs — which is why the hub copy must carry
+   real family phrases, not generic descriptions. This is what §11 adds.
+
+**The requisition workflow gives natural page copy.** Suppliers whose pages rank describe what to
+send for a quote (part name, part number, machine make/model + serial, quantity, target port, photos
+when no number exists). Our RFQ page should state the same checklist in plain words — it matches
+what buyers already prepare, and the search phrases come straight out of that workflow.
+
+---
+
+## 10. The trust layer — what a buyer checks before the first order
+
+Verified from the Wärtsilä purchasing guide and the pages of established Alang/Bhavnagar suppliers.
+Ranked by how often each signal appears on the credible supplier pages:
+
+| Trust signal | Competitors' practice | Our current state | Action |
+|---|---|---|---|
+| Physical proximity to Alang | "Located at the world's largest ship recycling yard" is nearly universal copy; it explains stock availability for obsolete parts | Nothing on-site | State our base and that parts originate from genuine yard/ship stores — factually, no invented claims |
+| Verifiable registration details | GST/company identifiers, address, phone, contacts on every page | Present in the footer | Confirm the numbers shown are the correct live ones (owner task) |
+| QC / inspection process | "Tested in our workshop", condition grading, photos of actual parts | Not stated anywhere | Write a short QC commitment page describing our actual verification steps before dispatch (owner must define the real process first) |
+| Response-time commitment | Several publish "reply within X hours" for RFQs | Not stated | Add the SLA we can actually keep to RFQ + contact pages |
+| Delivery/ports | ~40 port landing pages on one competitor | None | Long-term: port pages only become real content when tied to actual logistics (MT list, §12 anti-pattern) |
+| Documentation | Test/QC certificates, commercial invoice, packing list emitted at RFQ and delivery | Supported by order API, not surfaced in copy | Mention document availability on product/RFQ pages where genuinely true |
+
+The lesson isn't the exact slogans — it's that **reducible risk is the ranking differential**: the
+suppliers who rank state, in verifiable detail, what happens between order and delivery. Most of
+this is content work (our constraint is that NO claim may be invented — the owner must confirm the
+real facts, then we publish).
+
+---
+
+## 11. On-page keyword work delivered
+
+**Hub coverage sentence (this change).** Every brand/category hub now renders one sentence derived
+from its own product names by `hubProductFacts()` in `shared/product-page.mjs` — the phrases Buyers
+actually type as families. Facts-only rule: a phrase appears only when 3+ distinct product names in
+that hub contain it; the hub's own brand/category words are excluded as redundant with the H1. The
+same builder is rendered by `server.js` (`hubHtml`) and both React hub pages, so hydrated and
+server-rendered DOM agree. Empty when the hub's names do not support it (no filler text).
+
+**Name/slug normalization (script delivered, not yet applied).** Existing import-era URLs still
+carry marketplace junk inside part pages, e.g. `...-piston-crown-new-fast-ship-ffedex`. That token
+ranked worse than the part identity and pushed real identifiers deep into the URL. Delivered:
+`backend/scripts/normalize-product-names.ts`, which cleans stored names with the
+`productNameClean.ts` twin (identical rule to the render engine, drift-tested), regenerates slugs
+only when the slug differs, writes every old slug into `product_slug_history` (the storefront,
+`server.js` and slug-history routes 301 through that table — no URL is ever dropped), and bumps
+`content_updated_at` like the admin form does. Run it against PRODUCTION, dry-run first:
+
+```bash
+railway ssh --service api -- /app/node_modules/.bin/tsx scripts/normalize-product-names.ts          # plan only
+railway ssh --service api -- /app/node_modules/.bin/tsx scripts/normalize-product-names.ts --apply  # after review
+```
+
+`--limit=N` stages the change; the full plan should be reviewed before `--apply` because it rewrites
+~1,000 URLs in one pass. After apply: `npm run index:audit`, then resubmit `/sitemap.xml` in Search
+Console so Google sees the redirected URLs' replacements in one batch.
+
+---
+
+## 12. Anti-patterns — the fail modes this work must avoid
+
+1. **Fabricating identifiers.** An IMPA code or GTIN in JSON-LD that the product record does not
+   back is a spam signal, and Merchant Center rejects the feed rows. Only structured admin fields
+   feed the schema (existing rule in `shared/product-page.mjs`).
+2. **Renaming product URLs without `product_slug_history`.** All redirected URLs keep trust;
+   dropped URLs start the crawling/index cycle again from zero. The normalizer refuses to write a
+   slug change without a history row for exactly this reason.
+3. **Chasing "marine spare parts" head terms.** Unwinnable against marketplaces/OEMs; the
+   buying signal sits in the long-tail identifiers and family+brand combinations (§9).
+4. **Thin port pages / hub pages generated for keywords with no real stock behind them.** A
+   40-page port landing section that isn't backed by actual logistics is thin-content farm
+   pattern; hub content is only published in the sitemap when `hubSeo` indexability gates pass
+   (120+ chars description, real product coverage).
+5. **Review/agreement widgets without real data.** Competitor "as on Trustpilot" badges with no
+   reviews are negative trust. We render ratings only from real order data; never fabricate.
+6. **One-off meta rewrites that hide the real product.** Titles must keep the identifier the buyer
+   searches for (`... | IMPA <code>` suffix, model/MPN in the lead of the meta description) —
+   pattern-match a manufactured name instead and the page loses the only query it could win.
+

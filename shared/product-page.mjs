@@ -28,7 +28,12 @@ const UUID_SKU_RE =
 
 const VALID_GTIN_RE = /^(?:\d{8}|\d{12,14})$/
 
-const MARKETPLACE_NOISE_RE =
+/**
+ * Marketplace shipping words that should never be part of a product identity.
+ * The backend duplicate lives in backend/src/utils/productNameClean.ts — the
+ * regular expressions must stay identical (drift test in backend suite).
+ */
+export const MARKETPLACE_NOISE_RE =
   /\b(?:fed\s*ex|fedex|fast\s*ship|fastship|free\s*shipping|worldwide\s*shipping|express\s*shipping|new\s*fast\s*ship|new\s*fastship|ship\s*free)\b/gi
 
 const CONDITION_WORD_RE = /\b(?:new|unused|used|refurbished|reconditioned|genuine|original|oem|aftermarket)\b/gi
@@ -244,13 +249,185 @@ function stripLeadingQuantity(value) {
   return tidy(value).replace(/^\s*\d+\s*(?:pc|pcs|pieces?|units?)\b[\s\-–—:.),]*/i, '')
 }
 
-/** Marketplace shipping words that should never be part of a product identity. */
-function cleanProductName(value) {
+/** Marketplace shipping words that should never be part of a product identity.
+ *  Exported so import/normalization scripts and tests reuse the same rule. */
+export function cleanProductName(value) {
   return dedupeAdjacentTokens(
     tidy(String(value ?? '').replace(MARKETPLACE_NOISE_RE, ' ')),
   )
     .replace(/\s+/g, ' ')
     .replace(/[\s,;:|/–—-]+$/g, '')
+}
+
+// ─── Hub coverage facts ─────────────────────────────────────────
+
+/** Standalone words that never describe a part family on their own. */
+const HUB_UNIGRAM_STOP_RE =
+  /^(?:marine|industrial|spare|spares|part|parts|equipment|tool|tools|supply|supplies|store|stores|genuine|original|unused|used|new|lot|lots|bundle|set|kit|pack|box|pair|model|range|brand|misc|item)$/
+
+/** Words that only connect other words — family phrases must not contain them. */
+const HUB_CONNECTOR_RE = /^(?:in|of|and|no|with|for|by|or|to|from|per)$/
+
+/**
+ * Words that make a multi-word phrase useless by themselves (generic filler
+ * or marketplace boilerplate). A single remaining significant word inside a
+ * phrase is never enough to save it.
+ */
+const HUB_GRAM_FORBIDDEN_RE =
+  /^(?:and|in|of|no|with|for|by|or|to|from|per|marine|industrial|spare|spares|part|parts|equipment|tool|tools)$/
+
+const HUB_MIN_HITS = 3
+const HUB_MAX_FAMILIES = 10
+const HUB_MAX_WORDS = 4
+
+function hubTokens(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9/ ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+}
+
+function hubGramAllowed(tokens, offset, length) {
+  let digitTokens = 0
+  for (let i = offset; i < offset + length; i += 1) {
+    const token = tokens[i]
+    if (HUB_CONNECTOR_RE.test(token)) return false
+    if (/^\d{3,}$/.test(token)) return false // long model numbers are not family words
+    if ((token.match(/\d/g) || []).length >= 3) return false
+    if (/^\d/.test(token)) digitTokens += 1
+    if (token.length < 2) return false
+    if (length > 1 && HUB_GRAM_FORBIDDEN_RE.test(token)) return false
+  }
+  if (digitTokens > 1) return false
+  if (/^\d/.test(tokens[offset]) && length > 1) return false // no "10 cylinder honing"
+  if (length === 1) {
+    const token = tokens[offset]
+    if (HUB_UNIGRAM_STOP_RE.test(token)) return false
+    if (token.length < 4) return false
+    if (!/[a-z]/.test(token)) return false
+  } else if (!tokens.slice(offset, offset + length).some((token) => /[a-z]/.test(token))) {
+    return false
+  }
+  return true
+}
+
+function hubContainsContiguous(haystack, needle) {
+  outer: for (let i = 0; i + needle.length <= haystack.length; i += 1) {
+    for (let j = 0; j < needle.length; j += 1) {
+      if (haystack[i + j] !== needle[j]) continue outer
+    }
+    return true
+  }
+  return false
+}
+
+/**
+ * Part-family phrases the hub's own catalogue actually covers, counted from
+ * cleaned product names ("bearing puller", "torque wrench", "pipe cutter").
+ *
+ * Facts only: a phrase appears when 3+ real product names contain it. No
+ * synonyms, no invented equipment groups. Words of the hub's own entity
+ * (brand or category name) are excluded up to the caller, via `options.exclude`.
+ *
+ * Noise control so the sentence reads like a buyer wrote it:
+ *   - phrases must not span connector words ("in drive", "brazil no" die),
+ *   - a shorter phrase is dropped when an equally popular longer phrase
+ *     contains it word-for-word from the same product names ("duty pipe"
+ *     inside "heavy duty pipe wrench"), so the kept list keeps one
+ *     representative per popularity group,
+ *   - a kept phrase suppresses shorter phrases whose words it covers
+ *     ("torque" and "wrench" go once "torque wrench" is kept).
+ */
+export function hubProductFacts(products, options = {}) {
+  const list = Array.isArray(products) ? products.slice(0, 400) : []
+  const excluded = new Set(
+    (Array.isArray(options.exclude) ? options.exclude : [])
+      .map((value) => tidy(value).toLowerCase().replace(/[^a-z0-9/ ]+/g, ' ').trim())
+      .filter(Boolean)
+      .flatMap((value) => value.split(' ')),
+  )
+  const counts = new Map()
+
+  for (const product of list) {
+    const tokens = hubTokens(cleanProductName(product?.name))
+    const grams = new Set()
+    for (let length = 1; length <= HUB_MAX_WORDS && length <= tokens.length; length += 1) {
+      for (let offset = 0; offset + length <= tokens.length; offset += 1) {
+        if (tokens.slice(offset, offset + length).some((token) => excluded.has(token))) continue
+        if (!hubGramAllowed(tokens, offset, length)) continue
+        grams.add(tokens.slice(offset, offset + length).join(' '))
+      }
+    }
+    for (const gram of grams) counts.set(gram, (counts.get(gram) || 0) + 1)
+  }
+
+  // Same-source chain filter: when a bigger phrase from the same names is
+  // exactly as popular, only the bigger one survives. Comparisons happen
+  // inside count buckets so this stays cheap on every hub render.
+  const byCount = new Map()
+  for (const [gram, count] of counts) {
+    if (!byCount.has(count)) byCount.set(count, [])
+    byCount.get(count).push(gram)
+  }
+  const ordered = [...counts.entries()].sort(
+    (a, b) => b[1] - a[1] || b[0].split(' ').length - a[0].split(' ').length || a[0].localeCompare(b[0]),
+  )
+  const survivors = ordered.filter(([gram, count]) => {
+    if (count < HUB_MIN_HITS) return false
+    const words = gram.split(' ')
+    for (const candidate of byCount.get(count)) {
+      const candidateWords = candidate.split(' ')
+      if (candidateWords.length <= words.length) continue
+      if (hubContainsContiguous(candidateWords, words)) return false
+    }
+    return true
+  })
+
+  const keptWords = []
+  const families = []
+  // Two keep rounds: multi-word phrases first, then single words. Otherwise
+  // the first generic word to arrive ("wrench", count 6) grabs a slot and
+  // the second related phrase gets skipped or demoted by order accidents.
+  const multiWord = survivors.filter(([gram]) => gram.split(' ').length > 1)
+  const singleWord = survivors.filter(([gram]) => gram.split(' ').length === 1)
+  for (const [gram] of [...multiWord, ...singleWord]) {
+    if (families.length >= HUB_MAX_FAMILIES) break
+    const words = gram.split(' ')
+    const covered = keptWords.some(
+      (kept) => hubContainsContiguous(words, kept) || hubContainsContiguous(kept, words),
+    )
+    if (covered) continue
+    keptWords.push(words)
+    families.push(gram)
+  }
+
+  return { families, productsScanned: list.length }
+}
+
+/**
+ * One sentence of catalogue-derived keyword copy for a brand/category hub,
+ * or '' when the hub's product names are not shared enough to support it.
+ *
+ * The same sentence is rendered by server.js (hubHtml) and the React hub
+ * pages so server-rendered and hydrated markup agree. Counts of products are
+ * not mentioned (the "Available …" heading already carries the real number).
+ */
+export function hubCoverageSentence(entityName, products, options = {}) {
+  const { families, productsScanned } = hubProductFacts(products, {
+    ...options,
+    exclude: [...(options.exclude || []), String(entityName || '')],
+  })
+  if (families.length < 2 || productsScanned < 3) return ''
+  const list = families.length === 2
+    ? `${families[0]} and ${families[1]}`
+    : `${families.slice(0, -1).join(', ')} and ${families[families.length - 1]}`
+  return (
+    `Common part families covered: ${list}. `
+    + 'Search the site for an IMPA code or part number, or request a quote for a part that is not listed.'
+  )
 }
 
 const KEEP_UPPERCASE = new Set([

@@ -202,3 +202,20 @@ export declare function buildMerchantReturnPolicy(
 
 export declare const SITE_NAME: string
 export declare const DEFAULT_BASE_URL: string
+
+/** Marketplace shipping words stripped from product identity (see .mjs). */
+export declare const MARKETPLACE_NOISE_RE: RegExp
+export declare function cleanProductName(value: unknown): string
+
+/** Part-family phrases repeated across a hub's own product names. */
+export declare function hubProductFacts(
+  products: Array<{ name?: string | null } | null | undefined> | null | undefined,
+  options?: { exclude?: Array<string | null | undefined> },
+): { families: string[]; productsScanned: number }
+
+/** '' when the hub's names do not support the sentence; else one sentence. */
+export declare function hubCoverageSentence(
+  entityName: string | null | undefined,
+  products: Array<{ name?: string | null } | null | undefined> | null | undefined,
+  options?: { exclude?: Array<string | null | undefined> },
+): string

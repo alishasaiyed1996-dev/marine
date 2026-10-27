@@ -29,7 +29,7 @@ import fs from 'fs'
 import crypto from 'crypto'
 import zlib from 'zlib'
 import { fileURLToPath } from 'url'
-import { buildProductPage, renderProductBodyHtml, isUuidSku } from './shared/product-page.mjs'
+import { buildProductPage, renderProductBodyHtml, isUuidSku, hubCoverageSentence } from './shared/product-page.mjs'
 import { isIndexableRoute, SHIPPED_LOCALES } from './shared/route-i18n.mjs'
 import { STATIC_PAGE_META } from './shared/static-pages.mjs'
 
@@ -946,6 +946,11 @@ function hubHtml(template, entity, type, locale = 'en') {
     ? description.split(/\n{2,}/).filter(Boolean).slice(0, 6).map((paragraph) => `<p>${escapeHtml(cleanText(paragraph))}</p>`).join('')
     : `<p>Browse published ${escapeHtml(entity.name)} equipment and spare parts available from Alka Traders.</p>`
 
+  // One sentence of catalogue-derived keyword copy (part families repeated
+  // across this hub's real product names). The React hub pages call the same
+  // shared builder so SSR and hydrated markup agree.
+  const coverage = hubCoverageSentence(entity.name, products)
+
   const children = !isBrand && Array.isArray(entity.children) ? entity.children : []
   const productLinks = products.slice(0, 24).map((product) => `<li><a href="/${locale}/product/${encodeURIComponent(product.slug)}/">${escapeHtml(product.name)}</a>${product.sku && !isUuidSku(product.sku) ? ` — ${escapeHtml(product.sku)}` : ''}</li>`).join('')
 
@@ -953,6 +958,7 @@ function hubHtml(template, entity, type, locale = 'en') {
 ${breadcrumbNav(breadcrumbs)}
 <h1>${escapeHtml(entity.name)} spare parts</h1>
 ${paragraphs}
+${coverage ? `<p class="seo-hub__coverage">${escapeHtml(coverage)}</p>` : ''}
 ${children.length ? `<nav aria-label="Subcategories"><h2>Subcategories</h2><ul>${children.map((child) => `<li><a href="/${locale}/categories/${encodeURIComponent(child.slug)}/">${escapeHtml(child.name)}</a></li>`).join('')}</ul></nav>` : ''}
 <h2>Available ${escapeHtml(entity.name)} products (${products.length})</h2>
 ${productLinks ? `<ul>${productLinks}</ul>` : '<p>No published products are listed in this collection yet. Send us your part number for a sourcing check.</p>'}

@@ -7,6 +7,7 @@ import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { ProductGrid } from '../components/product/ProductGrid'
 import { useAddToCart } from '../hooks/useAddToCart'
 import { useStore } from '../store/useStore'
+import { hubCoverageSentence } from '../../shared/product-page.mjs'
 
 export default function BrandHub() {
   const { slug = '' } = useParams()
@@ -21,6 +22,9 @@ export default function BrandHub() {
   })
   const brand = data as any
   const products = apiProductsToFrontend(brand?.products || [])
+  // Same catalogue-derived sentence the SSR hub body renders (hubHtml in
+  // server.js); one shared builder so hydration cannot change the copy.
+  const coverage = brand ? hubCoverageSentence(brand.name, brand.products) : ''
   const description = brand?.description || ''
   // The API computes this with backend/src/utils/hubSeo.ts, the same function
   // the sitemap and the server-rendered robots meta use. Never re-implement
@@ -39,6 +43,7 @@ export default function BrandHub() {
         <p className="mb-2 text-xs font-bold uppercase tracking-widest text-[var(--accent-gold)]">Marine and industrial spares</p>
         <h1 className="font-display text-4xl font-extrabold">{brand.name} spare parts</h1>
         {description ? <p className="mt-4 whitespace-pre-line text-[var(--text-secondary)]">{description}</p> : <p className="mt-4 text-[var(--text-secondary)]">Browse published {brand.name} equipment and spare parts available from Alka Traders.</p>}
+        {coverage && <p className="mt-3 text-[var(--text-secondary)]">{coverage}</p>}
       </header>
       <h2 className="mb-5 text-2xl font-bold">Available {brand.name} parts ({brand._count?.products || 0})</h2>
       {!products.length && !isLoading ? <p className="rounded-xl border border-[var(--border)] p-6">No published products are available in this brand yet.</p> : <ProductGrid products={products} addedIds={addedIds} onAddToCart={handleAddToCart} isLoading={isLoading} />}

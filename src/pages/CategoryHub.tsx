@@ -7,6 +7,7 @@ import { BreadcrumbJsonLd } from '../components/seo/BreadcrumbJsonLd'
 import { ProductGrid } from '../components/product/ProductGrid'
 import { useAddToCart } from '../hooks/useAddToCart'
 import { useStore } from '../store/useStore'
+import { hubCoverageSentence } from '../../shared/product-page.mjs'
 
 export default function CategoryHub() {
   const { slug = '' } = useParams()
@@ -21,6 +22,9 @@ export default function CategoryHub() {
   })
   const category = data as any
   const products = apiProductsToFrontend(category?.products || [])
+  // Same catalogue-derived sentence the SSR hub body renders (hubHtml in
+  // server.js); one shared builder so hydration cannot change the copy.
+  const coverage = category ? hubCoverageSentence(category.name, category.products) : ''
   const description = category?.description || ''
   // The API computes this with backend/src/utils/hubSeo.ts, the same function
   // the sitemap and the server-rendered robots meta use.
@@ -38,6 +42,7 @@ export default function CategoryHub() {
         <p className="mb-2 text-xs font-bold uppercase tracking-widest text-[var(--accent-gold)]">Marine and industrial catalog</p>
         <h1 className="font-display text-4xl font-extrabold">{category.name} spare parts</h1>
         {description ? <p className="mt-4 whitespace-pre-line text-[var(--text-secondary)]">{description}</p> : <p className="mt-4 text-[var(--text-secondary)]">Browse published marine and industrial {category.name.toLowerCase()} parts available from Alka Traders.</p>}
+        {coverage && <p className="mt-3 text-[var(--text-secondary)]">{coverage}</p>}
       </header>
       {category.children?.length > 0 && <nav aria-label="Subcategories" className="mb-8 flex flex-wrap gap-3">{category.children.map((child: any) => <Link key={child.id} className="rounded-full border border-[var(--border)] px-4 py-2 text-sm" to={`/${language}/categories/${child.slug}/`}>{child.name}</Link>)}</nav>}
       <h2 className="mb-5 text-2xl font-bold">Available {category.name} products ({category._count?.products || 0})</h2>
