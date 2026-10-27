@@ -199,6 +199,23 @@ export function letterOfCreditFromPaymentMethods(raw: unknown): LetterOfCreditDe
 }
 
 /**
+ * PayPal's enabled flag from the admin's payment-methods setting.
+ *
+ * PayPal is ON unless the admin explicitly set `enabled: false` on a
+ * `type: 'paypal'` entry. An unset or empty blob does NOT disable PayPal —
+ * that is the historic behaviour from before the blob existed ("PayPal when
+ * the credentials are configured"). Mirrors the `enabled !== false` rule the
+ * bank and L/C parsers use.
+ */
+export function isPaypalMethodEnabled(raw: unknown): boolean {
+  for (const entry of asArray(raw)) {
+    const method = asRecord(entry)
+    if (method.type === 'paypal' && method.enabled === false) return false
+  }
+  return true
+}
+
+/**
  * An L/C is only offered when the seller has published the arrangement: the
  * accepting banks and the document list. Without them the buyer cannot open
  * a credit and the seller cannot present against it.

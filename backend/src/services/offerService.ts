@@ -5,6 +5,7 @@ import { sendOfferReceived } from './email.js'
 import { normalizeEmail } from './authService.js'
 import { computeOrderTotals } from './orderPricing.js'
 import { getStoreCurrency } from './settingsService.js'
+import { isPaypalPayable } from './bankDetailsService.js'
 import { CURRENT_TERMS_VERSION } from '../utils/legal.js'
 import { formatMoney } from '../utils/money.js'
 import {
@@ -267,6 +268,16 @@ export async function createOfferOrder(offerId: string, customerId: string, ship
   const status = await expireIfLapsed(offer.id, offer.status, offer.acceptedAt, offer.expiresAt)
   if (!isPayableStatus(status)) {
     throw Object.assign(new Error('This offer cannot be paid'), { status: 400 })
+  }
+
+  // Offers settle through PayPal only. Gate BEFORE the awaiting-payment flip:
+  // an offer must never be locked into an order the store cannot take payment
+  // for — same rule as the storefront checkout's PayPal gate.
+  if (!(await isPaypalPayable())) {
+    throw Object.assign(
+      new Error('PayPal is not available at the moment. Please contact us to complete the payment.'),
+      { status: 409 },
+    )
   }
 
   // Idempotency: an offer maps to at most one order (unique FK on orders.offerId).

@@ -10,7 +10,7 @@ import { processPaypalRefund } from '../utils/paypal.js'
 import { decreaseStock, increaseStock, reserveStock, releaseReservation } from './centralInventory.js'
 import { computeOrderTotals } from './orderPricing.js'
 import { getStoreTimezone, getStoreCurrency } from './settingsService.js'
-import { getBankDetails, getLetterOfCreditDetails, isBankTransferPayable, isLetterOfCreditUsable, buildPaymentReference, type BankDetails } from './bankDetailsService.js'
+import { getBankDetails, getLetterOfCreditDetails, isBankTransferPayable, isLetterOfCreditUsable, isPaypalPayable, buildPaymentReference, type BankDetails } from './bankDetailsService.js'
 import { CURRENT_TERMS_VERSION } from '../utils/legal.js'
 import { formatMoney } from '../utils/money.js'
 import type { AuthUser } from '../middleware/auth.js'
@@ -72,7 +72,20 @@ async function buildPaymentInstructions(
     return { heading: 'Letter of credit arrangement', details, note }
   }
 
-  if (!isBankPaymentMethod(paymentMethod)) return null
+  if (!isBankPaymentMethod(paymentMethod)) {
+    // The storefront order schema accepts exactly three methods: bank-transfer,
+    // lc and paypal — so anything that is not offline settles through PayPal.
+    // Gate it like the offline methods: an order must never be created when no
+    // payment session can settle it (credentials unset or admin-disabled),
+    // because the customer would be stuck with an order nobody can pay.
+    if (!(await isPaypalPayable())) {
+      throw Object.assign(
+        new Error('PayPal is not available at the moment. Please contact us to complete your order.'),
+        { status: 409 },
+      )
+    }
+    return null
+  }
 
   const bank: BankDetails = await getBankDetails()
   if (!isBankTransferPayable(bank)) {

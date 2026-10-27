@@ -216,6 +216,29 @@ The audit made exactly one production write: RFQ **`AT-MVQQIAPGRYE3`**
 2. `MANUAL_TASKS.md` MT-19 header → `✅` (email delivery is verified working —
    the audit's e2e RFQ shows `email_queue.status = sent`, `lastError = null`).
 
+## 11. Payments — verify one real PayPal transaction end to end
+
+The code path is fully wired and was verified statically + by config probes
+(2026-10-28): `PAYPAL_MODE=live`, `PAYPAL_CLIENT_ID`/`PAYPAL_CLIENT_SECRET`/
+`PAYPAL_WEBHOOK_ID` all set on the api service, `/api/storefront/payments/client-id`
+serves the real live client id with `currency: USD`, CSP allows every PayPal
+SDK domain, and checkout now renders exactly one PayPal button (PayPal only).
+
+The one thing code review cannot prove is a real money movement — that takes a
+live transaction:
+
+1. Place one **small real order** at <https://alkatraders.co>, pay via PayPal.
+2. Verify: PayPal charged exactly the order total (USD) → the order shows
+   `paymentStatus: paid`, `status: confirmed` in the admin within ~a minute of
+   approval (the capture path confirms instantly; the webhook is the safety net).
+3. Check the admin received the payment-received email and the order timeline
+   has "Payment confirmed via PayPal".
+4. Confirm the PayPal dashboard webhook registration points at
+   `https://api.alkatraders.co/api/webhooks/paypal` and that its `PAYPAL_WEBHOOK_ID`
+   env value on the api service is that same webhook's id — the signature
+   verification rejects every webhook otherwise (the flow still works via the
+   capture path, but refunds/late captures then have no automatic safety net).
+
 ---
 
 ### Completed code-side (for reference — no owner work needed)

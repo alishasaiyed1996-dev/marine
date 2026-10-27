@@ -90,7 +90,12 @@ export function PayPalProvider({ children }: { children: ReactNode }) {
         clientId,
         currency,
         intent: 'capture',
-        'enable-funding': 'venmo,card',
+        // PayPal only (2026-10-28 decision): the store accepts PayPal as its
+        // single payment method, so the checkout renders exactly ONE branded
+        // button. No extra funding sources are enabled — the US-only wallet
+        // and the separate card button were both removed. Card payment inside
+        // the PayPal popup (guest wallet) is unaffected; it settles through
+        // PayPal.
         components: 'buttons',
       }}
     >

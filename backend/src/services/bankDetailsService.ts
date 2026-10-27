@@ -1,10 +1,12 @@
 import { prisma } from '../server.js'
+import { PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET } from '../utils/paypal.js'
 import {
   EMPTY_BANK_DETAILS,
   EMPTY_LETTER_OF_CREDIT_DETAILS,
   bankDetailsFromPaymentMethods,
   isBankTransferPayable,
   isLetterOfCreditUsable,
+  isPaypalMethodEnabled,
   letterOfCreditFromPaymentMethods,
   mergeBankDetails,
   normalizeBankDetails,
@@ -62,4 +64,20 @@ export async function getPayableBankDetails(): Promise<{ details: BankDetails; p
 export async function getLetterOfCreditDetails(): Promise<LetterOfCreditDetails> {
   const fromMethods = await readSetting('store.paymentMethods')
   return letterOfCreditFromPaymentMethods(fromMethods)
+}
+
+/**
+ * Whether the store can actually take a PayPal payment right now:
+ * the OAuth credentials must be configured (env) AND the admin must not have
+ * explicitly disabled PayPal in the payment-methods blob.
+ *
+ * This is the same "an order nobody can pay must never be created" gate the
+ * bank-transfer and L/C paths enforce through `isBankTransferPayable` /
+ * `isLetterOfCreditUsable` — without it a storefront or offer order can be
+ * created that no payment session can ever settle.
+ */
+export async function isPaypalPayable(): Promise<boolean> {
+  if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) return false
+  const blob = await readSetting('store.paymentMethods')
+  return isPaypalMethodEnabled(blob)
 }

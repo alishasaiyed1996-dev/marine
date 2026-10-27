@@ -15,6 +15,7 @@ import {
   buildPaymentReference,
   isBankTransferPayable,
   isLetterOfCreditUsable,
+  isPaypalMethodEnabled,
   letterOfCreditFromPaymentMethods,
   mergeBankDetails,
   normalizeBankDetails,
@@ -132,4 +133,45 @@ test('L/C is a separate arrangement from a bank transfer', () => {
   assert.equal(lc.documentsRequired, '')
   // A bank account number must never leak into the L/C instructions.
   assert.equal(Object.prototype.hasOwnProperty.call(lc, 'accountNumber'), false)
+})
+
+// ─── PayPal availability flag ─────────────────────────────────
+
+test('PayPal stays enabled when the payment-methods blob is unset or empty', () => {
+  // The historic behaviour before the blob existed: PayPal when credentials
+  // are configured. An empty blob (the current production value) must not
+  // silently disable the only online payment method.
+  assert.equal(isPaypalMethodEnabled(undefined), true)
+  assert.equal(isPaypalMethodEnabled('[]'), true)
+  assert.equal(isPaypalMethodEnabled(null), true)
+})
+
+test('PayPal stays enabled when only bank/LC entries exist', () => {
+  const methods = JSON.stringify([
+    { id: 'p2', name: 'Bank Transfer', type: 'bank', enabled: true, config: {} },
+    { id: 'p3', name: 'Letter of Credit', type: 'lc', enabled: false, config: {} },
+  ])
+  assert.equal(isPaypalMethodEnabled(methods), true)
+})
+
+test('an explicitly disabled PayPal entry is honoured', () => {
+  const methods = JSON.stringify([
+    { id: 'p1', name: 'PayPal', type: 'paypal', enabled: false, config: {} },
+  ])
+  assert.equal(isPaypalMethodEnabled(methods), false)
+})
+
+test('an enabled PayPal entry (or enabled flag missing) stays payable', () => {
+  assert.equal(isPaypalMethodEnabled(JSON.stringify([
+    { id: 'p1', name: 'PayPal', type: 'paypal', enabled: true, config: {} },
+  ])), true)
+  // enabled !== false is the rule (same as bank/LC): a missing flag is ON.
+  assert.equal(isPaypalMethodEnabled(JSON.stringify([
+    { id: 'p1', name: 'PayPal', type: 'paypal', config: {} },
+  ])), true)
+})
+
+test('malformed blobs never disable PayPal', () => {
+  assert.equal(isPaypalMethodEnabled('not-json'), true)
+  assert.equal(isPaypalMethodEnabled({ not: 'an array' }), true)
 })
