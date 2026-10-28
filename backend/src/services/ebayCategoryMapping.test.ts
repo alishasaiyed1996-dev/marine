@@ -122,6 +122,73 @@ test('category name outranks keyword when the name has an alias but the title di
   assert.equal(assignment.slug, 'marine-pumps')
 })
 
+// ── Breadcrumb leaf-first scanning (eBay colon-separated names) ─
+
+test('leaf segment beats generic breadcrumb parents', () => {
+  const assignment = resolveWebsiteCategory({
+    categoryName: 'Business & Industrial:Light Equipment & Tools:Hand Tools:Wrenches',
+  })
+  assert.equal(assignment.slug, 'hand-tools')
+  assert.equal(assignment.confidence, 'ebay-category')
+  assert.match(assignment.reason, /Wrenches/)
+})
+
+test('leaf keyword alias decides inside the most specific segment', () => {
+  assert.equal(
+    resolveWebsiteCategory({ categoryName: 'Business & Industrial:Light Equipment & Tools:Pipe Tools:Pipe Wrenches' }).slug,
+    'hand-tools',
+  )
+})
+
+test('pipe-tong jaw listings land in hand-tools, not tools-equipment', () => {
+  // Wild-caught regression: GEARENCH/TITAN chain-tong jaw titles live under
+  // eBay's generic "Light Equipment & Tools" branch; the leaf must decide.
+  const assignment = resolveWebsiteCategory({
+    categoryName: 'Business & Industrial:Light Equipment & Tools:Pipe Tools:Pipe Wrenches',
+    title: 'GEARENCH TITAN C141 Replacement Jaws for Chain Tong Pipe Wrench Tool',
+  })
+  assert.equal(assignment.slug, 'hand-tools')
+})
+
+test('"Other <X>" leaves carry no signal: the parent decides', () => {
+  assert.equal(
+    resolveWebsiteCategory({ categoryName: 'Business & Industrial:Light Equipment & Tools:Hand Tools:Other Hand Tools' }).slug,
+    'hand-tools',
+  )
+})
+
+test('"Other <X>" leaf over an unmatched parent falls through to content keywords', () => {
+  const assignment = resolveWebsiteCategory({
+    categoryName: 'Business & Industrial:CNC, Metalworking & Manufacturing:Workholding & Toolholding:Toolholding:Other Toolholding',
+    title: 'CHRIS MARINE 11373-20-10 Cylinder Honing Stone Set of 8',
+  })
+  assert.equal(assignment.slug, 'engine-parts')
+  assert.equal(assignment.confidence, 'keyword')
+})
+
+test('"Other <X>" everywhere ends in the fallback', () => {
+  assert.equal(
+    resolveWebsiteCategory({ categoryName: 'Business & Industrial:Other Business & Industrial' }).slug,
+    FALLBACK_CATEGORY_SLUG,
+  )
+})
+
+test('hoists and winches branches map to lifting-handling', () => {
+  const assignment = resolveWebsiteCategory({
+    categoryName: 'Business & Industrial:Material Handling:Hoists, Winches & Rigging:Cranes & Hoists:Other Cranes & Hoists',
+    title: 'Heavy Duty Snubby Hoist Line Load Limiter 3000 LBS USA Made',
+  })
+  assert.equal(assignment.slug, 'lifting-handling')
+})
+
+// ── Plural-tolerant phrase matching ────────────────────────────
+
+test('matching is plural-tolerant on the final word', () => {
+  assert.equal(resolveWebsiteCategory({ categoryName: 'Water Pumps' }).slug, 'marine-pumps')
+  assert.equal(resolveWebsiteCategory({ categoryName: 'Hand Tools' }).slug, 'hand-tools')
+  assert.equal(resolveWebsiteCategory({ title: 'Set of Pipe Wrenches 14 inch' }).slug, 'hand-tools')
+})
+
 // ── categoryIdForSlug ─────────────────────────────────────────
 
 const categories = [

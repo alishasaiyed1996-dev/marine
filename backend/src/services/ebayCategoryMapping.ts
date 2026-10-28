@@ -11,10 +11,16 @@
  *
  * This module assigns the website category the way an auditor would:
  *   1. An explicit pin from EBAY_CATEGORY_ID_MAP (eBay category ID → slug).
- *   2. eBay category-name aliases (the store's own category mirroring names
- *      plus common eBay taxonomy leaf names).
+ *   2. eBay category name, read leaf-first: colon-separated breadcrumbs
+ *      ("Business & Industrial:Light Equipment & Tools:Hand Tools:Wrenches")
+ *      are scanned from the most specific segment toward the root, so a
+ *      generic parent like "Light Equipment & Tools" never beats the leaf.
+ *      Segments that only say "Other <X>" carry no signal and are skipped;
+ *      each segment is checked against aliases, then keyword aliases.
  *   3. Ordered keyword rules — most specific first — evaluated against the
  *      eBay category name, then the listing title, then item specifics.
+ *      Phrase matching is plural-tolerant on the final word ("Wrench" finds
+ *      "Wrenches") because eBay taxonomy names and buyer titles mix both.
  *   4. Fallback 'other-business' (the catalog's existing catch-all), never a
  *      blank category, so the publish gate and category filters stay coherent.
  *
@@ -101,7 +107,8 @@ interface CompiledKeyword {
  * One word-boundary matcher per keyword. `value` must already be normalized
  * with normalizeCategoryText(); the pattern enforces token boundaries so
  * "motor" does not fire inside "motorsport"'s substring space (word-level
- * phrase matching, not substring matching).
+ * phrase matching, not substring matching). Plural-tolerant on the final
+ * word, matching how buyers write titles ("wrench" / "wrenches").
  */
 function compileKeyword(slug: string, rawKeyword: string): CompiledKeyword | null {
   const keyword = normalizeCategoryText(rawKeyword)
@@ -110,12 +117,29 @@ function compileKeyword(slug: string, rawKeyword: string): CompiledKeyword | nul
     slug,
     keyword: rawKeyword,
     source: keyword,
-    regExp: new RegExp(`(^| )${escapeRegex(keyword)}( |$)`),
+    regExp: phraseRegExp(keyword),
   }
 }
 
 function matches(text: string, compiled: CompiledKeyword): boolean {
   return compiled.regExp.test(text)
+}
+
+/** Phrase matcher, plural-tolerant on the final word: "pipe wrench" finds
+ *  "pipe wrenches", "hand tool" finds "hand tools". Matching stays anchored
+ *  on word boundaries, so partial words never fire. */
+function phraseRegExp(normalizedPhrase: string): RegExp {
+  const parts = normalizedPhrase.split(' ')
+  const last = parts[parts.length - 1]!
+  const head = parts.slice(0, -1).map(escapeRegex).join(' ')
+  const tail = `${head ? `${head} ` : ''}${escapeRegex(last)}(?:es|s)?`
+  return new RegExp(`(^| )${tail}( |$)`)
+}
+
+function containsPhrase(normalizedText: string, phrase: string): boolean {
+  const normalizedPhrase = normalizeCategoryText(phrase)
+  if (!normalizedPhrase) return false
+  return phraseRegExp(normalizedPhrase).test(normalizedText)
 }
 
 // ─── Phase 2: eBay category-name aliases ───────────────────────
@@ -145,11 +169,6 @@ const CATEGORY_ALIASES: Array<{ slug: WebsiteCategorySlug; aliases: string[] }> 
   { slug: 'lifting-handling', aliases: [
     'lifting and handling', 'material handling', 'lifting equipment and accessories', 'lifting',
   ] },
-  { slug: 'electrical', aliases: [
-    'electrical and automation', 'electrical equipment', 'electrical', 'industrial electrical',
-    'industrial automation and control', 'automation and control systems', 'automation and control',
-    'control systems and plc', 'switchgear and distribution', 'automation',
-  ] },
   { slug: 'pneumatic', aliases: [
     'pneumatics', 'pneumatic', 'pneumatic systems', 'pneumatic system', 'pneumatics and air tools',
   ] },
@@ -159,11 +178,19 @@ const CATEGORY_ALIASES: Array<{ slug: WebsiteCategorySlug; aliases: string[] }> 
   { slug: 'ship-machinery', aliases: [
     'ship machinery', 'ship machineries', 'deck machinery', 'machinery', 'marine machinery',
   ] },
+  // Hand tools sit ahead of tools-equipment: eBay breadcrumbs routinely wrap
+  // them in "Light Equipment & Tools", but the leaf decides and leaf-first
+  // scanning must not have the generic parent compete with the specific one.
+  { slug: 'hand-tools', aliases: ['hand tools', 'hand tool', 'wrenches and spanners'] },
   { slug: 'tools-equipment', aliases: [
     'equipments and tools', 'equipment and tools', 'tools and equipment', 'power tools and equipment',
     'industrial tools', 'welding and soldering equipment', 'measuring and layout tools', 'shop equipment',
   ] },
-  { slug: 'hand-tools', aliases: ['hand tools', 'hand tool', 'wrenches and spanners'] },
+  { slug: 'electrical', aliases: [
+    'electrical and automation', 'electrical equipment', 'electrical', 'industrial electrical',
+    'industrial automation and control', 'automation and control systems', 'automation and control',
+    'control systems and plc', 'switchgear and distribution', 'automation',
+  ] },
   { slug: 'hydraulic', aliases: [
     'hydraulics', 'hydraulic systems', 'hydraulic system', 'hydraulic', 'hydraulic valves and parts',
   ] },
@@ -183,9 +210,8 @@ const CATEGORY_NAME_KEYWORD_RULES: Array<{ slug: WebsiteCategorySlug; keywords: 
   { slug: 'safety', keywords: ['safety', 'firefighting', 'survival'] },
   { slug: 'engine-spare', keywords: ['engine spares', 'engine spare', 'main engine'] },
   { slug: 'engine-parts', keywords: [
-    'engine parts', 'engine components', 'diesel engine', 'engine', 'fuel injection', 'turbocharger', 'cylinder', 'piston', 'crankshaft',
+    'engine parts', 'engine components', 'diesel engine', 'engine', 'fuel injection', 'turbocharger', 'cylinder', 'piston', 'crankshaft', 'honing',
   ] },
-  { slug: 'electrical', keywords: ['electrical', 'automation', 'breaker', 'switchgear', 'control'] },
   { slug: 'pneumatic', keywords: ['pneumatic', 'pneumatics'] },
   { slug: 'motor-components', keywords: ['motors', 'electric motor', 'motor components'] },
   { slug: 'hand-tools', keywords: ['hand tools', 'spanner', 'wrench', 'screwdriver', 'plier'] },
@@ -193,8 +219,8 @@ const CATEGORY_NAME_KEYWORD_RULES: Array<{ slug: WebsiteCategorySlug; keywords: 
   { slug: 'rigging', keywords: ['rigging', 'shackle', 'lashing'] },
   { slug: 'lifting-handling', keywords: ['lifting', 'hoist', 'crane'] },
   { slug: 'ship-machinery', keywords: ['machinery', 'compressor', 'purifier', 'separator', 'winch'] },
+  { slug: 'electrical', keywords: ['electrical', 'automation', 'breaker', 'switchgear', 'control'] },
   { slug: 'hydraulic', keywords: ['hydraulic'] },
-  { slug: 'marine-pumps', keywords: ['pumps', 'pump'] },
   { slug: 'marine', keywords: ['marine', 'nautical'] },
   { slug: 'spares', keywords: ['spare parts', 'spares'] },
   { slug: 'surplus', keywords: ['surplus'] },
@@ -241,6 +267,7 @@ const CATEGORY_KEYWORD_RULES: Array<{ slug: WebsiteCategorySlug; keywords: strin
     'bearing shell', 'thermostat valve', 'lube oil pump', 'lub oil pump', 'jacket cooling', 'head gasket',
     'gasket kit', 'sump', 'crankcase', 'air starter', 'engine cooling', 'oil cooler', 'seawater cooling', 'engine mounting',
     'flexible coupling engine', 'crankcase relief', 'diesel engine', 'marine engine', 'engine parts',
+    'honing stone', 'honing head', 'honing machine', 'honing',
     'caterpillar', 'cummins', 'sulzer', 'wartsila', 'man b and w', 'daihatsu', 'yanmar', 'mitsubishi engine',
     'niigata', 'akasaka', 'hanomag', 'perkins', 'volvo penta', 'deutz', 'mak engine', 'mak', 'pielstick',
     'stork engine', 'mirrlees',
@@ -396,12 +423,6 @@ function aliasHit(normalizedCategoryName: string): { slug: string; alias: string
   return null
 }
 
-function containsPhrase(normalizedText: string, phrase: string): boolean {
-  const normalizedPhrase = normalizeCategoryText(phrase)
-  if (!normalizedPhrase) return false
-  return new RegExp(`(^| )${escapeRegex(normalizedPhrase)}( |$)`).test(normalizedText)
-}
-
 /**
  * Resolve the website category for one listing/product. Never throws and
  * never returns null: confident matches are exactly pins, category-name
@@ -420,19 +441,40 @@ export function resolveWebsiteCategory(input: CategorySourceInput = {}): Categor
     return { slug, confidence: 'ebay-category-id', reason: `EBAY_CATEGORY_ID_MAP pin ${categoryId} → ${slug}` }
   }
 
-  // 2. Phrase alias on the eBay category name (store mirror names, common
-  //    taxonomy leaf names), then keyword aliases on the category name.
-  if (normalizedCategoryName) {
-    const alias = aliasHit(normalizedCategoryName)
-    if (alias) return { slug: alias.slug, confidence: 'ebay-category', reason: `eBay category name "${categoryName}" → alias "${alias.alias}" → ${alias.slug}` }
-
-    for (const rule of CATEGORY_NAME_KEYWORD_RULES) {
-      for (const keyword of rule.keywords) {
-        if (containsPhrase(normalizedCategoryName, keyword)) {
-          return {
-            slug: rule.slug,
-            confidence: 'ebay-category',
-            reason: `eBay category name "${categoryName}" → keyword alias "${keyword}" → ${rule.slug}`,
+  // 2. eBay category name — leaf first. eBay sends colon-separated
+  //    breadcrumbs ("Business & Industrial:Light Equipment & Tools:Hand
+  //    Tools:Wrenches"); the leaf is the most specific evidence and must beat
+  //    generic parents, otherwise a middle segment like "Light Equipment &
+  //    Tools" snipes rows whose leaf clearly says Hand Tools (observed: 377 of
+  //    1,074 catalog rows would have drifted to tools-equipment). Segments
+  //    that only say "Other <X>" carry no signal — eBay uses them for the
+  //    uncategorized remainder of the parent — so they are skipped and the
+  //    parent decides; if even the parent is generic, content keywords and
+  //    the fallback take over.
+  if (normalizedCategoryName && categoryName) {
+    const segments = categoryName
+      .split(':')
+      .map((raw) => ({ text: raw.trim(), normalized: normalizeCategoryText(raw) }))
+      .filter((entry) => entry.normalized)
+      .reverse()
+    for (const segment of segments) {
+      if (/^other(\s|$)/.test(segment.normalized)) continue
+      const alias = aliasHit(segment.normalized)
+      if (alias) {
+        return {
+          slug: alias.slug,
+          confidence: 'ebay-category',
+          reason: `eBay category segment "${segment.text}" → alias "${alias.alias}" → ${alias.slug}`,
+        }
+      }
+      for (const rule of CATEGORY_NAME_KEYWORD_RULES) {
+        for (const keyword of rule.keywords) {
+          if (containsPhrase(segment.normalized, keyword)) {
+            return {
+              slug: rule.slug,
+              confidence: 'ebay-category',
+              reason: `eBay category segment "${segment.text}" → keyword alias "${keyword}" → ${rule.slug}`,
+            }
           }
         }
       }
