@@ -347,6 +347,15 @@ app.get('/health/ready', async (_req, res) => {
   }
 })
 
+// ─── API host robots ───────────────────────────────────────────
+// api.alkatraders.co is an API host, not a crawl target — the storefront
+// serves its own robots.txt policy. This keeps the subdomain out of indexes
+// even if links to API JSON ever surface.
+app.get('/robots.txt', (_req, res) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow')
+  res.type('text/plain').send('User-agent: *\nDisallow: /\n')
+})
+
 // ─── Per-User Rate Limiting (applies BEFORE routes) ────────────
 const userAwareAdminLimiter = createUserAwareLimiter({
   windowMs: 60 * 1000,
