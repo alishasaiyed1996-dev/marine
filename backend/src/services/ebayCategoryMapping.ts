@@ -471,6 +471,27 @@ export function resolveWebsiteCategory(input: CategorySourceInput = {}): Categor
       if (/^other(\s|$)/.test(segment.normalized)) continue
       const alias = aliasHit(segment.normalized)
       if (alias) {
+        // eBay files electrical hand tools ("crimping pliers", snap-ring
+        // pliers) under the "Electrical Tools" branch. When that branch alias
+        // fires but the item's own title identifies a hand tool, the site's
+        // hand-tool rules win — the leaf says the aisle, the title says the
+        // product (observed: 8 crimp/plier rows drifting to electrical).
+        if (
+          alias.slug === 'electrical' &&
+          /(^| )tools(?:es|s)?( |$)/.test(segment.normalized) &&
+          normalizedTitle
+        ) {
+          const handHit = COMPILED_KEYWORD_RULES.find(
+            (rule) => rule.slug === 'hand-tools' && matches(normalizedTitle, rule),
+          )
+          if (handHit) {
+            return {
+              slug: 'hand-tools',
+              confidence: 'ebay-category',
+              reason: `eBay category segment "${segment.text}" is a tools branch but title identifies a hand tool ("${handHit.keyword}") → hand-tools`,
+            }
+          }
+        }
         return {
           slug: alias.slug,
           confidence: 'ebay-category',

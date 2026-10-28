@@ -224,6 +224,24 @@ test('genuinely generic power-tool leaves still reach tools-equipment', () => {
   )
 })
 
+test('Electrical Tools branch defers to hand-tool titles, not otherwise', () => {
+  const assignment = resolveWebsiteCategory({
+    categoryName: 'Business & Industrial:Light Equipment & Tools:Electrical Tools',
+    title: 'CRAB DK-60 Manual Crimping Tool Heavy Duty Industrial Hand Tool',
+  })
+  assert.equal(assignment.slug, 'hand-tools')
+  assert.equal(assignment.confidence, 'ebay-category')
+
+  // Without a hand-tool title the branch stands.
+  assert.equal(
+    resolveWebsiteCategory({
+      categoryName: 'Business & Industrial:Light Equipment & Tools:Electrical Tools',
+      title: 'FLUKE 87V Multimeter',
+    }).slug,
+    'electrical',
+  )
+})
+
 // ── Plural-tolerant phrase matching ────────────────────────────
 
 test('matching is plural-tolerant on the final word', () => {
