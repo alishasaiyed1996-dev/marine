@@ -36,6 +36,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Backend Lint
+        # The backend tree ships its own eslint.config.js but not the eslint
+        # runtime — the root tree owns the lint toolchain, so this runs here
+        # after the root `npm ci`. Imports inside the backend config resolve
+        # through the root node_modules; the backend job stays backend-only.
+        run: npx eslint --config backend/eslint.config.js backend/src
+
       - name: Build
         run: npm run build
 
@@ -52,6 +59,10 @@ jobs:
     env:
       JWT_SECRET: ci-test-secret-at-least-32-characters-long-for-jwt-signing
       CSRF_SECRET: ci-test-csrf-secret-at-least-32-characters-long-for-csrf
+      # env.ts refuses to boot without DATABASE_URL (backend/src/utils/env.ts:15),
+      # so the backend unit tests exit(1) unless one is set. Tests never connect
+      # to it — any syntactically valid postgres URL works.
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
 
     steps:
       - uses: actions/checkout@v4
