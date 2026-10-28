@@ -9,7 +9,7 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractOrderId, extractEventId, extractTopic, skuCandidates } from './ebayOrderEvents.js'
+import { extractOrderId, extractEventId, extractTopic, sellableOnEbay, skuCandidates } from './ebayOrderEvents.js'
 import { isRetryableError } from './ebayClient.js'
 
 // ── extractOrderId across notification shapes ──────────────────
@@ -96,4 +96,33 @@ test('skuCandidates keeps exact SKUs intact and deduplicates', () => {
   assert.deepEqual(skuCandidates('Z 40'), ['Z 40'])
   assert.deepEqual(skuCandidates('IMP-A/2"'), ['IMP-A/2"'])
   assert.deepEqual(skuCandidates(''), [])
+})
+
+// ── sellableOnEbay: which products may claim stock on an eBay sale ──
+
+test('sellableOnEbay lets mirror-managed draft/hidden products claim', () => {
+  // Imported items are drafts until the publish gate passes; they still sell
+  // on eBay the whole time and stock must stay correct.
+  assert.equal(sellableOnEbay({ status: 'draft' }, { status: 'synced' }), true)
+  assert.equal(sellableOnEbay({ status: 'hidden' }, { status: 'sync-pending' }), true)
+  assert.equal(sellableOnEbay({ status: 'published' }, { status: 'sync-failed' }), true)
+})
+
+test('sellableOnEbay falls back to published-only without a mirror row', () => {
+  // An eBay listing created outside this system that merely matches a website
+  // SKU: only a published catalog product is claimed — never guess membership.
+  assert.equal(sellableOnEbay({ status: 'published' }, null), true)
+  assert.equal(sellableOnEbay({ status: 'draft' }, null), false)
+  assert.equal(sellableOnEbay({ status: 'hidden' }, null), false)
+  assert.equal(sellableOnEbay(null, null), false)
+})
+
+test('sellableOnEbay refuses archived products and trusting mirror rows over their status', () => {
+  // Archived ends the relationship entirely.
+  assert.equal(sellableOnEbay({ status: 'archived' }, { status: 'synced' }), false)
+  // Row status is irrelevant: an order placed before an admin ended the
+  // listing can arrive afterwards (webhook retry / poll) and must claim.
+  assert.equal(sellableOnEbay({ status: 'published' }, { status: 'ended' }), true)
+  assert.equal(sellableOnEbay({ status: 'draft' }, { status: 'ended' }), true)
+  assert.equal(sellableOnEbay({ status: 'draft' }, { status: 'pending' }), true)
 })

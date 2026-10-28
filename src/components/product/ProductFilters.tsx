@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SlidersHorizontal, X as XIcon } from 'lucide-react'
+import { useOverlayBehavior } from '../../lib/overlay'
 
 interface ProductFiltersProps {
   // Categories
@@ -47,19 +48,17 @@ export function ProductFilters({
   totalCount,
 }: ProductFiltersProps) {
   const { t } = useTranslation()
+  const sheetRef = useRef<HTMLDivElement>(null)
 
-  // Lock body scroll when mobile filter sheet is open
-  useEffect(() => {
-    if (showFiltersMobile) {
-      document.documentElement.style.overflow = 'hidden'
-    }
-    return () => {
-      // Only clear if no other modal is open
-      if (!document.querySelector('[role="dialog"], [role="alertdialog"]')) {
-        document.documentElement.style.overflow = ''
-      }
-    }
-  }, [showFiltersMobile])
+  // Shared overlay behavior: ref-counted scroll lock, Escape to close, focus
+  // trap + restore. Replaces the hand-rolled overflow effect that only covered
+  // scroll-lock and never trapped focus or restored it.
+  useOverlayBehavior({
+    open: showFiltersMobile,
+    onClose: () => onToggleMobile(),
+    panelRef: sheetRef,
+    lockKey: 'filters',
+  })
 
   // The filter panel content — shared between desktop sidebar and mobile sheet
   const filterContent = (
@@ -187,7 +186,7 @@ export function ProductFilters({
 
       <button
         onClick={onClearFilters}
-        className="w-full text-right text-xs font-bold text-[var(--accent-primary)] hover:text-[var(--accent-gold)] transition-colors bg-transparent border-none cursor-pointer py-2"
+        className="w-full text-end text-xs font-bold text-[var(--accent-primary)] hover:text-[var(--accent-gold)] transition-colors bg-transparent border-none cursor-pointer py-2"
       >
         {t('products.clearFilters')}
       </button>
@@ -220,17 +219,22 @@ export function ProductFilters({
       {/* Mobile bottom sheet overlay */}
       {showFiltersMobile && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop — above the sticky navbar (z-50) so taps don't reach
+              header actions while the sheet is open */}
           <div
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] lg:hidden"
+            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-[2px] lg:hidden"
             onClick={onToggleMobile}
             aria-hidden="true"
           />
           {/* Sheet */}
           <div
-            className="fixed inset-x-0 bottom-0 z-50 lg:hidden max-h-[85vh] flex flex-col bg-[var(--surface)] border-t border-[var(--border)] rounded-t-2xl shadow-2xl animate-slide-up"
+            ref={sheetRef}
+            tabIndex={-1}
+            data-modal="filters"
+            className="fixed inset-x-0 bottom-0 z-[61] lg:hidden max-h-[85svh] flex flex-col bg-[var(--surface)] border-t border-[var(--border)] rounded-t-2xl shadow-2xl animate-slide-up focus:outline-none"
             role="dialog"
-            aria-label="Filters"
+            aria-modal="true"
+            aria-label={t('a11y.filters')}
           >
             {/* Drag handle + header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] shrink-0">
@@ -241,8 +245,8 @@ export function ProductFilters({
               </h3>
               <button
                 onClick={onToggleMobile}
-                className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-[var(--border)] transition-colors"
-                aria-label="Close filters"
+                className="tap-native flex h-11 w-11 items-center justify-center rounded-full hover:bg-[var(--border)] transition-colors"
+                aria-label={t('a11y.closeFilters')}
               >
                 <XIcon size={18} className="text-[var(--text-secondary)]" />
               </button>
@@ -257,7 +261,7 @@ export function ProductFilters({
                 onClick={onToggleMobile}
                 className="w-full py-3 min-h-[44px] bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm rounded-xl hover:bg-[var(--accent-primary-hover)] transition-colors"
               >
-                Show Results
+                {t('a11y.showResults')}
               </button>
             </div>
           </div>

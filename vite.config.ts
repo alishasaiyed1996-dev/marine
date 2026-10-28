@@ -29,6 +29,11 @@ export default defineConfig(({ mode }) => {
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // registerSW.js is a render-blocking script by default ('autoInject' +
+      // inline). 'script-defer' keeps it as a same-origin file (the CSP hash
+      // server.js computes still matches) but stops it competing with the
+      // first paint — Lighthouse flagged it under render-blocking-insight.
+      injectRegister: 'script-defer',
       // Only the favicon is precached. The old `images/*.png|avif` globs pulled
       // ~9 MB of images into the install step, so Workbox downloaded them in the
       // background on every first visit / after every deploy — saturating the
@@ -120,32 +125,44 @@ export default defineConfig(({ mode }) => {
     outDir: 'frontend/dist',
     emptyOutDir: true,
     rollupOptions: {
+      // Chunk assignment via rolldown's NATIVE advancedChunks, NOT the
+      // manualChunks shim. With vite 8 / rolldown the manualChunks shim
+      // demonstrably mis-merges modules: react core + react/jsx-runtime ended
+      // up inside the framer-motion `anim` manual chunk (its exported {a, i}
+      // bindings were the lazy loaders for react and the JSX runtime), so
+      // every chunk that renders JSX statically imported `anim` and the entry
+      // emitted <link rel="modulepreload"> for ~130 KB of framer-motion on
+      // every page — the same disease the forced admin/three chunks had before
+      // they were removed. Relying on purely automatic chunking instead is no
+      // better: it inlines react-dom + framer-motion into the entry (506 KB)
+      // and duplicates framer into per-consumer chunks. advancedChunks groups
+      // keep library bytes in long-lived cached chunks while the entry and
+      // every lazy route chunk stay free of manual-chunk static edges.
+      //
+      // Library chunks (each only loaded where actually used):
+      //   vendor — react core/jsx/scheduler + react-dom + react-router (eager)
+      //   anim   — framer-motion (only the auth/cart overlays + Emergency/About)
+      //   icons  — lucide-react (tree-shaken)
+      // NOTE: i18next is NOT grouped: main.tsx initializes it synchronously at
+      // boot, so it stays in the entry chunk on the critical path.
       output: {
-        manualChunks(id) {
-          // NOTE: admin + three are deliberately NOT forced into manual chunks
-          // any more. Forcing every file under components/admin/** into one
-          // `admin` chunk (and three into `three`) created static edges from the
-          // entry/vendor chunks into those chunks, so Vite emitted
-          // `<link rel="modulepreload">` for ~420 KB gz of admin panel + 3D
-          // globe code on EVERY public page. Lazy routes already code-split
-          // naturally, so /admin and /network still download only what they use.
-
-          // Vendor chunk for heavy libraries
-          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react-router')) {
-            return 'vendor'
-          }
-          // Animation library — big, and shared by many pages; own chunk = one
-          // long-lived cached file instead of re-fetching per page bundle.
-          if (id.includes('node_modules/framer-motion')) {
-            return 'anim'
-          }
-          // Icon library — huge source, tree-shaken at build; isolated so its
-          // cache never invalidates other app code.
-          if (id.includes('node_modules/lucide-react')) {
-            return 'icons'
-          }
-          // NOTE: i18next stays in the entry chunk on purpose — main.tsx
-          // initializes it synchronously at boot, so it's on the critical path.
+        advancedChunks: {
+          // includeDependenciesRecursively must stay OFF: with it on (the
+          // default) each group pulls its members' imported dependency
+          // loaders — framer-motion's group dragged react/jsx-runtime into
+          // the `anim` chunk, and then every JSX-rendering chunk statically
+          // imported `anim` just to reach the JSX namespace. Groups are
+          // evaluated in array order, so `vendor` (which explicitly matches
+          // react core / jsx-runtime / scheduler via its test) wins first.
+          includeDependenciesRecursively: false,
+          groups: [
+            {
+              name: 'vendor',
+              test: /node_modules[\\/](react$|react[\\/]|react-dom|react-router|scheduler)/,
+            },
+            { name: 'anim', test: /node_modules[\\/]framer-motion([\\/]|$)/ },
+            { name: 'icons', test: /node_modules[\\/]lucide-react([\\/]|$)/ },
+          ],
         },
       },
     },

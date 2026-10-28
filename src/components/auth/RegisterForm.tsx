@@ -50,16 +50,18 @@ export function RegisterForm({
       {/* Full Name */}
       <div>
         <div className="relative">
-          <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+          <User size={16} className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
           <input
+            id="register-name"
             type="text"
+            autoComplete="name"
             placeholder="Full name"
             value={name}
             onChange={(e) => {
               onNameChange(e.target.value)
               if (errors.name) onClearError('name')
             }}
-            className={`${inputClass} pl-10`}
+            className={`${inputClass} ps-10`}
             aria-label="Full name"
           />
         </div>
@@ -73,16 +75,18 @@ export function RegisterForm({
       {/* Email */}
       <div>
         <div className="relative">
-          <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+          <Mail size={16} className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
           <input
+            id="register-email"
             type="email"
+            autoComplete="email"
             placeholder="Email address"
             value={email}
             onChange={(e) => {
               onEmailChange(e.target.value)
               if (errors.email) onClearError('email')
             }}
-            className={`${inputClass} pl-10`}
+            className={`${inputClass} ps-10`}
             aria-label="Email address"
           />
         </div>
@@ -96,23 +100,25 @@ export function RegisterForm({
       {/* Password */}
       <div>
         <div className="relative">
-          <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+          <Lock size={16} className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
           <input
+            id="register-password"
             type={showPassword ? 'text' : 'password'}
+            autoComplete="new-password"
             placeholder="Password (min. 8 characters)"
             value={password}
             onChange={(e) => {
               onPasswordChange(e.target.value)
               if (errors.password) onClearError('password')
             }}
-            className={`${inputClass} pl-10 pr-10`}
+            className={`${inputClass} ps-10 pe-10`}
             aria-label="Password"
           />
           <button
             type="button"
             onClick={onTogglePassword}
             aria-label={showPassword ? 'Hide password' : 'Show password'}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            className="tap-pad absolute end-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
           >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
@@ -127,23 +133,25 @@ export function RegisterForm({
       {/* Confirm Password */}
       <div>
         <div className="relative">
-          <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+          <Lock size={16} className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
           <input
+            id="register-confirm-password"
             type={showConfirmPassword ? 'text' : 'password'}
+            autoComplete="new-password"
             placeholder="Confirm password"
             value={confirm}
             onChange={(e) => {
               onConfirmChange(e.target.value)
               if (errors.confirmPassword) onClearError('confirmPassword')
             }}
-            className={`${inputClass} pl-10 pr-10`}
+            className={`${inputClass} ps-10 pe-10`}
             aria-label="Confirm password"
           />
           <button
             type="button"
             onClick={onToggleConfirmPassword}
             aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            className="tap-pad absolute end-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
           >
             {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>

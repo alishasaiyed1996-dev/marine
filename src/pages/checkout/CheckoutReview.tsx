@@ -111,7 +111,7 @@ export function CheckoutReview({
                   <h4 className="text-sm font-semibold truncate">{item.product.name}</h4>
                   <p className="text-xs text-[var(--text-muted)]">{item.product.brand} · {item.product.sku}</p>
                 </div>
-                <div className="text-right">
+                <div className="text-end">
                   <span className="text-xs text-[var(--text-muted)]">×{item.quantity}</span>
                   <p className="text-sm font-semibold">{money(price * item.quantity)}</p>
                 </div>
@@ -196,13 +196,13 @@ export function CheckoutReview({
 
       {/* Letter of credit — the arrangement the seller published. */}
       {paymentMethod === 'lc' && (
-        <div className="bg-[var(--surface)] border border-[var(--accent-primary)]/40 rounded-xl p-5 text-left">
+        <div className="bg-[var(--surface)] border border-[var(--accent-primary)]/40 rounded-xl p-5 text-start">
           <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-3">{t('checkout.lcHeading')}</h4>
           <dl className="space-y-2">
             {letterOfCredit.acceptingBanks && (
               <div className="flex items-start justify-between gap-4">
                 <dt className="text-xs text-[var(--text-muted)] shrink-0">{t('checkout.lcAcceptingBanks')}</dt>
-                <dd className="text-xs text-[var(--text-primary)] text-right break-all font-semibold">
+                <dd className="text-xs text-[var(--text-primary)] text-end break-all font-semibold">
                   {letterOfCredit.acceptingBanks}
                 </dd>
               </div>
@@ -210,7 +210,7 @@ export function CheckoutReview({
             {letterOfCredit.documentsRequired && (
               <div className="flex items-start justify-between gap-4">
                 <dt className="text-xs text-[var(--text-muted)] shrink-0">{t('checkout.lcDocuments')}</dt>
-                <dd className="text-xs text-[var(--text-primary)] text-right break-all">
+                <dd className="text-xs text-[var(--text-primary)] text-end break-all">
                   {letterOfCredit.documentsRequired}
                 </dd>
               </div>
@@ -266,11 +266,11 @@ export function CheckoutReview({
 
       {/* Actions */}
       {orderError && <p className="text-xs text-[var(--danger)] mb-4 text-center" role="alert">{orderError}</p>}
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <button
           type="button"
           onClick={() => goToStep(2)}
-          className="flex items-center justify-center gap-2 px-7 py-3.5 bg-transparent text-[var(--accent-primary)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-all rounded-xl cursor-pointer"
+          className="flex items-center justify-center gap-2 px-3 sm:px-7 py-3.5 bg-transparent text-[var(--accent-primary)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-all rounded-xl cursor-pointer"
         >
           <ChevronLeft size={16} /> {t('checkout.back')}
         </button>
@@ -310,7 +310,7 @@ export function CheckoutReview({
             type="button"
             onClick={handlePlaceOrder}
             disabled={orderLoading}
-            className="flex items-center justify-center gap-2 px-7 py-3.5 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] transition-all rounded-xl cursor-pointer relative overflow-hidden disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-3 sm:px-7 py-3.5 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] transition-all rounded-xl cursor-pointer relative overflow-hidden disabled:opacity-50"
           >
             {orderLoading ? <><Loader2 size={16} className="animate-spin" /> Processing...</> : <><ClipboardCheck size={16} /> {t('checkout.placeOrder')}</>}
           </button>
@@ -318,7 +318,7 @@ export function CheckoutReview({
       </div>
 
       <p className="text-center text-xs text-[var(--text-muted)] mt-2">
-        <Shield size={10} className="inline mr-1" />
+        <Shield size={10} className="inline me-1" />
         {t('checkout.secureFooter')}
       </p>
     </div>

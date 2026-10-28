@@ -45,11 +45,22 @@
     "statsProducts": "Productos",
     "statsBrands": "Marcas",
     "statsCountries": "Países",
-    "statsYears": "Años"
+    "statsYears": "Años",
+    "trustedLine": "Repuestos Navales de Confianza.",
+    "deliveredLine": "Entregados en Todo el Mundo.",
+    "sub2": "Abastecimiento global para armadores, astilleros y equipos de mantenimiento — compre en línea o envíe una solicitud de cotización y nuestro equipo lo consigue.",
+    "ctaSearch": "Buscar Repuestos Navales",
+    "badgeShipping": "Envíos a Todo el Mundo",
+    "badgeQuality": "Calidad Garantizada",
+    "badgeExport": "Exportación Gestionada por el Comprador",
+    "badgeRfq": "Soporte para Solicitudes de Cotización"
   },
   "categories": {
     "label": "Lo Que Proveemos",
     "title": "Comprar por Tipo de Equipo",
+    "eyebrow": "Inventario marino e industrial",
+    "findTitle": "Encuentre repuestos navales por tipo de equipo",
+    "findSub": "Explore las piezas que los compradores buscan realmente: maquinaria naval, repuestos de motor, bombas marinas, motores hidráulicos, automatización eléctrica, equipo de seguridad e inventario MRO industrial.",
     "marine": "Equipos Marinos",
     "electrical": "Automatización Eléctrica",
     "hydraulic": "Sistemas Hidráulicos",
@@ -178,12 +189,102 @@
     "browseProducts": "Buscar Productos",
     "whatsappUsNow": "Escríbanos por WhatsApp",
     "consentPrivacy": "Lea nuestra Política de Privacidad",
-    "consentError": "Confirme que acepta que le contactemos sobre esta consulta."
+    "consentError": "Confirme que acepta que le contactemos sobre esta consulta.",
+    "submitting": "Enviando…",
+    "submitFailed": "No se pudo enviar su solicitud de cotización. Inténtelo de nuevo o contáctenos por WhatsApp.",
+    "roleChiefEngineer": "Jefe de Máquinas",
+    "roleProcurementManager": "Gerente de Compras",
+    "rolePlantManager": "Gerente de Planta",
+    "roleFleetManager": "Gerente de Flota",
+    "roleSourcingHead": "Jefe de Abastecimiento",
+    "roleOwner": "Propietario / Director",
+    "roleOther": "Otro",
+    "faq1q": "¿Con qué rapidez responden?",
+    "faq1a": "Nuestro tiempo de respuesta estándar es de 4 horas laborables para todas las solicitudes de cotización. Para solicitudes de emergencia marcadas como mismo día, nuestro equipo dedicado se activa en 30 minutos y mantiene contacto hasta confirmar la entrega.",
+    "faq2q": "¿Verifican la autenticidad del producto?",
+    "faq2a": "Cada publicación indica el grado de estado — nuevo, reacondicionado, usado o excedente — y la identidad de la pieza (marca, modelo, número de parte o código IMPA) registrada por nuestro equipo. La mayor parte de nuestro inventario es equipo usado o excedente que inspeccionamos y describimos con la mayor precisión posible; estos artículos se venden como inspeccionados y no cuentan con garantía del fabricante, según nuestros Términos del Servicio. Cuando el proveedor entrega un certificado de conformidad, informe de pruebas o certificado de material, este acompaña al artículo y se detalla en la cotización — los certificados no son automáticos en cada envío. Solicite cualquier documento que necesite antes de ordenar y le diremos si está disponible.",
+    "faq3q": "¿Pueden atender pedidos de emergencia?",
+    "faq3a": "Sí. Nuestra línea de adquisiciones de emergencia opera 24/7. Mantenemos inventario estratégico para entregas de ruta crítica desde nuestra sede en Bhavnagar. Hemos completado pedidos de emergencia en 18 horas desde la recepción de la solicitud.",
+    "faq4q": "¿A qué regiones realizan envíos?",
+    "faq4a": "Operamos en más de 50 países en las principales rutas marítimas y corredores industriales. Nuestros centros cubren Asia-Pacífico, Medio Oriente, Europa, África y América. Gestionamos toda la documentación aduanera, las licencias de exportación y la logística de flete.",
+    "homeForm": {
+      "heading1": "¿No encuentra el repuesto naval?",
+      "heading2": "Envíe la placa de datos.",
+      "sub": "Suba una descripción de la pieza, número de modelo, fabricante, placa de datos o foto del producto. Verificaremos el inventario de Alang/Bhavnagar, alternativas compatibles, estado, embalaje y opciones de exportación antes de cotizar.",
+      "list1": "Opciones usadas probadas, reacondicionadas y de stock excedente nuevo",
+      "list2": "Objetivo de respuesta en 4 horas laborables",
+      "list3": "Soporte de DHL, FedEx, flete aéreo y marítimo",
+      "optStd": "Estándar (7-14 días)",
+      "optUrgent": "Urgente (24-48 horas)",
+      "optEmergency": "Emergencia (mismo día)"
+    }
   },
   "testimonials": {
     "label": "Opiniones del Mercado",
     "title": "Opiniones verificadas de nuestros compradores en eBay.",
-    "note": "Estas opiniones verificadas provienen de compradores de nuestras herramientas industriales y equipo excedente en eBay. Para consultas de compras marinas, contacte con nuestro equipo."
+    "note": "Estas opiniones verificadas provienen de compradores de nuestras herramientas industriales y equipo excedente en eBay. Para consultas de compras marinas, contacte con nuestro equipo.",
+    "soldBy": "Vendido por {{seller}} en eBay",
+    "reviewed": "Reseñado: {{product}}"
+  },
+  "home": {
+    "aria": {
+      "store": "Comprar repuestos marinos",
+      "guarantees": "Garantías de envío y servicio"
+    },
+    "store": {
+      "label": "Tienda en línea de repuestos marinos",
+      "title": "Compre repuestos navales por categoría, marca, número de parte o tipo de equipo.",
+      "sub": "Encuentre repuestos marinos en línea para reparación de buques, mantenimiento en astilleros, adquisiciones offshore y MRO industrial. Consulte el inventario o envíe una solicitud de cotización para repuestos OEM difíciles de encontrar y alternativas compatibles.",
+      "searchAll": "Buscar todos los productos",
+      "requestQuote": "Solicitar cotización"
+    },
+    "tiles": {
+      "t1": { "label": "Repuestos Navales", "copy": "Piezas de cubierta, sala de máquinas, puente y mantenimiento del buque." },
+      "t2": { "label": "Repuestos de Motor Marino", "copy": "Pistones, inyectores, turbocompresores, juntas y sensores." },
+      "t3": { "label": "Bombas Marinas", "copy": "Bombas de sentina, de lastre, de agua de mar y rodetes." },
+      "t4": { "label": "Automatización Eléctrica", "copy": "Módulos PLC, variadores de frecuencia, relés, interruptores y paneles de control." },
+      "t5": { "label": "Repuestos Hidráulicos", "copy": "Bombas, motores, válvulas, cilindros y unidades de potencia hidráulica." },
+      "t6": { "label": "Repuestos Industriales Excedente", "copy": "Stock excedente nuevo, usado, reacondicionado y equipo MRO probado." }
+    },
+    "chips": {
+      "c1": "Proveedor de repuestos marinos",
+      "c2": "Repuestos navales en línea",
+      "c3": "Repuestos de motor marino",
+      "c4": "Piezas de maquinaria naval",
+      "c5": "Bomba hidráulica marina",
+      "c6": "Equipo eléctrico marino",
+      "c7": "Repuestos de equipo de navegación",
+      "c8": "Repuestos navales de Alang",
+      "c9": "Equipo industrial excedente",
+      "c10": "Repuestos ABB Siemens Parker Bosch Rexroth"
+    },
+    "new": {
+      "title": "Repuestos marinos y navales destacados en inventario",
+      "sub": "Compre repuestos marinos recién listados, maquinaria excedente probada, repuestos hidráulicos, componentes de automatización eléctrica, repuestos de motor y equipo MRO difícil de encontrar."
+    },
+    "segments": {
+      "s1": { "title": "Repuestos marinos y navales", "copy": "Obtenga repuestos navales para equipo de puente, sistemas de sala de máquinas, maquinaria de cubierta, bombas marinas, gear de gobierno, sistemas de lastre, equipo de seguridad y equipo de navegación." },
+      "s2": { "title": "Automatización industrial e hidráulica", "copy": "Compre repuestos eléctricos, neumáticos e hidráulicos de ABB, Siemens, Schneider Electric, Parker, Bosch Rexroth, Danfoss, Festo, SMC, Omron, Honeywell y marcas similares." },
+      "s3": { "title": "Soporte de cotización para piezas raras", "copy": "Envíe un número de parte, fabricante, modelo, placa de serie, foto de la placa de datos o detalles del buque. Ayudamos a localizar stock excedente nuevo, usado, reacondicionado, restaurado y alternativas compatibles." }
+    },
+    "craft": {
+      "heading": "Abastecimiento centrado en claridad, estado y despacho.",
+      "sub": "Envíe fabricante, modelo, número de parte, placa de serie o foto del producto. Nuestro equipo verifica disponibilidad, estado, compatibilidad, embalaje de exportación y opciones de flete antes de cotizar.",
+      "f1t": "Enfoque marino",
+      "f1c": "automatización, navegación, bombas, repuestos de motor, aparejos y equipo de cubierta.",
+      "f2t": "Enfoque industrial",
+      "f2c": "ABB, Siemens, Parker, Bosch Rexroth, Danfoss, Festo, SMC y componentes MRO similares.",
+      "f3t": "Claridad de estado",
+      "f3c": "el stock excedente nuevo, usado, reacondicionado y restaurado se etiqueta antes del despacho.",
+      "f4t": "Soporte de exportación",
+      "f4c": "DHL, FedEx, flete aéreo, marítimo y envío gestionado por el comprador desde India."
+    },
+    "urgent": {
+      "eyebrow": "Adquisición urgente para buques",
+      "heading": "¿Necesita un repuesto naval raro?",
+      "sub": "Envíe el número de parte, la foto, el fabricante, los detalles del buque y el puerto de entrega. Confirmaremos el inventario o buscaremos una alternativa.",
+      "cta": "Cotización por WhatsApp"
+    }
   },
   "footer": {
     "desc": "Socio global de adquisiciones marinas e industriales. Sirviendo a administradores de flotas, ingenieros de planta y equipos de adquisiciones en más de 50 países.",
@@ -375,6 +476,9 @@
     "city": "Ciudad",
     "state": "Estado / Provincia",
     "postalCode": "Código Postal",
+    "email": "Correo electrónico",
+    "emailInvalid": "Introduce una dirección de correo válida",
+    "requiredField": "Este campo es obligatorio",
     "country": "País",
     "placeholders": {
       "fullName": "Juan Pérez",
@@ -382,7 +486,10 @@
       "addressLine2": "Apartamento, suite, unidad (opcional)",
       "city": "Ciudad",
       "state": "Estado o provincia",
-      "postalCode": "Código postal"
+"postalCode": "Código postal",
+      "company": "Empresa / nombre comercial registrado",
+      "taxId": "NIF / número de identificación fiscal (opcional)",
+      "email": "you@company.com"
     },
     "continuePayment": "Continuar al Pago →",
     "back": "← Atrás",
@@ -619,5 +726,30 @@
     "privacyLink": "Lea nuestra Política de Privacidad",
     "accept": "Aceptar",
     "decline": "Rechazar analíticas"
+  },
+  "a11y": {
+    "openSearch": "Abrir búsqueda",
+    "closeSearch": "Cerrar búsqueda",
+    "closeCart": "Cerrar carrito",
+    "closeDialog": "Cerrar el cuadro de diálogo",
+    "removeFilter": "Eliminar filtro",
+    "decreaseQuantity": "Disminuir cantidad",
+    "increaseQuantity": "Aumentar cantidad",
+    "removeItem": "Eliminar {{name}}",
+    "switchLanguage": "Cambiar idioma",
+    "profile": "Perfil",
+    "toggleMenu": "Menú",
+    "closeFilters": "Cerrar filtros",
+    "filters": "Filtros",
+    "showResults": "Mostrar resultados",
+    "chatWhatsapp": "Chatea con nosotros por WhatsApp",
+    "galleryPrev": "Imagen anterior",
+    "galleryNext": "Imagen siguiente",
+    "galleryReset": "Toca para restablecer el zoom",
+    "share": "Compartir producto",
+    "marqueePause": "Pausar desplazamiento",
+    "marqueePlay": "Reanudar desplazamiento",
+    "marqueeLabel": "Lista de desplazamiento de {{count}} marcas",
+    "reviewedOnEbay": "Reseñado en eBay"
   }
 }

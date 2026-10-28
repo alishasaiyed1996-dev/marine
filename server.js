@@ -431,6 +431,8 @@ function cspPolicy(nonce) {
     'https://www.paypal.com',
     'https://www.paypalobjects.com',
     'https://www.googletagmanager.com',
+    'https://www.clarity.ms',
+    'https://*.clarity.ms',
     ...inlineHashes.scripts,
   ].join(' ')
   const unsafeHashes = inlineHashes.handlers.length
@@ -448,7 +450,7 @@ function cspPolicy(nonce) {
     // inherits the page's connect-src, so omitting it here made every image
     // intercepted by the SW fail with `no-response` — the mobile "images
     // disappear after the SW registers" bug. Keep this in sync with img-src.
-    `connect-src 'self' ${apiOrigin} https://res.cloudinary.com https://*.paypal.com https://*.paypalobjects.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com`,
+    `connect-src 'self' ${apiOrigin} https://res.cloudinary.com https://*.paypal.com https://*.paypalobjects.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://www.clarity.ms https://*.clarity.ms`,
     'frame-src https://www.paypal.com https://sandbox.paypal.com',
     "worker-src 'self' blob:",
     "manifest-src 'self'",
@@ -1265,8 +1267,15 @@ app.use(express.static(distPath, {
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
     } else if (/\.html?$/i.test(name)) {
       res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate')
+    } else if (name === 'sw.js') {
+      // The SW update check ignores the HTTP cache for the main script, but
+      // keep it no-cache so no engine ever installs a month-old worker.
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate')
     } else {
-      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800')
+      // Unhashed public files (fonts, early-product.js, registerSW.js,
+      // manifest) are replaced by deploys, never edited in place — 30 days is
+      // safe and stops the 1-day cache penalty on repeat visits.
+      res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=604800')
     }
   },
 }))

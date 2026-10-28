@@ -32,6 +32,25 @@ import { useEffect, useRef } from 'react'
 import { applyImageFallback, applyCloudinaryTransform } from '../../lib/utils'
 
 /**
+ * Browser-picked srcSet for callers that declare a `sizes` layout: the base
+ * rendition plus a 2× candidate. Cloudinary's `c_limit` never upscales, and
+ * applyCloudinaryTransform returns width-carrying URLs untouched, so the two
+ * candidates collapse to one whenever a 2× rendition is meaningless — in that
+ * case no srcSet is emitted at all. Only Cloudinary sources get one; local
+ * files are already exact-size.
+ */
+function buildSrcSet(src: string, base: number): string | undefined {
+  if (!base || base <= 0) return undefined
+  if (!src.includes('res.cloudinary.com') || !src.includes('/image/upload/')) return undefined
+  const candidates = [
+    applyCloudinaryTransform(src, base),
+    applyCloudinaryTransform(src, base * 2),
+  ]
+  if (candidates[0] === candidates[1]) return undefined
+  return `${candidates[0]} ${base}w, ${candidates[1]} ${base * 2}w`
+}
+
+/**
  * OptimizedImage renders a clean, high-performance <img> element.
  * Bypasses fragile <picture> type negotiation that can break in browsers or edge-case header caching.
  *
@@ -53,6 +72,7 @@ export function OptimizedImage({
   decoding = 'async',
   className,
   onError,
+  sizes,
   transformWidth = 800,
   ...rest
 }: OptimizedImageProps) {
@@ -67,6 +87,8 @@ export function OptimizedImage({
   return (
     <img
       src={applyCloudinaryTransform(src, transformWidth)}
+      srcSet={sizes ? buildSrcSet(src, transformWidth) : undefined}
+      sizes={sizes}
       alt={alt}
       width={width}
       height={height}

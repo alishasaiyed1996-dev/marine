@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, ZoomIn, Share2, ImageOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useLocale } from '../../lib/locale'
 import { OptimizedImage } from '../ui/OptimizedImage'
 import { getProductImageUrl, isLightColor } from '../../lib/utils'
 import { buildImageAlt } from '../../lib/seo/productSeo'
@@ -41,6 +42,7 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
 
   const [activeIndex, setActiveIndex] = useState(0)
   const active = images[Math.min(activeIndex, images.length - 1)]
+  const isZoomed = showZoom || touchScale > 1
 
   // Navigating between products reuses this component instance, so every
   // per-product state (selected photo, zoom/share) must be reset — otherwise
@@ -66,17 +68,21 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
     setActiveIndex((i) => (i + 1) % images.length)
   }, [images.length])
 
-  // Keyboard navigation (← →) while the gallery is on screen
+  // Keyboard navigation (← →) while the gallery is on screen. Under RTL the
+  // arrows swap: forward (next) is LEFTWARD in Arabic, so ArrowLeft = next.
+  const isRtl = useLocale() === 'ar'
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       if (target?.isContentEditable || (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return
-      if (e.key === 'ArrowLeft') goPrev()
-      else if (e.key === 'ArrowRight') goNext()
+      const left = isRtl ? goNext : goPrev
+      const right = isRtl ? goPrev : goNext
+      if (e.key === 'ArrowLeft') left()
+      else if (e.key === 'ArrowRight') right()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [goPrev, goNext])
+  }, [goPrev, goNext, isRtl])
 
   // ── Desktop: mouse hover zoom ──
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -87,9 +93,24 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
     setZoomPos({ x, y })
   }, [showZoom])
 
-  // ── Mobile: pinch-to-zoom ──
+  // ── Touch gestures ──────────────────────────────────────────────────
+  // touch-action strategy: the container used to be `touch-none`, which
+  // trapped every single-finger swipe that started on the image — the page
+  // could not be scrolled from the biggest element on the product page.
+  // Now: vertical panning is always handed back to the page (pan-y), pinch
+  // and double-tap zoom still work (once zoomed, the stage takes over with
+  // touch-action none so gestures don't fight the browser), and horizontal
+  // single-finger swipes navigate between photos.
+  const swipeStart = useRef<{ x: number; y: number } | null>(null)
+  const pinchSeen = useRef(false)
+
   const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length === 2) {
+    if (e.touches.length === 1) {
+      swipeStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      pinchSeen.current = false
+    } else if (e.touches.length === 2) {
+      pinchSeen.current = true
+      swipeStart.current = null
       const dx = e.touches[0].clientX - e.touches[1].clientX
       const dy = e.touches[0].clientY - e.touches[1].clientY
       lastTouchDistance.current = Math.sqrt(dx * dx + dy * dy)
@@ -98,7 +119,6 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
 
   const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length === 2 && lastTouchDistance.current !== null) {
-      e.preventDefault()
       const dx = e.touches[0].clientX - e.touches[1].clientX
       const dy = e.touches[0].clientY - e.touches[1].clientY
       const distance = Math.sqrt(dx * dx + dy * dy)
@@ -127,8 +147,36 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
     lastTouchDistance.current = null
   }, [])
 
-  // ── Mobile: double-tap to zoom ──
-  const handleDoubleTap = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+  // ── Stage touch end: swipe-to-navigate + double-tap to zoom ──
+  const handleStageTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    // Ignore ends while fingers remain (mid-pinch finger lifts).
+    if (e.touches.length > 0) return
+
+    // Taps on overlay controls (arrows, reset pill) must not count as gallery
+    // swipes or double-tap zooms — e.g. double-tapping "next" would zoom in.
+    if ((e.target as HTMLElement | null)?.closest('button')) {
+      swipeStart.current = null
+      pinchSeen.current = false
+      lastTapTime.current = 0
+      return
+    }
+
+    if (!pinchSeen.current && !isZoomed && swipeStart.current) {
+      const dx = e.changedTouches[0].clientX - swipeStart.current.x
+      const dy = e.changedTouches[0].clientY - swipeStart.current.y
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+        // Horizontal swipe navigates; under RTL the directions swap.
+        const nextSwipe = isRtl ? dx > 0 : dx < 0
+        if (nextSwipe) goNext()
+        else goPrev()
+        swipeStart.current = null
+        return
+      }
+    }
+    swipeStart.current = null
+    pinchSeen.current = false
+
+    // Double-tap to zoom (existing behavior).
     const now = Date.now()
     if (now - lastTapTime.current < 300) {
       if (touchScale > 1) {
@@ -137,15 +185,15 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
       } else {
         const rect = containerRef.current?.getBoundingClientRect()
         if (rect) {
-          const x = ((e.touches[0]?.clientX ?? rect.left + rect.width / 2) - rect.left) / rect.width * 100
-          const y = ((e.touches[0]?.clientY ?? rect.top + rect.height / 2) - rect.top) / rect.height * 100
+          const x = ((e.changedTouches[0]?.clientX ?? rect.left + rect.width / 2) - rect.left) / rect.width * 100
+          const y = ((e.changedTouches[0]?.clientY ?? rect.top + rect.height / 2) - rect.top) / rect.height * 100
           setTouchOrigin({ x, y })
         }
         setTouchScale(2)
       }
     }
     lastTapTime.current = now
-  }, [touchScale])
+  }, [touchScale, isZoomed, isRtl, goNext, goPrev])
 
   const handleShare = async () => {
     const url = window.location.href
@@ -162,14 +210,14 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
     }
   }
 
-  const isZoomed = showZoom || touchScale > 1
   const isMulti = images.length > 1
 
   return (
     <>
       <div
         ref={containerRef}
-        className="relative bg-[var(--secondary-bg)] border border-[var(--border)] p-3 sm:p-4 rounded-2xl overflow-hidden group cursor-crosshair touch-none"
+        className="relative bg-[var(--secondary-bg)] border border-[var(--border)] p-3 sm:p-4 rounded-2xl overflow-hidden group cursor-crosshair"
+        style={{ touchAction: isZoomed ? 'none' : 'pan-y' }}
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setShowZoom(true)}
         onMouseLeave={() => setShowZoom(false)}
@@ -181,7 +229,7 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
         {/* ── Main stage: full column width, no max-h clamp ── */}
         <div
           className="relative overflow-hidden rounded-xl bg-[var(--primary-bg)] aspect-square w-full flex items-center justify-center"
-          onTouchEnd={handleDoubleTap}
+          onTouchEnd={handleStageTouchEnd}
         >
           {hasImages ? (
             <OptimizedImage
@@ -221,26 +269,26 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
               <button
                 onClick={goPrev}
                 aria-label={t('product.prevImage')}
-                className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-[var(--surface)]/90 border border-[var(--border)] flex items-center justify-center shadow-sm hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
+                className="tap-native absolute start-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-[var(--surface)]/90 border border-[var(--border)] flex items-center justify-center shadow-sm hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
               >
-                <ChevronLeft size={18} className="text-[var(--text-primary)]" />
+                <ChevronLeft size={18} className="text-[var(--text-primary)] rtl:rotate-180" />
               </button>
               <button
                 onClick={goNext}
                 aria-label={t('product.nextImage')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-[var(--surface)]/90 border border-[var(--border)] flex items-center justify-center shadow-sm hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
+                className="tap-native absolute end-3 top-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full bg-[var(--surface)]/90 border border-[var(--border)] flex items-center justify-center shadow-sm hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
               >
-                <ChevronRight size={18} className="text-[var(--text-primary)]" />
+                <ChevronRight size={18} className="text-[var(--text-primary)] rtl:rotate-180" />
               </button>
               {/* Photo counter, e.g. 3 / 7 */}
-              <span className="absolute bottom-3 left-3 z-10 bg-black/60 backdrop-blur-sm text-white text-xs font-mono px-2.5 py-1 rounded-full">
+              <span className="absolute bottom-3 start-3 z-10 bg-black/60 backdrop-blur-sm text-white text-xs font-mono px-2.5 py-1 rounded-full">
                 {Math.min(activeIndex + 1, images.length)} / {images.length}
               </span>
             </>
           )}
 
           {/* Desktop zoom hint */}
-          <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-xs text-white px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5 opacity-0 group-hover:opacity-80 transition-opacity max-sm:hidden pointer-events-none">
+          <div className="absolute bottom-3 end-3 bg-black/60 backdrop-blur-sm text-xs text-white px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5 opacity-0 group-hover:opacity-80 transition-opacity max-sm:hidden pointer-events-none">
             <ZoomIn size={12} /> {t('product.hoverToZoom')}
           </div>
 
@@ -252,15 +300,15 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
                 setTouchScale(1)
                 setTouchOrigin({ x: 50, y: 50 })
               }}
-              className="absolute top-3 right-3 z-20 bg-black/60 backdrop-blur-sm text-xs text-white px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5"
+              className="absolute top-3 end-3 z-20 bg-black/60 backdrop-blur-sm text-xs text-white px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5"
             >
-              {Math.round(showZoom ? 150 : touchScale * 100)}% — tap to reset
+              {Math.round(showZoom ? 150 : touchScale * 100)}% · {t('a11y.galleryReset')}
             </button>
           )}
 
           {product.customLabel && (
             <span
-              className="absolute top-3 left-3 z-10 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wider rounded-lg shadow-lg"
+              className="absolute top-3 start-3 z-10 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wider rounded-lg shadow-lg"
               style={{
                 backgroundColor: product.customLabelColor || '#159a67',
                 color: isLightColor(product.customLabelColor || '#159a67') ? '#1a1a1a' : '#ffffff',
@@ -279,7 +327,7 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
 
         {/* ── Thumbnail strip ── */}
         {isMulti && hasImages && (
-          <div className="mt-3 grid grid-cols-6 sm:grid-cols-7 gap-2" role="tablist" aria-label={t('product.ariaGalleryThumbs')}>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={t('product.ariaGalleryThumbs')}>
             {images.map((img, idx) => (
               <button
                 key={img.url + idx}
@@ -290,7 +338,7 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
                   setActiveIndex(idx)
                   setTouchScale(1)
                 }}
-                className={`relative aspect-square rounded-lg overflow-hidden border-2 bg-[var(--primary-bg)] transition-colors cursor-pointer p-0 ${
+                className={`tap-native relative h-14 w-14 shrink-0 rounded-lg overflow-hidden border-2 bg-[var(--primary-bg)] transition-colors cursor-pointer p-0 ${
                   idx === activeIndex
                     ? 'border-[var(--accent-primary)]'
                     : 'border-[var(--border)] hover:border-[var(--accent-gold)]'
@@ -311,13 +359,15 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
           </div>
         )}
 
-        <button
-          onClick={handleShare}
-          className="absolute top-6 right-6 z-10 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-2 hover:border-[var(--accent-gold)] transition-colors"
-          aria-label={t('product.ariaShare')}
-        >
-          <Share2 size={16} className="text-[var(--text-secondary)]" />
-        </button>
+        {!isZoomed && (
+          <button
+            onClick={handleShare}
+            className="tap-native absolute top-3 end-3 z-10 h-11 w-11 bg-[var(--surface)] border border-[var(--border)] rounded-lg flex items-center justify-center hover:border-[var(--accent-gold)] transition-colors"
+            aria-label={t('product.ariaShare')}
+          >
+            <Share2 size={16} className="text-[var(--text-secondary)]" />
+          </button>
+        )}
       </div>
       {showShare && (
         <div className="mt-2 bg-[var(--success)] text-[var(--btn-success-text)] text-xs font-bold px-4 py-2 rounded-lg inline-block">

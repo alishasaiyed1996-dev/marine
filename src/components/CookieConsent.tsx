@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Cookie, X } from 'lucide-react'
 import { writeConsent, readConsent } from '../lib/consent'
+import { useOverlayBehavior } from '../lib/overlay'
 
 /**
  * Cookie consent banner.
@@ -41,40 +42,15 @@ export function CookieConsent() {
     setVisible(false)
   }, [])
 
-  // Focus management: move focus into the dialog when it opens, and restore
-  // it to the page when it closes.
-  useEffect(() => {
-    if (!visible) return
-    const previouslyFocused = document.activeElement as HTMLElement | null
-    acceptRef.current?.focus()
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        decline()
-        return
-      }
-      if (event.key !== 'Tab') return
-      const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      )
-      if (!focusables || focusables.length === 0) return
-      const first = focusables[0]
-      const last = focusables[focusables.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      previouslyFocused?.focus?.()
-    }
-  }, [visible, accept, decline])
+  // Shared overlay behavior: scroll lock, Escape, focus trap, focus move
+  // (to Accept) + restore — same primitive the cart drawer and modals use.
+  useOverlayBehavior({
+    open: visible,
+    onClose: decline,
+    panelRef: dialogRef,
+    initialFocusRef: acceptRef,
+    lockKey: 'consent',
+  })
 
   if (!visible) return null
 
@@ -82,13 +58,16 @@ export function CookieConsent() {
     // The container spans the viewport but must not swallow clicks: only the
     // dialog itself is interactive. The previous fixed overlay covered the
     // whole page, including the WhatsApp button and the add-to-cart CTA.
-    <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center p-4 md:p-6 pointer-events-none">
+    // Bottom padding includes the home-indicator inset so Accept/Decline
+    // never sit in the gesture zone on notched phones.
+    <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] md:p-6 pointer-events-none">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="cookie-consent-title"
         aria-describedby="cookie-consent-body"
+        data-modal="consent"
         className="pointer-events-auto mx-auto w-full max-w-4xl rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl p-5 md:p-6"
       >
         <div className="flex flex-col md:flex-row md:items-center gap-4">
@@ -106,11 +85,11 @@ export function CookieConsent() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={decline}
-              className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--text-muted)] transition-colors cursor-pointer"
+              className="rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-2.5 text-xs font-bold text-[var(--text-secondary)] hover:border-[var(--text-muted)] transition-colors cursor-pointer"
             >
               {t('cookieConsent.decline')}
             </button>
@@ -118,7 +97,7 @@ export function CookieConsent() {
               ref={acceptRef}
               type="button"
               onClick={accept}
-              className="rounded-xl bg-[var(--accent-gold)] px-4 py-2 text-xs font-extrabold text-[var(--btn-blue-text)] hover:brightness-95 transition-colors cursor-pointer"
+              className="rounded-xl bg-[var(--accent-gold)] px-4 py-2.5 text-xs font-extrabold text-[var(--btn-blue-text)] hover:brightness-95 transition-colors cursor-pointer"
             >
               {t('cookieConsent.accept')}
             </button>
@@ -126,7 +105,7 @@ export function CookieConsent() {
               type="button"
               onClick={decline}
               aria-label={t('cookieConsent.decline')}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] md:hidden cursor-pointer"
+              className="tap-native tap-pad flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] md:hidden cursor-pointer"
             >
               <X size={16} />
             </button>

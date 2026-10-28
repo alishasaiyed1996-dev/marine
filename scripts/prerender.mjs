@@ -336,6 +336,15 @@ function injectIntoTemplate(template, path, routeData) {
   // their original position near the top of the document.
   html = html.replace('</head>', `  ${headTags}\n  </head>`)
 
+  // Arabic documents only: preload the variable Arabic font so the first
+  // paint of the hero heading does not render in the Latin-only Manrope
+  // fallback and later reflow when Noto Sans Arabic swaps in (the main CLS
+  // source on /ar mobile). Preloading on en/es pages would only waste the
+  // bandwidth budget on a font they never use.
+  if (locale === 'ar') {
+    html = html.replace('</head>', `  <link rel="preload" href="/fonts/noto-sans-arabic-var.woff2" as="font" type="font/woff2" crossorigin>\n  </head>`)
+  }
+
   // Replace the loading spinner with crawlable body content. React replaces
   // the whole #root on mount, so this never remains beside the app.
   const bodyHtml = routeData.bodyHtml || generateBodyHtml(routeData)

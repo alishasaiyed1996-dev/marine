@@ -35,10 +35,10 @@ export function ProductPagination({ currentPage, totalPages, onPageChange }: Pro
     }, [])
 
   const linkClass =
-    'inline-flex h-9 min-w-9 items-center justify-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-bold text-[var(--text-primary)] transition-colors hover:border-[var(--accent-primary)]'
+    'tap-native inline-flex h-11 min-w-11 items-center justify-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-bold text-[var(--text-primary)] transition-colors hover:border-[var(--accent-primary)]'
 
   return (
-    <div className="flex items-center justify-center gap-1.5 mt-8">
+    <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-2 mt-8">
       {currentPage > 1 ? (
         <Link
           to={hrefFor(currentPage - 1)}
@@ -53,12 +53,12 @@ export function ProductPagination({ currentPage, totalPages, onPageChange }: Pro
       )}
       {pages.map((p, i) =>
         typeof p === 'string' ? (
-          <span key={`dots-${i}`} className="flex h-9 items-center px-1 text-xs text-[var(--text-muted)] max-[768px]:h-12">…</span>
+          <span key={`dots-${i}`} className="flex h-11 items-center px-1 text-xs text-[var(--text-muted)]">…</span>
         ) : p === currentPage ? (
           <span
             key={p}
             aria-current="page"
-            className="inline-flex h-9 min-w-9 items-center justify-center rounded-lg text-xs font-bold transition-colors border border-[var(--accent-primary)] bg-[var(--accent-primary)] text-[var(--btn-blue-text)]"
+            className="tap-native inline-flex h-11 min-w-11 items-center justify-center rounded-lg text-xs font-bold transition-colors border border-[var(--accent-primary)] bg-[var(--accent-primary)] text-[var(--btn-blue-text)]"
           >
             {p}
           </span>
@@ -67,7 +67,7 @@ export function ProductPagination({ currentPage, totalPages, onPageChange }: Pro
             key={p}
             to={hrefFor(p)}
             onClick={(e) => { e.preventDefault(); onPageChange(p) }}
-            className={`inline-flex h-9 min-w-9 items-center justify-center rounded-lg text-xs font-bold transition-colors border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] hover:border-[var(--accent-primary)]`}
+            className={`tap-native inline-flex h-11 min-w-11 items-center justify-center rounded-lg text-xs font-bold transition-colors border border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)] hover:border-[var(--accent-primary)]`}
           >
             {p}
           </Link>

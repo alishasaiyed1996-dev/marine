@@ -4,6 +4,11 @@
  * eBay event → validate → identify SKU via ebay_listings mapping → create the
  * internal order once → claim stock through the central inventory service.
  *
+ * Draft/hidden products with a system-managed eBay listing claim stock exactly
+ * like published ones (sellableOnEbay): the website publish gate controls
+ * storefront visibility, not inventory — imported items sell on eBay while
+ * still drafts, and those sales must move central stock.
+ *
  * Idempotency: the eBay notification id is stored UNIQUELY in ebay_event_log;
  * a redelivered event short-circuits as 'duplicate' — no second deduction.
  * Order-level dedupe: ebay_orders.ebay_order_id is UNIQUE, so even a webhook
@@ -18,7 +23,7 @@ import { generateOrderNumber } from '../utils/helpers.js'
 import logger from '../utils/logger.js'
 import { decreaseStock, increaseStock } from './centralInventory.js'
 import { getOrder, listOrdersSince, isEbayConfigured, isRetryableError, type EbayApiOrder } from './ebayClient.js'
-import { extractOrderId, skuCandidates } from './ebayOrderEvents.js'
+import { extractOrderId, sellableOnEbay, skuCandidates } from './ebayOrderEvents.js'
 
 // Re-exported for webhook route convenience.
 export { extractOrderId, extractEventId } from './ebayOrderEvents.js'
@@ -112,7 +117,8 @@ export async function processEbayOrderEvent(
     // ── Map line items to internal products BY SKU. ──
     // The product SKU is the link between the channels: a website product with
     // the same SKU is the same physical stock. The ebay_listings mirror row is
-    // only a fast path — stock ownership never depends on it.
+    // the fast path AND the eligibility witness for drafts (see sellableOnEbay):
+    // system-managed listings claim stock even while the product is unpublished.
     const lineItems = ebayOrder.lineItems || []
     const mapped: Array<{ productId: string; sku: string; quantity: number; title: string; unitPrice: number }> = []
     const unmappedSkus: string[] = []
@@ -122,9 +128,11 @@ export async function processEbayOrderEvent(
       const candidates = skuCandidates(sku)
       const listing = await prisma.ebayListing.findFirst({
         where: { sku: { in: candidates } },
-        select: { productId: true, product: { select: { regularPrice: true, salePrice: true, status: true } } },
+        select: { id: true, status: true, productId: true, product: { select: { regularPrice: true, salePrice: true, status: true } } },
       })
-      // No mirror row? The website product with the same SKU still claims.
+      // No mirror row? A published website product with the same SKU still
+      // claims (published-only — see sellableOnEbay for why drafts need the
+      // mirror row to be trusted as this system's own listing).
       let productFallback: { id: string; regularPrice: unknown; salePrice: unknown; status: string } | null = null
       if (!listing) {
         productFallback = await prisma.product.findFirst({
@@ -146,7 +154,12 @@ export async function processEbayOrderEvent(
         }
       }
       const product = listing ? { id: listing.productId, ...listing.product } : productFallback
-      if (!product || product.status !== 'published') {
+      // Channel eligibility is a pure rule (sellableOnEbay in ebayOrderEvents.ts,
+      // unit-tested): a system-managed mirror row means this product sells on
+      // eBay regardless of website status (imported items are drafts until the
+      // admin clears the publish gate), while the SKU-fallback path stays
+      // published-only. Stock truth must not depend on the website publish gate.
+      if (!product || !sellableOnEbay(product, listing)) {
         unmappedSkus.push(sku)
         continue
       }
@@ -170,9 +183,10 @@ export async function processEbayOrderEvent(
     }
 
     if (mapped.length === 0) {
-      // No website product carries these SKUs (or it is not published): stay
+      // No website product carries these SKUs (or none is sellable on eBay —
+      // draft items without a managed listing, or archived ones): stay
       // explicit — stock is never guessed.
-      await upsertEbayOrder(orderId, 'failed', ebayOrder, 'no mapped line items — no published website product matches these SKUs')
+      await upsertEbayOrder(orderId, 'failed', ebayOrder, 'no mapped line items — no eBay-linked or published website product matches these SKUs')
       await markEvent(eventId, 'failed', `unmapped SKUs: ${unmappedSkus.join(', ') || 'none'}`)
       log.warn({ orderId, unmappedSkus }, 'eBay order has no mapped internal products')
       return { status: 'failed', note: 'no mapped line items' }

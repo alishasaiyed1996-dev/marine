@@ -349,14 +349,14 @@ export default function Products() {
             {t('products.description')}
           </p>
           <div className="relative max-w-[640px] mx-auto mt-8">
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+            <Search size={16} className="absolute start-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
             <input
               type="search"
               value={localSearch}
               onChange={(e) => debouncedSetSearch(e.target.value)}
               placeholder={t('products.searchPlaceholder')}
               autoComplete="off"
-              className="w-full pl-11 pr-4 py-4 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
+              className="w-full ps-11 pe-4 py-4 rounded-lg bg-[var(--surface-soft)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
             />
           </div>
         </div>
@@ -391,7 +391,7 @@ export default function Products() {
             />
 
             {/* Main content */}
-            <main>
+            <div>
               {/* Outage must be visible: without this the page silently
                   serves the bundled demo catalog instead of real stock. */}
               {isError && (
@@ -407,7 +407,7 @@ export default function Products() {
                   {searchQuery && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full border border-[var(--accent-primary)] bg-[var(--accent-primary)]/5 text-[var(--accent-primary)]">
                       Search: "{searchQuery}"
-                      <button onClick={() => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); setSearchQuery(''); setLocalSearch(''); writeParams((p) => { p.delete('search'); p.delete('page') }) }} className="ml-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none p-0 text-inherit font-bold">×</button>
+                      <button onClick={() => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); setSearchQuery(''); setLocalSearch(''); writeParams((p) => { p.delete('search'); p.delete('page') }) }} aria-label={t('a11y.removeFilter')} className="tap-native tap-pad flex h-8 w-8 items-center justify-center me-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none text-inherit font-bold">×</button>
                     </span>
                   )}
                   {selectedCategories.map((catId) => {
@@ -415,7 +415,7 @@ export default function Products() {
                     return (
                       <span key={catId} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full border border-[var(--accent-gold)] bg-[var(--accent-gold)]/5 text-[var(--accent-gold)]">
                         {cat?.name ?? catId}
-                        <button onClick={() => toggleCategory(catId)} className="ml-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none p-0 text-inherit font-bold">×</button>
+                        <button onClick={() => toggleCategory(catId)} aria-label={t('a11y.removeFilter')} className="tap-native tap-pad flex h-8 w-8 items-center justify-center me-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none text-inherit font-bold">×</button>
                       </span>
                     )
                   })}
@@ -424,20 +424,20 @@ export default function Products() {
                     return (
                       <span key={slug} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full border border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/5 text-[var(--accent-primary)]">
                         {brand?.name ?? slug}
-                        <button onClick={() => toggleBrand(slug)} className="ml-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none p-0 text-inherit font-bold">×</button>
+                        <button onClick={() => toggleBrand(slug)} aria-label={t('a11y.removeFilter')} className="tap-native tap-pad flex h-8 w-8 items-center justify-center me-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none text-inherit font-bold">×</button>
                       </span>
                     )
                   })}
                   {showOnSale && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full border border-[var(--danger)] bg-[var(--danger)]/5 text-[var(--danger)]">
                       On Sale
-                      <button onClick={handleToggleOnSale} className="ml-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none p-0 text-inherit font-bold">×</button>
+                      <button onClick={handleToggleOnSale} aria-label={t('a11y.removeFilter')} className="tap-native tap-pad flex h-8 w-8 items-center justify-center me-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none text-inherit font-bold">×</button>
                     </span>
                   )}
                   {urgencyFilter !== 'all' && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-full border border-[var(--accent-gold)]/30 bg-[var(--accent-gold)]/5 text-[var(--accent-gold)]">
                       Emergency Available
-                      <button onClick={() => handleSetUrgency('all')} className="ml-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none p-0 text-inherit font-bold">×</button>
+                      <button onClick={() => handleSetUrgency('all')} aria-label={t('a11y.removeFilter')} className="tap-native tap-pad flex h-8 w-8 items-center justify-center me-0.5 hover:text-[var(--danger)] transition-colors cursor-pointer bg-transparent border-none text-inherit font-bold">×</button>
                     </span>
                   )}
                   <button onClick={handleClearFilters} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--accent-primary)] hover:border-[var(--accent-primary)] transition-colors cursor-pointer">
@@ -453,13 +453,7 @@ export default function Products() {
                   value={sortBy}
                   onChange={(e) => handleSortChange(e.target.value as SortOption)}
                   aria-label={t('products.sort')}
-                  className="px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] appearance-none cursor-pointer"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394A3B8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 8px center',
-                    paddingRight: '32px',
-                  }}
+                  className="select-chevron px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] cursor-pointer"
                 >
                   <option value="relevance">{t('products.sort')}: {t('products.sortRelevance')}</option>
                   <option value="name-asc">{t('products.sort')}: {t('products.sortNameAsc')}</option>
@@ -500,7 +494,7 @@ export default function Products() {
                   <ProductPagination currentPage={safePage} totalPages={totalPages} onPageChange={handlePageChange} />
                 </>
               )}
-            </main>
+            </div>
           </div>
         </div>
       </section>

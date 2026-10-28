@@ -28,7 +28,7 @@ export const Footer = memo(function Footer() {
           <div>
             <Link to={lp('/')} className="flex items-center gap-3 no-underline mb-4 text-white">
               <img
-                src="/images/alka-traders-logo.png"
+                src="/images/alka-traders-logo-128.png"
                 alt="Alka Traders Logo"
                 width={48}
                 height={48}

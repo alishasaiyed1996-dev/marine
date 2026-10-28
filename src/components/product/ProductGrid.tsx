@@ -47,14 +47,14 @@ function ProductCard({ product, addedIds, onAddToCart, priority = false }: { pro
         </div>
         {product.customLabel && (
           <span
-            className="absolute top-2 left-2 z-10 px-2.5 py-1 text-xs font-extrabold uppercase tracking-wider rounded"
+            className="absolute top-2 start-2 z-10 px-2.5 py-1 text-xs font-extrabold uppercase tracking-wider rounded"
             style={{ backgroundColor: product.customLabelColor || '#159a67', color: isLightColor(product.customLabelColor || '#159a67') ? '#1a1a1a' : '#ffffff' }}
           >
             {product.customLabel}
           </span>
         )}
         {product.availability === 'emergency' && (
-          <span className="absolute top-2 right-2 z-10 px-2 py-1 rounded-full text-xs font-mono border border-[var(--danger)]/20 text-[var(--danger)] bg-white">
+          <span className="absolute top-2 end-2 z-10 px-2 py-1 rounded-full text-xs font-mono border border-[var(--danger)]/20 text-[var(--danger)] bg-white">
             {t('product.emergency')}
           </span>
         )}
@@ -96,7 +96,7 @@ function ProductCard({ product, addedIds, onAddToCart, priority = false }: { pro
                 </span>
               )}
             </div>
-            <span className={`text-xs font-bold text-right shrink-0 ${product.inStock ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+            <span className={`text-xs font-bold text-end shrink-0 ${product.inStock ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
               {product.inStock ? t('product.inStockCount', { count: product.stockCount }) : t('product.outOfStockCount')}
             </span>
           </div>

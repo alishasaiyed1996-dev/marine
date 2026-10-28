@@ -266,15 +266,26 @@ class ReservationError extends Error {
 
 /**
  * Enqueue an eBay quantity sync for every listing mapped to this product.
- * Sets status='sync-pending' rows are processed by the retry scheduler
- * (ebaySyncScheduler). Idempotent per listing — re-enqueue is harmless.
+ * Sets status='sync-pending' and immediately requests one push pass
+ * (requestSyncTick) — near-real-time convergence after any stock change.
+ * Re-enqueue is idempotent per listing; a failed kick falls back to the
+ * 10-minute scheduler sweep. Nothing here can fail or roll back the central
+ * stock change that produced the call.
  */
 export async function enqueueEbayQuantitySync(productId: string): Promise<number> {
   const res = await prisma.ebayListing.updateMany({
     where: { productId, status: { in: ['published', 'synced', 'sync-failed', 'sync-pending'] } },
     data: { status: 'sync-pending' },
   })
-  if (res.count > 0) log.info({ productId, listings: res.count }, 'eBay quantity sync enqueued')
+  if (res.count > 0) {
+    log.info({ productId, listings: res.count }, 'eBay quantity sync enqueued')
+    // Dynamic import keeps the module graph acyclic (the scheduler pulls the
+    // order service, which pulls this module). Fire-and-forget: the kick is a
+    // latency optimization, the timed sweep remains the durability net.
+    void import('./ebaySyncScheduler.js')
+      .then((sync) => sync.requestSyncTick())
+      .catch((err) => log.warn({ err, productId }, 'eBay sync kick unavailable (timed sweep will catch up)'))
+  }
   return res.count
 }
 

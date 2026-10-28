@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useStore } from '../../store/useStore'
 import { storefront } from '../../lib/api'
 import { useLocalizedPath } from '../../lib/locale'
+import { useOverlayBehavior } from '../../lib/overlay'
 import { SearchInput, SearchResultsList } from '../search'
 import type { SearchResult } from '../search'
 
@@ -77,14 +78,24 @@ export function CommandSearch() {
     }
   }, [commandOpen])
 
+  // Cmd/Ctrl+K toggles (desktop); Escape + focus trap + scroll lock + focus
+  // restore come from the shared overlay behavior. The palette is ALSO opened
+  // from the navbar search button (the only way to reach it on touch devices,
+  // which have no Cmd/Ctrl key).
+  const panelRef = useRef<HTMLDivElement>(null)
+  useOverlayBehavior({
+    open: commandOpen,
+    onClose: () => setCommandOpen(false),
+    panelRef,
+    initialFocusRef: inputRef,
+    lockKey: 'command',
+  })
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         setCommandOpen(!commandOpen)
-      }
-      if (e.key === 'Escape') {
-        setCommandOpen(false)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -132,9 +143,20 @@ export function CommandSearch() {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCommandOpen(false)} />
-      <div className="relative w-full max-w-[600px] bg-[var(--secondary-bg)] border border-[var(--border)] shadow-2xl">
+    // pt-[12svh] and the internal max-height keep the palette inside short
+    // viewports (landscape phones); the panel itself scrolls with
+    // overscroll containment so iOS can't rubber-band the page behind it.
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[12svh]">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCommandOpen(false)} aria-hidden="true" />
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('search.placeholder')}
+        data-modal="command"
+        className="relative max-h-[74dvh] w-full max-w-[600px] overflow-y-auto overscroll-contain bg-[var(--secondary-bg)] border border-[var(--border)] shadow-2xl outline-none"
+      >
         <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--border)]">
           <SearchInput
             ref={inputRef}

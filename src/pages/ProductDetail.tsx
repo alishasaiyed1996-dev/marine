@@ -90,6 +90,30 @@ export default function ProductDetail() {
     setShowStickyBar(false)
   }, [id])
 
+  // The sticky mobile add-to-cart bar is position:fixed, so at max scroll it
+  // permanently covers the bottom of the document (footer links). In-flow
+  // spacers inside the page can't help — the footer renders after this
+  // component. Append real scrollable clearance to the END of <body> instead,
+  // sized to clear the bar (~68px) plus its safe-area padding.
+  useEffect(() => {
+    if (!product?.inStock) return
+    const spacer = document.createElement('div')
+    spacer.setAttribute('aria-hidden', 'true')
+    spacer.style.height = '6rem'
+    spacer.style.height = 'calc(6rem + env(safe-area-inset-bottom, 0px))'
+    // No sticky bar on desktop
+    spacer.style.display = 'none'
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const sync = () => { spacer.style.display = mq.matches ? 'none' : 'block' }
+    sync()
+    mq.addEventListener('change', sync)
+    document.body.appendChild(spacer)
+    return () => {
+      mq.removeEventListener('change', sync)
+      spacer.remove()
+    }
+  }, [product?.inStock])
+
   if (isLoading) {
     // Skeleton mirrors the real two-column detail layout — no layout jump,
     // no white flash, while the product data resolves.
@@ -119,7 +143,7 @@ export default function ProductDetail() {
       <>
       <SEO title={t('product.productNotFound')} description={t('product.productNotFoundDesc')} noindex />
       <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-24 text-center">
-        <h2 className="text-2xl font-bold mb-2">{t('product.productNotFound')}</h2>
+        <h1 className="text-2xl font-bold mb-2">{t('product.productNotFound')}</h1>
         <p className="text-body-sm text-[var(--text-secondary)] mb-6">{t('product.productNotFoundDesc')}</p>
         <Link to={lp('/products')} className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold rounded-xl hover:bg-[var(--accent-primary-hover)] transition-all">
           <ArrowLeft size={16} /> {t('product.backToProducts')}
@@ -252,7 +276,7 @@ export default function ProductDetail() {
           <ProductImageGallery product={product} />
 
           {/* RIGHT COLUMN: Details */}
-          <div className="space-y-6 text-left">
+          <div className="space-y-6 text-start">
             <div>
               <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-muted)] font-mono mb-2">
                 <Link to={lp('/')} className="hover:text-[var(--accent-primary)]">{t('nav.home')}</Link>
@@ -323,7 +347,7 @@ export default function ProductDetail() {
                   </span>
                 )}
               </div>
-              <div className="text-right flex items-center gap-2">
+              <div className="text-end flex items-center gap-2">
                 {product.inStock ? (
                   <>
                     <span className="inline-block w-2.5 h-2.5 rounded-full bg-[var(--success)] animate-pulse" />
@@ -357,10 +381,11 @@ export default function ProductDetail() {
             {product.inStock && (
               <div ref={ctaRef}>
                 <div className="flex items-center gap-4 border border-[var(--border)] bg-[var(--secondary-bg)] p-2 rounded-xl justify-between">
-                  <span className="text-xs font-semibold text-[var(--text-secondary)] pl-2">{t('product.quantity')}</span>
+                  <span className="text-xs font-semibold text-[var(--text-secondary)] ps-2">{t('product.quantity')}</span>
                   <div className="flex items-center gap-1 bg-[var(--primary-bg)] p-0.5 rounded-full">
                     <button
                       onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                      aria-label={t('a11y.decreaseQuantity')}
                       className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-[var(--border)] transition-colors border-none cursor-pointer font-bold text-[var(--text-secondary)] text-sm"
                     >
                       <Minus size={16} />
@@ -369,7 +394,7 @@ export default function ProductDetail() {
                     <button
                       onClick={() => setQuantity((q) => Math.min(q + 1, Math.max(1, product.stockCount)))}
                       disabled={quantity >= Math.max(1, product.stockCount)}
-                      aria-label={t('product.quantity')}
+                      aria-label={t('a11y.increaseQuantity')}
                       className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-[var(--border)] transition-colors border-none cursor-pointer font-bold text-[var(--text-secondary)] text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Plus size={16} />
@@ -480,7 +505,7 @@ export default function ProductDetail() {
         {hasDescriptionContent && (
           <section
             aria-labelledby="product-details-heading"
-            className="mt-16 border-t border-[var(--border)] pt-10 text-left"
+            className="mt-16 border-t border-[var(--border)] pt-10 text-start"
           >
             <div className="border-b border-[var(--border)] mb-6">
               <h2
@@ -531,7 +556,7 @@ export default function ProductDetail() {
         {page.faqs.length > 0 && (
           <section
             aria-labelledby="product-faq-heading"
-            className="mt-16 border-t border-[var(--border)] pt-10 text-left"
+            className="mt-16 border-t border-[var(--border)] pt-10 text-start"
           >
             <h2
               id="product-faq-heading"
@@ -559,7 +584,7 @@ export default function ProductDetail() {
 
         {/* We've Got You Covered */}
         <section className="mt-16 bg-[var(--secondary-bg)] border border-[var(--border)] p-8 rounded-2xl text-center">
-          <h3 className="heading-xl text-[var(--text-primary)] mb-2 uppercase">{t('product.weGotYou')}</h3>
+          <h2 className="heading-xl text-[var(--text-primary)] mb-2 uppercase">{t('product.weGotYou')}</h2>
           <p className="text-xs text-[var(--text-secondary)] max-w-[640px] mx-auto leading-relaxed mb-8">{t('product.weGotYouSub')}</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {([
@@ -598,7 +623,7 @@ export default function ProductDetail() {
             Browse all products
           </Link>
           <Link to={lp('/rfq')} className="rounded-full border border-[var(--accent-primary)] px-4 py-2 font-semibold text-[var(--accent-primary)] no-underline hover:bg-[var(--accent-primary)] hover:text-[var(--btn-blue-text)]">
-            Request a quote
+            {t('product.requestQuote', { defaultValue: 'Request a quote' })}
           </Link>
         </nav>
 
@@ -607,7 +632,7 @@ export default function ProductDetail() {
         {page.related.length > 0 && (
           <nav
             aria-labelledby="related-part-numbers"
-            className="mt-12 rounded-2xl border border-[var(--border)] bg-[var(--secondary-bg)] p-6 text-left"
+            className="mt-12 rounded-2xl border border-[var(--border)] bg-[var(--secondary-bg)] p-6 text-start"
           >
             <h2 id="related-part-numbers" className="font-display text-lg font-bold text-[var(--text-primary)]">
               Related part numbers
@@ -622,7 +647,7 @@ export default function ProductDetail() {
                     {item.name}
                   </Link>
                   {(item.model || item.sku) && (
-                    <span className="ml-2 font-mono text-xs text-[var(--text-muted)]">
+                    <span className="ms-2 font-mono text-xs text-[var(--text-muted)]">
                       {item.model || item.sku}
                     </span>
                   )}

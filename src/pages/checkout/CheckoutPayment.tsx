@@ -126,7 +126,7 @@ export function CheckoutPayment({
       {/* Letter of credit — a separate offline arrangement with its own
           documents, not a relabelled bank transfer. */}
       {paymentMethod === 'lc' && (
-        <div className="mb-6 bg-[var(--surface)] border border-[var(--accent-primary)]/40 rounded-xl p-5 text-left">
+        <div className="mb-6 bg-[var(--surface)] border border-[var(--accent-primary)]/40 rounded-xl p-5 text-start">
           <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-3">
             {t('checkout.lcHeading')}
           </h4>
@@ -137,7 +137,7 @@ export function CheckoutPayment({
             {letterOfCredit.acceptingBanks && (
               <div className="flex items-start justify-between gap-4">
                 <dt className="text-xs text-[var(--text-muted)] shrink-0">{t('checkout.lcAcceptingBanks')}</dt>
-                <dd className="text-xs text-[var(--text-primary)] text-right break-all font-semibold">
+                <dd className="text-xs text-[var(--text-primary)] text-end break-all font-semibold">
                   {letterOfCredit.acceptingBanks}
                 </dd>
               </div>
@@ -145,7 +145,7 @@ export function CheckoutPayment({
             {letterOfCredit.documentsRequired && (
               <div className="flex items-start justify-between gap-4">
                 <dt className="text-xs text-[var(--text-muted)] shrink-0">{t('checkout.lcDocuments')}</dt>
-                <dd className="text-xs text-[var(--text-primary)] text-right break-all">
+                <dd className="text-xs text-[var(--text-primary)] text-end break-all">
                   {letterOfCredit.documentsRequired}
                 </dd>
               </div>
@@ -163,7 +163,7 @@ export function CheckoutPayment({
       )}
 
       {paymentMethod === 'paypal' && (
-        <div className="p-8 bg-[var(--primary-bg)] border border-[var(--border)] text-center rounded-xl">
+        <div className="p-5 sm:p-8 bg-[var(--primary-bg)] border border-[var(--border)] text-center rounded-xl">
           <p className="text-sm text-[var(--text-secondary)]">
             {t('checkout.paypalDesc')}
           </p>
@@ -173,18 +173,18 @@ export function CheckoutPayment({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-5 mt-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-8">
         <button
           type="button"
           onClick={() => goToStep(1)}
-          className="flex items-center justify-center gap-2 px-7 py-3.5 bg-transparent text-[var(--accent-primary)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-all rounded-xl cursor-pointer"
+          className="flex items-center justify-center gap-2 px-3 sm:px-7 py-3.5 bg-transparent text-[var(--accent-primary)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-all rounded-xl cursor-pointer"
         >
           <ChevronLeft size={16} /> {t('checkout.back')}
         </button>
         <button
           type="button"
           onClick={() => goToStep(3)}
-          className="flex items-center justify-center gap-2 px-7 py-3.5 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] transition-all rounded-xl cursor-pointer"
+          className="flex items-center justify-center gap-2 px-3 sm:px-7 py-3.5 bg-[var(--accent-primary)] text-[var(--btn-blue-text)] font-semibold text-sm border border-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] transition-all rounded-xl cursor-pointer"
         >
           {t('checkout.reviewOrder')}
         </button>

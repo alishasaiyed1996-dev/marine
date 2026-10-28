@@ -1,16 +1,42 @@
-import { useRef, useMemo } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { useRef, useMemo, useEffect } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Sphere, Line } from '@react-three/drei'
 import * as THREE from 'three'
 
 function GlobeInner() {
   const meshRef = useRef<THREE.Mesh>(null!)
   const groupRef = useRef<THREE.Group>(null!)
+  const invalidate = useThree((s) => s.invalidate)
+  const gl = useThree((s) => s.gl)
+  // Continuous rotation in frameloop="demand" mode: each rendered frame must
+  // call invalidate() to schedule the next one. When the globe scrolls out of
+  // view (or prefers-reduced-motion), we simply stop invalidating — the loop
+  // drains and GPU work drops to zero instead of burning battery behind the
+  // rest of the page.
+  const visibleRef = useRef(true)
+  const reducedRef = useRef(false)
+
+  useEffect(() => {
+    reducedRef.current = !!window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  }, [])
+
+  useEffect(() => {
+    const io = new IntersectionObserver((entries) => {
+      const visible = entries.some((e) => e.isIntersecting)
+      visibleRef.current = visible
+      if (visible) invalidate()
+    }, { threshold: 0 })
+    io.observe(gl.domElement)
+    return () => io.disconnect()
+  }, [gl, invalidate])
 
   useFrame((_, delta) => {
+    if (!visibleRef.current) return
+    if (reducedRef.current) return
     if (groupRef.current) {
       groupRef.current.rotation.y += delta * 0.15
     }
+    invalidate()
   })
 
   const nodes = useMemo(
@@ -100,8 +126,14 @@ function GlobeInner() {
 export default function GlobeScene() {
   return (
     <Canvas
-      camera={{ position: [0, 0, 6], fov: 45 }}
-      dpr={[1, 2]}
+      // z=8 so the 5.6-unit globe (radius 2.8) + glow ring fit inside the
+      // fov-45 frustum: at z=6 the visible height is ~4.97 and the poles were
+      // cropped by the viewport.
+      camera={{ position: [0, 0, 8], fov: 45 }}
+      // 1.5x dpr cap: 3x phones were shading 9x the pixels for a decorative
+      // globe for no visible benefit.
+      dpr={[1, 1.5]}
+      frameloop="demand"
       gl={{ antialias: true, alpha: true }}
     >
       <ambientLight intensity={0.5} />

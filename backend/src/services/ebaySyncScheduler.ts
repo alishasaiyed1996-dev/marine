@@ -6,7 +6,7 @@
  * Four jobs:
  *   1. pollRecentOrders — webhook-delivery net: recent Fulfillment orders run
  *      through the same idempotent processor. Order-level dedupe keeps stock
- *      claims single; failed orders retry on the next hourly bucket.
+ *      claims single; failed orders retry on the next tick bucket.
  *   2. syncPendingListings — pushes CENTRAL stock to every eBay listing marked
  *      sync-pending, using the Inventory API offer id when present or the
  *      Trading API ItemID for imported listings. Central inventory is
@@ -16,6 +16,14 @@
  *      last synced quantity (e.g. a missed webhook) and re-enqueues.
  *   4. retryPendingEvents — reprocesses deferred webhook events (temporary
  *      failures at delivery time) through the idempotent order processor.
+ *
+ * Plus an event-driven kick (requestSyncTick): every central stock change
+ * marks the product's mirror rows 'sync-pending' (centralInventory) and asks
+ * for an immediate push pass, so quantity updates reach eBay within seconds
+ * instead of the next 10-minute sweep. Jobs 1-4 stay the timed safety net.
+ * Draft/hidden products with a managed listing sync like published ones;
+ * only archiving ends the relationship (mirrors sellableOnEbay in the order
+ * processor).
  */
 import { prisma } from '../server.js'
 import logger from '../utils/logger.js'
@@ -53,11 +61,15 @@ export async function syncPendingListings(): Promise<{ synced: number; failed: n
   })
 
   for (const listing of listings) {
-    // Product archived/unpublished → end pushing; the listing row just idles.
-    if (listing.product.status !== 'published') {
+    // Only ARCHIVING ends the sync relationship. Draft/hidden products with a
+    // managed eBay listing keep selling there (imported items are drafts until
+    // the publish gate is cleared), so central stock must keep converging for
+    // them — otherwise a pre-publish sale leaves the central snapshot stale
+    // and the first post-publish push resurrects already-sold units on eBay.
+    if (listing.product.status === 'archived') {
       await prisma.ebayListing.update({
         where: { id: listing.id },
-        data: { status: 'sync-failed', lastError: 'product no longer published — map or end the eBay listing' },
+        data: { status: 'sync-failed', lastError: 'product archived — end the eBay listing' },
       })
       result.skipped++
       continue
@@ -118,7 +130,9 @@ export async function reconcileEbayQuantities(): Promise<number> {
 
   let drifted = 0
   for (const listing of active) {
-    if (listing.product.status !== 'published') continue
+    // Same rule as syncPendingListings: archiving ends the relationship;
+    // drafts/hidden with a managed listing must keep reconciling.
+    if (listing.product.status === 'archived') continue
     const central = listing.product.stockCount
     if (listing.lastSyncedQty !== central) {
       await prisma.ebayListing.update({
@@ -142,20 +156,63 @@ export async function retryDeferredEvents(): Promise<number> {
 let interval: ReturnType<typeof setInterval> | null = null
 let firstRun: ReturnType<typeof setTimeout> | null = null
 let running = false
+let kickRequested = false
+
+/**
+ * The sweeps. `includeOrders=false` (kick path) skips the order poll and the
+ * deferred-event retry: webhooks already delivered those events and the
+ * processor handles them inline — the poll is the gap-filler, not the
+ * trigger, and kicks only need the quantity push.
+ */
+async function runSweeps(includeOrders: boolean): Promise<void> {
+  if (includeOrders) {
+    // A failed poll must not abort the quantity jobs.
+    await pollRecentOrders().catch((err) => log.error({ err }, 'eBay order poll failed'))
+  }
+  await syncPendingListings()
+  await reconcileEbayQuantities()
+  if (includeOrders) await retryDeferredEvents()
+}
 
 async function tick() {
   if (running) return // never overlap sweeps
   running = true
   try {
-    // A failed poll must not abort the quantity jobs.
-    await pollRecentOrders().catch((err) => log.error({ err }, 'eBay order poll failed'))
-    await syncPendingListings()
-    await reconcileEbayQuantities()
-    await retryDeferredEvents()
+    await runSweeps(true)
   } catch (err) {
     log.error({ err }, 'eBay sync tick failed')
   } finally {
     running = false
+  }
+}
+
+/**
+ * Event-driven push, requested by centralInventory (enqueueEbayQuantitySync)
+ * after every central stock change: run one push pass immediately instead of
+ * letting the change wait for the next 10-minute sweep. Sweeps-never-overlap
+ * still holds: a kick landing mid-sweep folds into ONE debounced follow-up
+ * run, so a burst of stock changes produces one extra pass, not one per
+ * product. Failure simply falls back to the timed sweep.
+ */
+export function requestSyncTick(): void {
+  if (running) { kickRequested = true; return }
+  void kick().catch((err) => log.error({ err }, 'eBay sync kick failed'))
+}
+
+async function kick(): Promise<void> {
+  if (running) { kickRequested = true; return }
+  running = true
+  try {
+    await runSweeps(false)
+  } catch (err) {
+    log.error({ err }, 'eBay sync kick failed')
+  } finally {
+    running = false
+    if (kickRequested) {
+      kickRequested = false
+      // The delay coalesces a whole burst of stock events into one pass.
+      setTimeout(() => void kick().catch((err) => log.error({ err }, 'eBay sync kick failed')), 5_000)
+    }
   }
 }
 

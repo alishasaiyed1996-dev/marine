@@ -14,8 +14,16 @@ interface Arc {
   label?: string
 }
 
-interface GlobeProps {
-  markers?: Marker[]
+/** CSS Anchor Positioning (used to pin labels to markers) is only supported in
+ *  the newest engines. Elsewhere the custom properties cobe publishes never
+ *  resolve, so every label piles up at the canvas' top-left corner on iOS < 26
+ *  and Samsung Internet — render them only when the feature actually exists. */
+const SUPPORTS_ANCHOR =
+  typeof CSS !== 'undefined' &&
+  typeof CSS.supports === 'function' &&
+  CSS.supports('bottom', 'anchor(top)')
+
+interface GlobeProps {  markers?: Marker[]
   arcs?: Arc[]
   className?: string
   markerColor?: [number, number, number]
@@ -145,6 +153,15 @@ export function Globe({
   useEffect(() => {
     if (!canvasRef.current) return
     const canvas = canvasRef.current
+    // Phones: cobe paints WebGL + rewrites its CSS-anchor custom properties on
+    // every update(), and the auto-spin ran at 60fps for the whole session —
+    // on a throttled mid-range phone that was ~37s of main-thread work (453
+    // long tasks in Lighthouse, TBT 610ms, TTI 23.3s). On coarse-pointer /
+    // narrow viewports the globe is painted once and only re-paints for
+    // drags: visually near-identical, near-zero idle cost.
+    const compact =
+      typeof window.matchMedia === 'function' &&
+      (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(max-width: 767px)').matches)
     let globe: ReturnType<typeof createGlobe> | null = null
     let animationId = 0
     let phi = 0
@@ -175,7 +192,7 @@ export function Globe({
 
     function animate() {
       animationId = 0
-      const spinning = !prefersReducedMotion && !isPausedRef.current
+      const spinning = !prefersReducedMotion && !compact && !isPausedRef.current
       const momentum =
         Math.abs(velocity.current.phi) > 0.0001 || Math.abs(velocity.current.theta) > 0.0001
       // While dragged (paused), keep painting so the globe follows the pointer.
@@ -215,7 +232,9 @@ export function Globe({
     function init() {
       const width = canvas.offsetWidth
       if (width === 0 || globe) return
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      // Cap DPR harder on phones (hero globe is ~350px CSS there): a dpr-2
+      // backing store doubled the fragment work for no visible gain.
+      const dpr = Math.min(window.devicePixelRatio || 1, compact ? 1.5 : 2)
       globe = createGlobe(canvas, {
         devicePixelRatio: dpr,
         width,
@@ -224,7 +243,8 @@ export function Globe({
         theta,
         dark,
         diffuse,
-        mapSamples,
+        // Half the map vertices on phones — the label/arc set doesn't change.
+        mapSamples: compact ? Math.min(mapSamples, 8000) : mapSamples,
         mapBrightness,
         baseColor,
         markerColor,
@@ -301,10 +321,10 @@ export function Globe({
           opacity: 0,
           transition: 'opacity 1.2s ease',
           borderRadius: '50%',
-          touchAction: 'none',
+          touchAction: 'pan-y',
         }}
       />
-      {markers.map((m) => (
+      {SUPPORTS_ANCHOR && markers.map((m) => (
         <div
           key={m.id}
           style={{
@@ -342,7 +362,7 @@ export function Globe({
           />
         </div>
       ))}
-      {arcs
+      {SUPPORTS_ANCHOR && arcs
         .filter((a) => a.label)
         .map((a) => (
           <div

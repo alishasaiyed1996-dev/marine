@@ -6,37 +6,15 @@
  * Senders: All send* functions (in emailSenders.ts)
  */
 
-import nodemailer from 'nodemailer'
 import { prisma } from '../server.js'
 import logger from '../utils/logger.js'
 import { withTimeout } from '../utils/withTimeout.js'
 import type { Prisma } from '@prisma/client'
 
-// Email transport. Resend over HTTPS is preferred because Railway blocks
-// outbound SMTP ports; SMTP remains as a fallback for hosts that allow it.
-// Built lazily on first send so tests can set the env before exercising either
-// the configured or the unconfigured path.
-let transporter: nodemailer.Transporter | null | undefined
-
-function getTransporter(): nodemailer.Transporter | null {
-  if (transporter !== undefined) return transporter
-  const host = process.env.SMTP_HOST
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
-  if (!host || !user || !pass) {
-    transporter = null
-    return transporter
-  }
-  transporter = nodemailer.createTransport({
-    host,
-    port: Number(process.env.SMTP_PORT || 465),
-    // Port 465 = implicit TLS (SSL). Set SMTP_SECURE=false to use
-    // STARTTLS on port 587 instead.
-    secure: (process.env.SMTP_SECURE ?? 'true') !== 'false',
-    auth: { user, pass },
-  })
-  return transporter
-}
+// Email transport is Resend over HTTPS — the only transport. Railway blocks
+// outbound SMTP ports (25/465/587/2525), so the nodemailer/SMTP fallback was
+// removed entirely: there is no SMTP configuration to maintain and delivery
+// arrives through one auditable path.
 
 function getResendApiKey(): string | null {
   const key = process.env.RESEND_API_KEY?.trim()
@@ -47,15 +25,14 @@ function getResendApiKey(): string | null {
   return key
 }
 
-function emailTransportName(): 'resend' | 'smtp' | 'none' {
+function emailTransportName(): 'resend' | 'none' {
   if (getResendApiKey()) return 'resend'
-  if (getTransporter()) return 'smtp'
   return 'none'
 }
 
 const emailLog = logger.child({ context: 'email' })
 
-const FROM = process.env.EMAIL_FROM || 'noreply@alkatraders.co'
+const FROM = process.env.EMAIL_FROM || 'sales@alkatraders.co'
 const MAX_EMAIL_ATTEMPTS = 3
 // The processor runs on a timer that does not await previous ticks, so an
 // unreachable database must not leave queries pending and accumulating.
@@ -81,7 +58,7 @@ export async function queueEmail(email: QueueEmail): Promise<boolean> {
   try {
     // replyTo has no dedicated column yet. Keep it inside templateData so it
     // survives retries without a schema migration; sendEmail() pulls it back
-    // out before handing the message to Resend/SMTP.
+    // out before handing the message to Resend.
     const templateData = email.templateData
       ? { ...email.templateData, ...(email.replyTo ? { __replyTo: email.replyTo } : {}) }
       : email.replyTo
@@ -153,8 +130,7 @@ async function sendEmail(queueId: string): Promise<void> {
   if (!record || !['pending', 'retrying', 'skipped'].includes(record.status)) return
 
   const resendKey = getResendApiKey()
-  const smtp = resendKey ? null : getTransporter()
-  if (!resendKey && !smtp) {
+  if (!resendKey) {
     // Honest state: without a transport nothing can be delivered, so the row
     // must NOT be marked 'sent'. 'skipped' keeps the original content for
     // inspection/replay without pretending success.
@@ -164,7 +140,7 @@ async function sendEmail(queueId: string): Promise<void> {
       data: {
         status: 'skipped',
         attempts: { increment: 1 },
-        lastError: 'No email transport configured (set RESEND_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASS) — message was NOT delivered',
+        lastError: 'No email transport configured (set RESEND_API_KEY) — message was NOT delivered',
       },
     })
     return
@@ -176,19 +152,8 @@ async function sendEmail(queueId: string): Promise<void> {
   const replyTo = typeof templateData?.__replyTo === 'string' ? templateData.__replyTo : undefined
 
   try {
-    if (resendKey) {
-      await sendViaResend({ apiKey: resendKey, record, replyTo })
-    } else {
-      // nodemailer throws on delivery failure — the catch below handles retries.
-      await smtp!.sendMail({
-        from: FROM,
-        to: record.toEmail,
-        subject: record.subject,
-        html: record.htmlBody,
-        text: record.textBody || undefined,
-        ...(replyTo ? { replyTo } : {}),
-      })
-    }
+    // A non-OK Resend response throws here — the catch below handles retries.
+    await sendViaResend({ apiKey: resendKey, record, replyTo })
 
     await prisma.emailQueue.update({
       where: { id: queueId },

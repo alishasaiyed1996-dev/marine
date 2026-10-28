@@ -44,7 +44,7 @@ export default function AdminLogin() {
         {/* Logo */}
         <div className="mb-8 text-center">
           <img
-            src="/images/alka-traders-logo.png"
+            src="/images/alka-traders-logo-128.png"
             alt="Alka Traders Logo"
             className="mx-auto mb-4 h-16 w-16 rounded-2xl object-cover shadow-[0_12px_40px_var(--focus-ring)]"
           />

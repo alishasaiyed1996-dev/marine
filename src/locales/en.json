@@ -45,11 +45,22 @@
     "statsProducts": "Products",
     "statsBrands": "Brands",
     "statsCountries": "Countries",
-    "statsYears": "Years"
+    "statsYears": "Years",
+    "trustedLine": "Trusted Marine Spare Parts.",
+    "deliveredLine": "Delivered Worldwide.",
+    "sub2": "Global sourcing for ship owners, yards, and maintenance teams — shop online or send an RFQ and our team will source it.",
+    "ctaSearch": "Search Ship Spares",
+    "badgeShipping": "Worldwide Shipping",
+    "badgeQuality": "Quality Assured",
+    "badgeExport": "Buyer Arranged Export",
+    "badgeRfq": "RFQ Support"
   },
   "categories": {
     "label": "What We Procure",
     "title": "Shop by Equipment Type",
+    "eyebrow": "Marine and industrial inventory",
+    "findTitle": "Find ship spares by equipment type",
+    "findSub": "Browse the parts buyers actually search for: ship machinery, engine spares, marine pumps, hydraulic motors, electrical automation, safety equipment, and industrial MRO stock.",
     "marine": "Marine Equipment",
     "electrical": "Electrical Automation",
     "hydraulic": "Hydraulic Systems",
@@ -178,12 +189,102 @@
     "browseProducts": "Browse Products",
     "whatsappUsNow": "WhatsApp Us Now",
     "consentPrivacy": "Read our Privacy Policy",
-    "consentError": "Please confirm you agree to us contacting you about this enquiry."
+    "consentError": "Please confirm you agree to us contacting you about this enquiry.",
+    "submitting": "Submitting…",
+    "submitFailed": "Failed to send your RFQ. Please try again or contact us on WhatsApp.",
+    "roleChiefEngineer": "Chief Engineer",
+    "roleProcurementManager": "Procurement Manager",
+    "rolePlantManager": "Plant Manager",
+    "roleFleetManager": "Fleet Manager",
+    "roleSourcingHead": "Head of Sourcing",
+    "roleOwner": "Owner / Director",
+    "roleOther": "Other",
+    "faq1q": "How quickly do you respond?",
+    "faq1a": "Our standard response time is within 4 business hours for all RFQs. For emergency requests marked as Same Day, our dedicated team activates within 30 minutes and maintains contact until delivery is confirmed.",
+    "faq2q": "Do you verify product authenticity?",
+    "faq2a": "Every listing states the condition grade — new, refurbished, used, or surplus — and the part identity (brand, model, part number or IMPA code) recorded by our team. Most of our stock is used or surplus equipment that we inspect and describe as accurately as possible; these items are sold as inspected and are not covered by a manufacturer warranty, as set out in our Terms of Service. Where the supplier provides a certificate of conformity, test report, or material certificate, it accompanies the item and is listed in the quotation — certificates are not automatic for every shipment. Ask for any document you need before ordering and we will tell you whether it is available.",
+    "faq3q": "Can you handle emergency orders?",
+    "faq3a": "Yes. Our emergency procurement line operates 24/7. We maintain strategic inventory for critical-path deliveries from our Bhavnagar hub. We've successfully fulfilled emergency orders within 18 hours of RFQ submission.",
+    "faq4q": "What regions do you ship to?",
+    "faq4a": "We operate in 50+ countries across all major maritime routes and industrial corridors. Our primary hubs cover Asia-Pacific, Middle East, Europe, Africa, and the Americas. We handle all customs documentation, export licensing, and freight logistics.",
+    "homeForm": {
+      "heading1": "Cannot find the ship spare?",
+      "heading2": "Send the nameplate.",
+      "sub": "Upload a part description, model number, maker name, serial plate, or product photo. We will check Alang/Bhavnagar stock, compatible alternatives, condition, packing, and export options before quoting.",
+      "list1": "Tested used, refurbished, and new old stock options",
+      "list2": "Response target within 4 business hours",
+      "list3": "DHL, FedEx, air freight, and sea freight support",
+      "optStd": "Standard (7-14 days)",
+      "optUrgent": "Urgent (24-48 hours)",
+      "optEmergency": "Emergency (Same day)"
+    }
   },
   "testimonials": {
     "label": "Marketplace Feedback",
     "title": "Verified feedback from our eBay buyers.",
-    "note": "These verified reviews come from buyers of our industrial tooling and surplus equipment on eBay. For marine procurement enquiries, contact our team."
+    "note": "These verified reviews come from buyers of our industrial tooling and surplus equipment on eBay. For marine procurement enquiries, contact our team.",
+    "soldBy": "Sold by {{seller}} on eBay",
+    "reviewed": "Reviewed: {{product}}"
+  },
+  "home": {
+    "aria": {
+      "store": "Shop marine spare parts",
+      "guarantees": "Shipping and service guarantees"
+    },
+    "store": {
+      "label": "Online marine parts store",
+      "title": "Buy ship spares by category, brand, part number, or equipment type.",
+      "sub": "Find marine spare parts online for vessel repair, shipyard maintenance, offshore procurement, and industrial MRO. Browse stock or send an RFQ for hard-to-find OEM and compatible replacement parts.",
+      "searchAll": "Search all products",
+      "requestQuote": "Request a quote"
+    },
+    "tiles": {
+      "t1": { "label": "Ship Spares", "copy": "Deck, engine room, bridge, and vessel maintenance parts." },
+      "t2": { "label": "Marine Engine Parts", "copy": "Pistons, injectors, turbochargers, gaskets, and sensors." },
+      "t3": { "label": "Marine Pumps", "copy": "Bilge pumps, ballast pumps, seawater pumps, and impellers." },
+      "t4": { "label": "Electrical Automation", "copy": "PLC modules, VFD drives, relays, breakers, and control panels." },
+      "t5": { "label": "Hydraulic Spares", "copy": "Hydraulic pumps, motors, valves, cylinders, and power units." },
+      "t6": { "label": "Surplus Industrial Parts", "copy": "New old stock, used, refurbished, and tested MRO equipment." }
+    },
+    "chips": {
+      "c1": "Marine spare parts supplier",
+      "c2": "Ship spares online",
+      "c3": "Marine engine spare parts",
+      "c4": "Ship machinery parts",
+      "c5": "Marine hydraulic pump",
+      "c6": "Marine electrical equipment",
+      "c7": "Navigation equipment spares",
+      "c8": "Alang ship spare parts",
+      "c9": "Surplus industrial equipment",
+      "c10": "ABB Siemens Parker Bosch Rexroth spares"
+    },
+    "new": {
+      "title": "Featured marine spare parts and ship spares in stock",
+      "sub": "Shop recently listed marine parts, tested surplus machinery, hydraulic spares, electrical automation components, engine spares, and hard-to-find MRO equipment."
+    },
+    "segments": {
+      "s1": { "title": "Marine and ship spare parts", "copy": "Source ship spares for bridge equipment, engine room systems, deck machinery, marine pumps, steering gear, ballast systems, safety equipment, and navigation equipment." },
+      "s2": { "title": "Industrial automation and hydraulics", "copy": "Buy ABB, Siemens, Schneider Electric, Parker, Bosch Rexroth, Danfoss, Festo, SMC, Omron, Honeywell, and similar electrical, pneumatic, and hydraulic replacement parts." },
+      "s3": { "title": "RFQ support for rare parts", "copy": "Send a part number, maker, model, serial plate, nameplate photo, or vessel details. We help locate new old stock, used, reconditioned, refurbished, and compatible alternatives." }
+    },
+    "craft": {
+      "heading": "Sourcing built around clarity, condition, and dispatch.",
+      "sub": "Send a maker, model, part number, serial plate, or product photo. Our team checks availability, condition, compatibility notes, export packing, and freight options before quoting.",
+      "f1t": "Marine focus",
+      "f1c": "automation, navigation, pumps, engine spares, rigging, and deck equipment.",
+      "f2t": "Industrial focus",
+      "f2c": "ABB, Siemens, Parker, Bosch Rexroth, Danfoss, Festo, SMC, and similar MRO components.",
+      "f3t": "Condition clarity",
+      "f3c": "new old stock, used, refurbished, and reconditioned items are labelled before dispatch.",
+      "f4t": "Export support",
+      "f4c": "DHL, FedEx, air freight, sea freight, and buyer-arranged shipping from India."
+    },
+    "urgent": {
+      "eyebrow": "Urgent vessel procurement",
+      "heading": "Need a rare ship spare?",
+      "sub": "Send the part number, photo, maker name, vessel details, and delivery port. We will confirm stock or source an alternative.",
+      "cta": "WhatsApp RFQ"
+    }
   },
   "footer": {
     "desc": "Global Marine & Industrial Procurement Partner. Serving fleet managers, plant engineers, and procurement teams across 50+ countries.",
@@ -375,6 +476,9 @@
     "city": "City",
     "state": "State / Province",
     "postalCode": "Postal Code",
+    "email": "Email address",
+    "emailInvalid": "Enter a valid email address",
+    "requiredField": "This field is required",
     "country": "Country",
     "placeholders": {
       "fullName": "John Smith",
@@ -382,7 +486,10 @@
       "addressLine2": "Apartment, suite, unit (optional)",
       "city": "City",
       "state": "State or province",
-      "postalCode": "ZIP / Postal code"
+      "postalCode": "ZIP / Postal code",
+      "company": "Company / registered business name",
+      "taxId": "Tax ID / VAT number (optional)",
+      "email": "you@company.com"
     },
     "continuePayment": "Continue to Payment →",
     "back": "← Back",
@@ -615,9 +722,34 @@
   },
   "cookieConsent": {
     "title": "Cookie Notice",
-    "body": "We use essential cookies for authentication and session management — these are strictly necessary for the site to work. With your consent we also use Google Analytics to understand how the site is used. Declining analytics does not affect your ability to browse or order.",
+    "body": "We use essential cookies for authentication and session management — these are strictly necessary for the site to work. With your consent we also use Google Analytics and Microsoft Clarity to understand how the site is used. Declining analytics does not affect your ability to browse or order.",
     "privacyLink": "Read our Privacy Policy",
     "accept": "Accept",
     "decline": "Decline analytics"
+  },
+  "a11y": {
+    "openSearch": "Open search",
+    "closeSearch": "Close search",
+    "closeCart": "Close cart",
+    "closeDialog": "Close dialog",
+    "removeFilter": "Remove filter",
+    "decreaseQuantity": "Decrease quantity",
+    "increaseQuantity": "Increase quantity",
+    "removeItem": "Remove {{name}}",
+    "switchLanguage": "Switch language",
+    "profile": "Profile",
+    "toggleMenu": "Menu",
+    "closeFilters": "Close filters",
+    "filters": "Filters",
+    "showResults": "Show Results",
+    "chatWhatsapp": "Chat with us on WhatsApp",
+    "galleryPrev": "Previous image",
+    "galleryNext": "Next image",
+    "galleryReset": "Tap to reset zoom",
+    "share": "Share product",
+    "marqueePause": "Pause scrolling",
+    "marqueePlay": "Resume scrolling",
+    "marqueeLabel": "Scrolling list of {{count}} brands",
+    "reviewedOnEbay": "Reviewed on eBay"
   }
 }

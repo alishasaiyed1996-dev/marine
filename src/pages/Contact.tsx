@@ -80,7 +80,7 @@ export default function Contact() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-12 items-start">
-            {/* Form */}              <form onSubmit={handleSubmit} className="bg-[var(--surface)] border border-[var(--border)] p-10">
+            {/* Form */}              <form onSubmit={handleSubmit} className="bg-[var(--surface)] border border-[var(--border)] p-5 sm:p-10">
               <h3 className="text-lg font-semibold mb-6">{t('contact.formTitle')}</h3>
               {error && <p className="text-xs text-[var(--danger)] mb-4">{error}</p>}
               <div className="mb-5">
@@ -106,7 +106,7 @@ export default function Contact() {
 
             {/* Contact info */}
             <div>
-              <div className="bg-[var(--secondary-bg)] border border-[var(--border)] p-8 mb-6">
+              <div className="bg-[var(--secondary-bg)] border border-[var(--border)] p-5 sm:p-8 mb-6">
                 <h3 className="text-lg font-semibold mb-4">{t('contact.instantTitle')}</h3>
                 <a href={`https://wa.me/${whatsappNumber}`} className="flex items-center justify-center gap-2 px-7 py-3.5 bg-transparent text-[var(--success)] font-semibold text-sm border border-[var(--success)] hover:bg-[var(--success)]/10 transition-all no-underline mb-4 rounded-xl">
                   <WhatsAppIcon size={16} /> {t('contact.whatsapp')}
@@ -118,7 +118,7 @@ export default function Contact() {
                   <Phone size={16} className="text-[var(--accent-primary)]" /> {phoneNumber}
                 </a>
               </div>
-              <div className="bg-[var(--surface)] border border-[var(--border)] p-8">
+              <div className="bg-[var(--surface)] border border-[var(--border)] p-5 sm:p-8">
                 <h3 className="text-lg font-semibold mb-2">{t('contact.officeHours')}</h3>
                 <p className="text-sm text-[var(--text-secondary)] mb-1">{t('contact.officeHoursDetail')}</p>
                 <p className="text-sm text-[var(--text-secondary)]">{t('contact.emergencyLine')}</p>

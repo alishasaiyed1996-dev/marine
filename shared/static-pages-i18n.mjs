@@ -32,7 +32,7 @@ export const LOCALIZED_PAGE_META = {
       h1: "كتالوج قطع غيار السفن والمعدات البحرية",
     },
     "industries": {
-      title: "القطاعات التي نخدمها - الشحن البحري والنفط والغاز وتوليد الكهرباء | Alka Traders",
+      title: "القطاعات التي نخدمها - الشحن والنفط والغاز | Alka Traders",
       description:
         "تخدم Alka Traders قطاعات الشحن البحري والنفط والغاز وتوليد الكهرباء والتصنيع والمعالجة الكيميائية وبناء السفن والتعدين بمعدات متخصصة.",
       h1: "القطاعات التي نخدمها",
@@ -112,13 +112,13 @@ export const LOCALIZED_PAGE_META = {
       h1: "Catálogo de repuestos marítimos",
     },
     "industries": {
-      title: "Sectores atendidos - Naval, petróleo y gas, generación eléctrica | Alka Traders",
+      title: "Sectores atendidos: naval, petróleo y gas, energía | Alka Traders",
       description:
         "Alka Traders sirve a los sectores de transporte marítimo, petróleo y gas, generación eléctrica, fabricación, procesamiento químico, construcción naval y minería con equipos especializados.",
       h1: "Sectores que atendemos",
     },
     "brands": {
-      title: "Marcas - Proveedores de equipos marítimos e industriales | Alka Traders",
+      title: "Marcas de equipos marítimos e industriales | Alka Traders",
       description:
         "Explore las marcas con las que trabajamos: ABB, Siemens, Parker Hannifin, Bosch Rexroth, Danfoss, Honeywell y otros fabricantes líderes.",
       h1: "Marcas",
@@ -130,7 +130,7 @@ export const LOCALIZED_PAGE_META = {
       h1: "Sobre nosotros",
     },
     "rfq": {
-      title: "Solicitar presupuesto - RFQ de piezas marítimas e industriales | Alka Traders",
+      title: "Solicitar presupuesto de piezas marítimas | Alka Traders",
       description:
         "Envíe una solicitud de presupuesto para repuestos marítimos, equipos industriales, maquinaria sobrante y piezas difíciles de encontrar. Respuesta rápida en pocas horas.",
       h1: "Solicitar un presupuesto",

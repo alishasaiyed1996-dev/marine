@@ -42,6 +42,7 @@ function Field({ id, label, required, error, errorMessage, hint, children }: {
   hint?: string
   children: React.ReactNode
 }) {
+  const { t } = useTranslation()
   return (
     <div className="mb-1">
       <label htmlFor={id} className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
@@ -55,7 +56,7 @@ function Field({ id, label, required, error, errorMessage, hint, children }: {
       )}
       {error && (
         <p id={`${id}-error`} className="mt-1 text-[11px] text-[var(--danger)]" role="alert">
-          {errorMessage || 'This field is required'}
+          {errorMessage || t('checkout.requiredField')}
         </p>
       )}
     </div>
@@ -99,10 +100,10 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
         {isGuest && (
           <Field
             id="checkout-email"
-            label="Email Address"
+            label={t('checkout.email')}
             required
             error={errors.email}
-            errorMessage="Please enter a valid email address"
+            errorMessage={t('checkout.emailInvalid')}
           >
             <input
               id="checkout-email"
@@ -110,7 +111,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
               value={shipping.email}
               onChange={(e) => updateShipping('email', e.target.value)}
               className={inputClass('email')}
-              placeholder="you@company.com"
+              placeholder={t('checkout.placeholders.email')}
               autoComplete="email"
               inputMode="email"
               required
@@ -146,7 +147,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
             value={shipping.company}
             onChange={(e) => updateShipping('company', e.target.value)}
             className={inputClass('company')}
-            placeholder="Company / vessel operator"
+            placeholder={t('checkout.placeholders.company')}
             autoComplete="organization"
             inputMode="text"
           />
@@ -159,7 +160,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
             value={shipping.taxId}
             onChange={(e) => updateShipping('taxId', e.target.value)}
             className={inputClass('taxId')}
-            placeholder="VAT / GST / TAX ID"
+            placeholder={t('checkout.placeholders.taxId')}
             autoComplete="off"
             inputMode="text"
           />
@@ -238,7 +239,7 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
             className={inputClass('postalCode')}
             placeholder={t('checkout.placeholders.postalCode')}
             autoComplete="postal-code"
-            inputMode="numeric"
+            inputMode="text"
             required={postalRequired}
             aria-required={postalRequired || undefined}
             aria-invalid={errors.postalCode || undefined}
@@ -251,16 +252,10 @@ export function CheckoutShipping({ shipping, errors, updateShipping, goToStep, i
             id="checkout-country"
             value={shipping.country}
             onChange={(e) => updateShipping('country', e.target.value)}
-            className={inputClass('country')}
+            className={`${inputClass('country')} select-chevron`}
             autoComplete="country"
             required
             aria-required="true"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394A3B8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E")`,
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'right 12px center',
-              appearance: 'none',
-            }}
           >
             {countries.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>

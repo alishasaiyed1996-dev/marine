@@ -277,7 +277,12 @@ async function main() {
     const types = blocks.map((block) => block?.['@type']).filter(Boolean)
     if (!types.includes('Organization')) fail(`${file}: no Organization JSON-LD`)
     if (!types.includes('WebSite')) fail(`${file}: no WebSite JSON-LD`)
-    if (urlPath !== '/en/' && !types.includes('BreadcrumbList')) fail(`${file}: no BreadcrumbList JSON-LD`)
+    // Locale-root home pages share the English homepage's policy: a
+    // single-item breadcrumb trail carries no hierarchy information, so
+    // prerender deliberately omits BreadcrumbList there (see the home
+    // branch in prerender.mjs).
+    const isLocaleRoot = /^\/(?:en|es|ar)\/?$/.test(urlPath)
+    if (urlPath !== '/en/' && !isLocaleRoot && !types.includes('BreadcrumbList')) fail(`${file}: no BreadcrumbList JSON-LD`)
 
     // Internal link graph.
     const anchors = collectAnchors(html)

@@ -67,7 +67,7 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="font-display text-lg font-bold text-[var(--text-primary)] mb-3">5. Behavioral Advertising</h2>
             <p className="text-sm leading-relaxed">
-              We use Google Analytics to understand how the site is used. Where advertising features and remarketing are enabled in our Google Analytics property, Google may place a cookie on your machine to show ads relevant to the pages you viewed. Google Analytics and any remarketing only run <strong>after you accept analytics cookies</strong> in the cookie notice — declining leaves the site fully usable and no analytics identifier is set.
+              We use Google Analytics and Microsoft Clarity to understand how the site is used. Where advertising features and remarketing are enabled in our Google Analytics property, Google may place a cookie on your machine to show ads relevant to the pages you viewed. Google Analytics, Microsoft Clarity, and any remarketing only run <strong>after you accept analytics cookies</strong> in the cookie notice — declining leaves the site fully usable and no analytics identifier is set.
             </p>
             <p className="text-sm leading-relaxed mt-3">
               THIS COOKIE DOES NOT IN ANY WAY IDENTIFY YOU OR GIVE ACCESS TO YOUR COMPUTER. The cookie is used to say "This person visited this page, so show them ads relating to that page."

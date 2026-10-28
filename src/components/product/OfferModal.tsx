@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { X, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useOverlayBehavior } from '../../lib/overlay'
 import { storefront } from '../../lib/api'
 import { useStore } from '../../store/useStore'
 import type { Product } from '../../types'
@@ -13,11 +14,15 @@ interface OfferModalProps {
 export function OfferModal({ product, onClose }: OfferModalProps) {
   const { t } = useTranslation()
   const user = useStore((s) => s.user)
+  const panelRef = useRef<HTMLDivElement>(null)
   const [price, setPrice] = useState('')
   const [email, setEmail] = useState(user?.email || '')
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // Scroll lock, Escape close, focus trap + restore (previously absent).
+  useOverlayBehavior({ open: true, onClose, panelRef, lockKey: 'offer' })
 
   const effectivePrice = product.onSale && product.salePrice ? product.salePrice : product.price
 
@@ -50,13 +55,25 @@ export function OfferModal({ product, onClose }: OfferModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-[var(--surface)] text-[var(--text-primary)] w-full max-w-[420px] rounded-2xl shadow-2xl border border-[var(--border)] p-6">
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('product.offerTitle')}
+        data-modal="offer"
+        className="bg-[var(--surface)] text-[var(--text-primary)] w-full max-w-[420px] rounded-2xl shadow-2xl border border-[var(--border)] p-6 focus:outline-none"
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold">{t('product.offerTitle')}</h3>
           <button
             onClick={onClose}
-            className="bg-transparent border-none cursor-pointer p-1 hover:bg-[var(--surface-soft)] rounded"
+            aria-label={t('a11y.closeDialog')}
+            className="tap-native tap-pad flex h-9 w-9 items-center justify-center bg-transparent border-none cursor-pointer hover:bg-[var(--surface-soft)] rounded"
           >
             <X size={18} className="text-[var(--text-secondary)]" />
           </button>
@@ -73,7 +90,7 @@ export function OfferModal({ product, onClose }: OfferModalProps) {
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4 text-left">
+          <form onSubmit={handleSubmit} className="space-y-4 text-start">
             {error && <p className="text-xs text-[var(--danger)] text-center">{error}</p>}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
@@ -82,6 +99,8 @@ export function OfferModal({ product, onClose }: OfferModalProps) {
               <input
                 type="number"
                 required
+                inputMode="decimal"
+                autoComplete="off"
                 placeholder={t('product.offerPlaceholder', { amount: (effectivePrice * 0.85).toFixed(0) })}
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
@@ -96,6 +115,7 @@ export function OfferModal({ product, onClose }: OfferModalProps) {
                 <input
                   type="email"
                   required
+                  autoComplete="email"
                   placeholder={t('product.emailPlaceholder')}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

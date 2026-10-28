@@ -19,9 +19,9 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
   if (products.length === 0) return null
 
   return (
-    <section className="mt-16 pt-10 border-t border-[var(--border)] text-left">
+    <section className="mt-16 pt-10 border-t border-[var(--border)] text-start">
       <h2 className="heading-xl mb-6 text-[var(--text-primary)]">{t('product.relatedProducts')}</h2>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 min-[350px]:grid-cols-2 lg:grid-cols-4 gap-5">
         {products.map((item) => {
           const itemPrice = item.onSale && item.salePrice ? item.salePrice : item.price
           // `price` is already the effective sale price; the pre-sale amount is
@@ -30,7 +30,7 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
           return (
             <div
               key={item.id}
-              className="bg-[var(--secondary-bg)] border border-[var(--border)] overflow-hidden transition-all duration-300 hover:border-l-[var(--accent-primary)] hover:-translate-y-1 rounded-xl group flex flex-col justify-between"
+              className="bg-[var(--secondary-bg)] border border-[var(--border)] overflow-hidden transition-all duration-300 hover:border-s-[var(--accent-primary)] hover:-translate-y-1 rounded-xl group flex flex-col justify-between"
             >
               <Link to={lp(`/product/${item.slug || item.id}`)} className="overflow-hidden bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-center relative block">
                 {/* object-contain: related photos keep their full shape instead
@@ -49,7 +49,7 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
                 </div>
                 {item.customLabel && (
                   <span
-                    className="absolute top-2 left-2 z-10 px-2 py-0.5 text-xs font-extrabold uppercase rounded"
+                    className="absolute top-2 start-2 z-10 px-2 py-0.5 text-xs font-extrabold uppercase rounded"
                     style={{
                       backgroundColor: item.customLabelColor || '#159a67',
                       color: isLightColor(item.customLabelColor || '#159a67') ? '#1a1a1a' : '#ffffff',
@@ -66,8 +66,8 @@ export function RelatedProducts({ products }: RelatedProductsProps) {
                     {item.name}
                   </Link>
                 </div>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border)]/40">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between flex-wrap gap-x-2 gap-y-1 mt-2 pt-2 border-t border-[var(--border)]/40">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
                     {item.onSale && item.salePrice && regularPrice > item.salePrice ? (
                       <>
                         <span className="font-display font-bold text-sm text-[var(--danger)]">{formatMoney(item.salePrice, item.currency || storeCurrency)}</span>

@@ -45,7 +45,8 @@ export function IndustriesTabs() {
         ) : (
         <>
         {/* Tab buttons */}
-        <div className="flex gap-2.5 overflow-x-auto flex-nowrap md:flex-wrap mb-8 -mx-4 px-4 md:mx-0 md:px-0 pb-2 scrollbar-none">
+        <div className="relative mb-8">
+          <div className="flex gap-2.5 overflow-x-auto flex-nowrap md:flex-wrap -mx-4 px-4 md:mx-0 md:px-0 pb-2 scrollbar-none">
           {industries.map((ind) => {
             const isActive = currentActive === ind.id
             return (
@@ -62,6 +63,16 @@ export function IndustriesTabs() {
               </button>
             )
           })}
+          </div>
+          {/* Trailing edge fade: hints at horizontally scrollable tabs. Lives
+              OUTSIDE the scroller so it pins to the visible edge instead of
+              scrolling away with the content. Gradient flips with reading
+              direction (end edge = right in LTR, left in RTL). Mobile only —
+              desktop wraps instead of scrolling. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 end-0 w-10 bg-gradient-to-r rtl:bg-gradient-to-l from-transparent to-[var(--primary-bg)] md:hidden"
+          />
         </div>
 
         {/* Active panel */}

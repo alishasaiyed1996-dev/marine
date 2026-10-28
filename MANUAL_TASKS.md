@@ -414,18 +414,23 @@ Deleted 4 rows: `TEST-PRODUCT-HTTP-MODE` ×3 (drafts) + `TXTEST3` (archived),
 plus their images/specs. Zero offers/orders/eBay listings affected.
 `detect-duplicate-products` now reports a clean catalog.
 
-### MT-12 · Automated email delivery — SMTP configured on Railway (verify)
+### MT-12 · Automated email delivery — Resend-only (SMTP removed 2026-10-28)
 
-**Update 2026-10-23:** SMTP credentials are set, but Railway blocks outbound
-SMTP ports, so delivery fails with connection timeouts. Use the Resend HTTPS
-transport in **MT-19** instead.
+**Update 2026-10-28:** The nodemailer/SMTP fallback was removed entirely.
+Resend over HTTPS is the **only** transport: `nodemailer` + `@types/nodemailer`
+are gone from `backend/package.json`, `SMTP_*` vars are gone from
+`.env.example` and `.railway/railway.ts`. Verify with
+`npx tsx scripts/diag-email-queue.ts --send-test` (a real Resend send to your
+own mailbox — also proves receiving) and `--domains` (SPF/DKIM verification
+status of the `EMAIL_FROM` domain).
 
-**Status 2026-10-19:** SMTP is the email transport (send; the mailbox also
-receives replies). `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_PORT`,
-`SMTP_SECURE`, `EMAIL_FROM`, and `SALES_EMAIL` are set on the Railway `api`
-service by the owner. The service sends through nodemailer and records honest
-queue states (`sent` / `retrying` / `failed` / `skipped`) — it never marks
-undelivered mail as sent.
+**Update 2026-10-23:** SMTP credentials were set, but Railway blocks outbound
+SMTP ports, so delivery failed with connection timeouts.
+
+**Status 2026-10-19:** SMTP was the email transport via nodemailer, which
+recorded honest queue states (`sent` / `retrying` / `failed` / `skipped`) — it
+never marked undelivered mail as sent. That behavior is unchanged; only the
+transport behind it is now Resend.
 
 **Verify after the next deploy/restart:**
 1. Submit a test RFQ / contact message on the live site.

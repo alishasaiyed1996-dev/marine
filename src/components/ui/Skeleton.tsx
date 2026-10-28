@@ -30,7 +30,7 @@ export function ProductCardSkeleton() {
         <Skeleton className="mb-3 h-3 w-1/3" />
         <Skeleton className="mb-2 h-4 w-4/5" />
         <Skeleton className="mb-4 h-4 w-3/5" />
-        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-12 w-full" />
       </div>
     </div>
   )
@@ -42,7 +42,7 @@ export function PageSkeleton() {
     <div className="mx-auto max-w-[1280px] px-4 py-10 sm:px-6" aria-hidden>
       <Skeleton className="mx-auto mb-4 h-8 w-2/3 max-w-[560px]" />
       <Skeleton className="mx-auto mb-10 h-4 w-1/2 max-w-[420px]" />
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
         {Array.from({ length: 8 }).map((_, i) => (
           <ProductCardSkeleton key={i} />
         ))}

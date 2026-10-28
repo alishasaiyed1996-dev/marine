@@ -773,16 +773,55 @@ html.dark {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Minimum touch target size for interactive elements (Apple 44pt / Google 48dp) */
-  button, a, input[type="checkbox"], input[type="radio"], select {
+  /* Minimum touch target size for interactive elements (Apple 44pt / Google 48dp).
+     Only min-HEIGHT is blanket-enforced: it grows rows/CTAs without distorting
+     inline geometry. min-WIDTH is deliberately NOT blanket-enforced — it used to
+     inflate icon-only buttons (nav icon row, cart remove ×, filter-chip ×) and
+     overflowed the 280px fold-cover header. Components that design their own
+     target opt out with .tap-native; small icon-only controls get their hit area
+     widened by .tap-pad instead of by box inflation. */
+  button, a, select {
     min-height: 48px;
-    min-width: 48px;
+    min-width: 44px;
   }
 
-  /* Prevent iOS auto-zoom on input focus — use !important to override Tailwind text-sm */
-  input, select, textarea {
-    font-size: max(16px, 1em) !important;
+  /* Native checkboxes/radios are replaced elements: inflating them to 48×48
+     distorted every "remember me"/terms row. The wrapping <label> row is the
+     touch target instead — give it the height, not the control. */
+  input[type="checkbox"], input[type="radio"] {
+    min-height: 0;
+    min-width: 0;
   }
+  label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) {
+    min-height: 44px;
+  }
+
+  /* Opt-out for controls that design their own touch target (≥44px) or sit
+     inside a larger hit area: pagination chips, cart steppers, filter-chip ×,
+     gallery thumbnails. Without it the blanket rule inflates their boxes and
+     distorts surrounding layout. */
+  .tap-native {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  /* Invisible hit-area expander: keeps the small visual box but grows the tap
+     area past the 44px floor (36px visual + 6px each side = 48px). Pseudo-
+     elements belong to the originating element, so taps on the overlay
+     activate the button itself. */
+  .tap-pad {
+    position: relative;
+  }
+  .tap-pad::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: inherit;
+  }
+
+  /* Prevent iOS auto-zoom on input focus — use !important to override Tailwind text-sm.
+     Guard moved to the touch-device media query below so it also covers
+     landscape phones >768px wide, where the width-only rule stopped applying. */
 
   /* Reduce animations on mobile for performance */
   .card:hover {
@@ -823,17 +862,34 @@ html.dark {
 
 /* ── Touch device optimizations ─────────────────────────── */
 @media (hover: none) and (pointer: coarse) {
-  /* Remove hover effects on touch devices */
-  .group:hover .group-hover\:scale-105 {
+  /* Remove hover effects on touch devices — catch-alls instead of enumerating
+     individual escaped utilities (scale-[1.06], scale-110 previously slipped
+     through and iOS sticky :hover kept images zoomed after a tap). */
+  .group:hover [class*="group-hover\:scale-"] {
     transform: none;
   }
-  .group:hover .group-hover\:opacity-100 {
+  .group:hover [class*="group-hover\:opacity-100"] {
     opacity: 0;
+  }
+  [class*="hover\:-translate-y"] {
+    --tw-translate-y: 0;
+    transform: translate(var(--tw-translate-x), 0) scale(var(--tw-scale-x), var(--tw-scale-y));
   }
   /* Ensure tap targets are large enough — satisfy both Apple (≥44pt) and Google (≥48dp) */
   button, a, input, select, textarea {
     min-height: 48px;
-    min-width: 48px;
+    min-width: 44px;
+  }
+  input[type="checkbox"], input[type="radio"] {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  /* iOS auto-zooms any focused input whose computed font-size < 16px. Apply to
+     ALL touch devices regardless of viewport width: landscape phones are
+     768–1024px wide and the width-keyed rule never reached them. */
+  input, select, textarea {
+    font-size: max(16px, 1em) !important;
   }
 
   /* Disable tilt/hover card effects on touch */
@@ -874,6 +930,81 @@ select:focus-visible {
    theme-shifting background (accent-primary/teal/gold/success/danger)
    already use --btn-blue-text / --btn-success-text / --btn-danger-text
    tokens directly. */
+
+/* ── RTL: invert marquee travel direction ─────────────────────────
+   The keyframes are physical (translateX(-50%) moves left). Under RTL the
+   flex row lays out right-to-left, so a leftward drift reads backwards —
+   swap the two animations so content always enters from the inline-start
+   edge. */
+[dir="rtl"] .animate-marquee-left {
+  animation-name: marqueeRight;
+}
+[dir="rtl"] .animate-marquee-right {
+  animation-name: marqueeLeft;
+}
+
+/* ── RTL: sweep shimmer from the inline-start edge ───────────────── */
+@keyframes shimmerSweepRtl {
+  0% { left: 200%; }
+  100% { left: -100%; }
+}
+[dir="rtl"] .maritime-shimmer::after {
+  animation-name: shimmerSweepRtl;
+}
+
+/* ── Arabic typography: fonts + tracking ───────────────────────────
+   The self-hosted Latin faces (DM Sans / Space Grotesk) ship latin-only
+   unicode-ranges, so Arabic codepoints silently fall back to system fonts
+   — headings and body end up in different faces. Load Noto Sans Arabic
+   and make it the first face for Arabic documents. Negative tracking and
+   wide letter-spacing (designed for Latin display type) jam the connected
+   Arabic script, and text-transform is a no-op there — reset both. */
+html[lang="ar"] body {
+  font-family: 'Noto Sans Arabic', 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+html[lang="ar"] :is(h1, h2, h3, h4, h5, h6, .type-overline, .text-display-2xl, .text-display-lg, .text-section-lg, .text-section, .heading-xl, .heading-lg, .hero-typewriter) {
+  font-family: 'Noto Sans Arabic', 'Space Grotesk', sans-serif;
+  letter-spacing: 0 !important;
+}
+html[lang="ar"] [class*="tracking-"] {
+  letter-spacing: 0 !important;
+}
+html[lang="ar"] .type-overline {
+  text-transform: none;
+}
+
+/* ── Header icon buttons: designed 40px box, 44px hit area ─────────
+   Exempt from the mobile min-size floor (a 48px box overflows the
+   280–320px header row) and widen the TAP area with a pseudo-element
+   instead of inflating the layout box. */
+.nav-icon-btn {
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+.nav-icon-btn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+}
+
+/* ── Native <select> chevron, drawn as a background image ──────────
+   Chevron needs to swap sides under RTL and background-position has no
+   logical-property equivalent, so it lives here instead of an inline
+   style. padding-inline-end IS logical, so one rule covers both dirs. */
+.select-chevron {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394A3B8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  padding-inline-end: 32px;
+}
+[dir='ltr'] .select-chevron {
+  background-position: right 8px center;
+}
+[dir='rtl'] .select-chevron {
+  background-position: left 8px center;
+}
 
 /* ── Safe area padding for notched phones ───────────────── */
 @supports (padding: env(safe-area-inset-bottom)) {
@@ -996,6 +1127,39 @@ html.dark {
     animation: heroFadeUp 0.3s ease-out forwards;
   }
 
+  /* Page-level entrance, keyed by pathname inside PageWrapper. Shares the
+     heroFadeUp keyframes with .hero-reveal (same 0.3s / 20px fade-up the
+     framer-motion page transition used) so route changes stay composited
+     while the animation library stays off the critical path. */
+  .page-enter {
+    opacity: 0;
+    animation: heroFadeUp 0.3s ease-out forwards;
+  }
+
+  /* HowItWorks stepper — entrance stagger moved from framer-motion to CSS.
+     transform/opacity only (composited): each step fades up 0.4s with a
+     per-step inline delay; the number badge carries the same backOut spring
+     framer-motion used via the cubic-bezier overshoot. The global
+     prefers-reduced-motion rule collapses both to 0.01ms. */
+  .hiw-step {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+  }
+  .hiw-step.is-in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .hiw-step-badge {
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.35s ease-out, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .hiw-step.is-in .hiw-step-badge {
+    opacity: 1;
+    transform: scale(1);
+  }
+
   /* Urgency pulse for the "ending soon" countdown strip — animates only the
      glow so the text keeps full contrast (WCAG AA) at every animation frame. */
   .animate-danger-pulse {
@@ -1060,9 +1224,12 @@ html.dark {
 }
 
 /* Utility-bar links are a slim meta bar — opt out of the 48px mobile
-   touch-target minimum so the two-row mobile layout stays compact. */
+   touch-target minimum so the two-row mobile layout stays compact, but keep
+   a 36px floor: bare 16px-tall targets mis-tap constantly (phone/email are
+   the most-used header links on a phone). The bar collapses on scroll, so
+   the extra ~20px is transient. */
 .utility-link {
-  min-height: 0;
+  min-height: 36px;
 }
 
 /* ── Mobile top-bar hide-on-scroll ────────────────────────────────

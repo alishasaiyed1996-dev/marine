@@ -89,17 +89,18 @@ These are **required** for the server to start in production. `env.ts` refuses t
 
 ### `api` service — email
 
-SMTP is the supported email transport (Hostinger / any SMTP provider).
+Resend (HTTPS API) is the only email transport. Railway blocks outbound SMTP
+ports (25/465/587/2525), so the nodemailer/SMTP fallback was removed on
+2026-10-28 — no `SMTP_*` variables exist anywhere anymore.
 
 | Variable | Notes |
 |---|---|
-| `SMTP_HOST` | SMTP server host |
-| `SMTP_USER` | SMTP username |
-| `SMTP_PASS` | SMTP password |
-| `SMTP_PORT` | `465` (implicit TLS) or `587` (STARTTLS) |
-| `SMTP_SECURE` | `true` for port 465, `false` for STARTTLS on 587 |
-| `EMAIL_FROM` | From address for all outbound emails |
+| `RESEND_API_KEY` | **Required** for delivery. Without it emails are queued as `skipped` and never sent |
+| `EMAIL_FROM` | From address for all outbound emails — its domain must be verified in the Resend dashboard (SPF/DKIM) |
 | `SALES_EMAIL` | Default inbound routing for RFQ / emergency / contact form submissions |
+
+Verify delivery: `npx tsx scripts/diag-email-queue.ts --send-test` (real send via
+Resend + inbox check) and `--domains` (sending-domain verification status).
 
 ### `api` service — payments
 

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Clock, Globe, HandCoins, Lock, LogIn, LogOut, Mail, Menu, Package,
-  Phone, ShoppingCart, Truck, User, UserCircle2, X,
+  Phone, Search, ShoppingCart, Truck, User, UserCircle2, X,
 } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { useStoreSettings } from '../../hooks/useStoreSettings'
@@ -46,7 +46,7 @@ function BrandLockup() {
       className="flex items-center gap-3 no-underline transition-opacity hover:opacity-90"
     >
       <img
-        src="/images/alka-traders-logo.png"
+        src="/images/alka-traders-logo-128.png"
         alt="Alka Traders Logo"
         width={40}
         height={40}
@@ -84,6 +84,10 @@ export function Navbar() {
   const user = useStore((s) => s.user)
   const logout = useStore((s) => s.logout)
   const setShowAuthModal = useStore((s) => s.setShowAuthModal)
+  // Opens the global command palette. Without this the palette is reachable
+  // only via Cmd/Ctrl+K — i.e. never on a phone, which is also where the
+  // dedicated /search page had no entry point at all.
+  const setCommandOpen = useStore((s) => s.setCommandOpen)
   const settings = useStoreSettings()
 
   // The shipping promise is derived from the same configuration the server
@@ -153,16 +157,25 @@ export function Navbar() {
     return () => { document.documentElement.style.overflow = '' }
   }, [mobileOpen])
 
-  // Close language and profile dropdowns on outside click
+  // Close language and profile dropdowns on outside click or Escape
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
       if (!target.closest('[data-lang-switcher]')) setLangOpen(false)
       if (!target.closest('[data-profile-menu]')) setProfileOpen(false)
     }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (langOpen) setLangOpen(false)
+      if (profileOpen) setProfileOpen(false)
+    }
     document.addEventListener('click', handleClick)
-    return () => document.removeEventListener('click', handleClick)
-  }, [])
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('click', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [langOpen, profileOpen])
 
   // NOTE: this returns ONE sticky <header> wrapper (not a bare nav) on
   // purpose. The wrapper must be a DIRECT child of the page layout's
@@ -194,7 +207,8 @@ export function Navbar() {
                 className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)] max-[899px]:text-xs"
               >
                 <Phone size={13} className="shrink-0 text-[var(--accent-primary)]" />
-                {settings.phoneNumber}
+                {/* dir=ltr keeps "+91 …" from rendering as "918799095041+" in RTL */}
+                <span dir="ltr">{settings.phoneNumber}</span>
               </a>
               {/* 640-767px is too narrow for the full trust row alongside
                   email+phone, but the free-shipping promise always fits and
@@ -222,9 +236,11 @@ export function Navbar() {
             </div>
           </div>
 
-          {/* Mobile: two centered rows */}
+          {/* Mobile: two centered rows. The contact row wraps on very
+              narrow screens — 280px cannot fit email + phone side by side,
+              and the tail used to clip inside the topbar's overflow:hidden. */}
           <div className="flex flex-col items-center gap-1 py-2 text-xs font-medium sm:hidden">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
               <a
                 href={`mailto:${settings.rfqEmail}`}
                 className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)]"
@@ -237,7 +253,7 @@ export function Navbar() {
                 className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)]"
               >
                 <Phone size={12} className="shrink-0 text-[var(--accent-primary)]" />
-                {settings.phoneNumber}
+                <span dir="ltr">{settings.phoneNumber}</span>
               </a>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[11px]">
@@ -300,18 +316,30 @@ export function Navbar() {
 
           {/* Right action cluster */}
           <div className="flex items-center gap-2">
+            {/* Global search — the palette's ONLY touch-reachable trigger
+                (Cmd/Ctrl+K doesn't exist on phones). Visible at every width. */}
+            <button
+              onClick={() => setCommandOpen(true)}
+              className={ICON_BTN}
+              aria-label={t('a11y.openSearch')}
+            >
+              <Search size={18} />
+            </button>
+
             {/* Language switcher (hidden on <380px so the action cluster fits
                 a 320px viewport; still reachable inside the mobile menu) */}
             <div className="relative max-[380px]:hidden" data-lang-switcher>
               <button
                 onClick={() => setLangOpen((v) => !v)}
                 className={ICON_BTN}
-                aria-label="Switch language"
+                aria-label={t('a11y.switchLanguage')}
+                aria-haspopup="menu"
+                aria-expanded={langOpen}
               >
                 <Globe size={16} />
               </button>
               {langOpen && (
-                <div className="absolute right-0 top-full mt-2 w-28 overflow-hidden rounded-xl border border-[var(--nav-dropdown-border)] bg-[var(--nav-dropdown-bg)] shadow-2xl z-50">
+                <div className="absolute end-0 top-full mt-2 w-28 overflow-hidden rounded-xl border border-[var(--nav-dropdown-border)] bg-[var(--nav-dropdown-bg)] shadow-2xl z-50">
                   {LANGUAGES.map((lang) => (
                     <button
                       key={lang.code}
@@ -319,7 +347,7 @@ export function Navbar() {
                         navigate(switchLocalePath(pathname, lang.code, search, hash))
                         setLangOpen(false)
                       }}
-                      className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-bold transition-colors hover:bg-[var(--surface-soft)] ${
+                      className={`flex w-full items-center gap-2 px-4 py-2.5 text-start text-xs font-bold transition-colors hover:bg-[var(--surface-soft)] ${
                         language === lang.code ? 'text-[var(--accent-primary)]' : 'text-[var(--nav-text-muted)]'
                       }`}
                     >
@@ -339,11 +367,11 @@ export function Navbar() {
             <button
               onClick={() => setShowCartDrawer(true)}
               className={`${ICON_BTN} relative`}
-              aria-label="Cart"
+              aria-label={t('cart.yourCart')}
             >
               <ShoppingCart size={18} />
               {cartCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-xs font-bold leading-none text-[var(--btn-blue-text)]">
+                <span className="absolute -end-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--accent-primary)] px-1 text-xs font-bold leading-none text-[var(--btn-blue-text)]">
                   {cartCount > 99 ? '99+' : cartCount}
                 </span>
               )}
@@ -371,8 +399,12 @@ export function Navbar() {
               {t('nav.requestQuote')}
             </Link>
 
-            {/* Profile / Auth */}
-            <div className="relative" data-profile-menu>
+            {/* Profile / Auth (hidden below 360px: at 280px the cluster
+                (search + theme + cart + profile + menu) is 232px wide and
+                overflowed the viewport with the logo. Profile is fully
+                duplicated in the mobile menu — Sign In / Create Account, or
+                My Profile/My Orders/Sign Out when logged in.) */}
+            <div className="relative max-[359px]:hidden" data-profile-menu>
               <button
                 onClick={() => setProfileOpen((v) => !v)}
                 className={`${ICON_BTN} ${
@@ -380,12 +412,14 @@ export function Navbar() {
                     ? 'nav-icon-btn-accent border-[var(--accent-primary)]/40 bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)]'
                     : ''
                 }`}
-                aria-label="Profile"
+                aria-label={t('a11y.profile')}
+                aria-haspopup="menu"
+                aria-expanded={profileOpen}
               >
                 <UserCircle2 size={20} />
               </button>
               {profileOpen && (
-                <div className="absolute right-0 top-full mt-2 w-52 overflow-hidden rounded-xl border border-[var(--nav-dropdown-border)] bg-[var(--nav-dropdown-bg)] shadow-2xl z-50">
+                <div className="absolute end-0 top-full mt-2 w-52 overflow-hidden rounded-xl border border-[var(--nav-dropdown-border)] bg-[var(--nav-dropdown-bg)] shadow-2xl z-50">
                   {isLoggedIn ? (
                     <>
                       <div className="border-b border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3">
@@ -450,7 +484,7 @@ export function Navbar() {
             <button
               onClick={() => setMobileOpen((value) => !value)}
               className={`${ICON_BTN} lg:hidden`}
-              aria-label="Toggle menu"
+              aria-label={t('a11y.toggleMenu')}
               aria-expanded={mobileOpen}
             >
               {mobileOpen ? <X size={22} /> : <Menu size={22} />}

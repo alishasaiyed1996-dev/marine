@@ -46,16 +46,18 @@ export function LoginForm({
       {/* Email */}
       <div>
         <div className="relative">
-          <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+          <Mail size={16} className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
           <input
+            id="login-email"
             type="email"
+            autoComplete="email"
             placeholder="Email address"
             value={email}
             onChange={(e) => {
               onEmailChange(e.target.value)
               if (errors.email) onClearError('email')
             }}
-            className={`${inputClass} pl-10`}
+            className={`${inputClass} ps-10`}
             aria-label="Email address"
           />
         </div>
@@ -69,23 +71,25 @@ export function LoginForm({
       {/* Password */}
       <div>
         <div className="relative">
-          <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+          <Lock size={16} className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
           <input
+            id="login-password"
             type={showPassword ? 'text' : 'password'}
+            autoComplete="current-password"
             placeholder="Password"
             value={password}
             onChange={(e) => {
               onPasswordChange(e.target.value)
               if (errors.password) onClearError('password')
             }}
-            className={`${inputClass} pl-10 pr-10`}
+            className={`${inputClass} ps-10 pe-10`}
             aria-label="Password"
           />
           <button
             type="button"
             onClick={onTogglePassword}
             aria-label={showPassword ? 'Hide password' : 'Show password'}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            className="tap-pad absolute end-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
           >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>

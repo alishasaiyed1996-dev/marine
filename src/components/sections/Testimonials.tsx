@@ -33,7 +33,7 @@ export function Testimonials() {
         </div>
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
           {testimonials.map((review, i) => (
-            <div key={review.id} className="card equal-card border-l-[4px] border-l-transparent p-6 hover:border-l-[var(--accent-primary)] md:p-8" style={{ animationDelay: `${i * 100}ms` }}>
+            <div key={review.id} className="card equal-card border-s-[4px] border-s-transparent p-6 hover:border-s-[var(--accent-primary)] md:p-8" style={{ animationDelay: `${i * 100}ms` }}>
               <div className="flex gap-1 mb-5">
                 {Array.from({ length: review.rating }).map((_, j) => (
                   <Star key={j} size={16} className="fill-[var(--accent-gold)] text-[var(--accent-gold)]" />
@@ -41,7 +41,7 @@ export function Testimonials() {
               </div>
               <p className="text-body-sm text-[var(--text-secondary)] leading-relaxed italic mb-6">&ldquo;{review.text}&rdquo;</p>
               <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-xl bg-white border border-black/10 dark:border-white/15 shadow-sm flex items-center justify-center p-1.5 flex-shrink-0" title="Reviewed on eBay">
+                <div className="w-12 h-12 rounded-xl bg-white border border-black/10 dark:border-white/15 shadow-sm flex items-center justify-center p-1.5 flex-shrink-0" role="img" aria-label={t('a11y.reviewedOnEbay')} title={t('a11y.reviewedOnEbay')}>
                   <EBayIcon className="w-full h-full" />
                 </div>
                 <div className="min-w-0">
@@ -49,12 +49,12 @@ export function Testimonials() {
                     <strong className="text-label block text-[var(--text-primary)]">{review.name}</strong>
                   )}
                   {review.verified && (
-                    <span className="text-[0.625rem] font-semibold text-[var(--success)] block mt-0.5">
+                    <span className="text-xs font-semibold text-[var(--success)] block mt-0.5">
                       ✓ {review.verified}
                     </span>
                   )}
                   <span className="text-xs text-[var(--text-secondary)] block">
-                    Sold by <span className="font-semibold text-[var(--text-primary)]">Alka Traders</span> on eBay
+                    {t('testimonials.soldBy', { seller: 'Alka Traders' })}
                   </span>
                   {review.productName && (
                     review.productLink ? (
@@ -62,19 +62,19 @@ export function Testimonials() {
                         href={review.productLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[0.625rem] text-[var(--accent-primary)] block mt-0.5 font-medium truncate max-w-[200px] hover:underline"
+                        className="text-xs text-[var(--accent-primary)] block mt-0.5 font-medium line-clamp-2 hover:underline"
                         title={review.productName}
                       >
-                        Reviewed: {review.productName}
+                        {t('testimonials.reviewed', { product: review.productName })}
                       </a>
                     ) : (
                       // No listing URL recorded for this review — render plain
                       // text instead of a dead href="#".
                       <span
-                        className="text-[0.625rem] text-[var(--text-muted)] block mt-0.5 font-medium truncate max-w-[200px]"
+                        className="text-xs text-[var(--text-muted)] block mt-0.5 font-medium line-clamp-2"
                         title={review.productName}
                       >
-                        Reviewed: {review.productName}
+                        {t('testimonials.reviewed', { product: review.productName })}
                       </span>
                     )
                   )}

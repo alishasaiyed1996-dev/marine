@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -6,6 +6,7 @@ import { X, Trash2, ShoppingBag, Plus, Minus } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { useLocalizedPath } from '../../lib/locale'
 import { useStoreSettings } from '../../hooks/useStoreSettings'
+import { useOverlayBehavior } from '../../lib/overlay'
 import { OptimizedImage } from '../ui/OptimizedImage'
 
 
@@ -56,35 +57,15 @@ export function CartDrawer() {
     setShowCartDrawer(false)
   }, [setShowCartDrawer])
 
-  // Escape key closes drawer
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showCartDrawer) closeDrawer()
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [showCartDrawer, closeDrawer])
-
-  // Lock page scroll when open — with ref counting to support multiple modals.
-  // Lock <html> not <body>: overflow:hidden on body makes body a clip
-  // container that breaks position:sticky on the site header.
-  useEffect(() => {
-    if (showCartDrawer) {
-      document.documentElement.style.overflow = 'hidden'
-    }
-    return () => {
-      // Only clear overflow if no other modal is open. The cart drawer itself
-      // is excluded: AnimatePresence keeps it mounted through its exit
-      // animation, so a plain [role="dialog"] query would always find it and
-      // leave the page unscrollable after close.
-      const otherModalOpen = Array.from(
-        document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')
-      ).some((el) => el.dataset.modal !== 'cart')
-      if (!otherModalOpen) {
-        document.documentElement.style.overflow = ''
-      }
-    }
-  }, [showCartDrawer])
+  // Shared overlay behavior: ref-counted scroll lock, Escape, focus trap,
+  // focus move + restore (was hand-rolled here; see src/lib/overlay.ts).
+  const drawerRef = useRef<HTMLElement>(null)
+  useOverlayBehavior({
+    open: showCartDrawer,
+    onClose: closeDrawer,
+    panelRef: drawerRef,
+    lockKey: 'cart',
+  })
 
   const handleCheckout = () => {
     closeDrawer()
@@ -114,17 +95,20 @@ export function CartDrawer() {
           {/* Drawer */}
           <motion.aside
             key="cart-drawer"
-            className="fixed top-0 end-0 z-[60] flex h-full w-full max-w-[420px] flex-col border-e border-[var(--border)] bg-[var(--surface)] shadow-2xl"
+            ref={drawerRef}
+            tabIndex={-1}
+            className="fixed top-0 end-0 z-[60] flex h-dvh w-full max-w-[420px] flex-col border-e border-[var(--border)] bg-[var(--surface)] shadow-2xl outline-none"
             variants={drawerVariants}
             initial="hidden"
             animate="visible"
             exit="exit"
             role="dialog"
-            aria-label="Shopping cart"
+            aria-label={t('cart.yourCart')}
             data-modal="cart"
           >
             {/* ─── Header ─── */}
-            <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
+            {/* pt respects the notch in landscape / installed-PWA mode. */}
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-6 pb-4 pt-[max(1rem,calc(1rem+env(safe-area-inset-top,0px)))]">
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">
                   {t('cart.yourCart')}
@@ -141,8 +125,8 @@ export function CartDrawer() {
               </div>
               <button
                 onClick={closeDrawer}
-                className="group flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[var(--border)]"
-                aria-label="Close cart"
+                className="group flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-[var(--border)]"
+                aria-label={t('a11y.closeCart')}
               >
                 <X
                   size={20}
@@ -188,7 +172,7 @@ export function CartDrawer() {
             ) : (
               <>
                 {/* Scrollable Item List */}
-                <ul className="flex-1 divide-y divide-[var(--border)] overflow-y-auto px-5 py-2 scrollbar-thin">
+                <ul className="flex-1 divide-y divide-[var(--border)] overflow-y-auto overscroll-contain px-5 py-2 scrollbar-thin">
                   <AnimatePresence initial={false}>
                     {cart.map(({ product, quantity }) => {
                       const price = product.onSale && product.salePrice ? product.salePrice : product.price
@@ -198,11 +182,11 @@ export function CartDrawer() {
                         <motion.li
                           key={product.id}
                           layout
-                          initial={{ opacity: 0, x: 40 }}
+                          initial={{ opacity: 0, x: isRtl ? -40 : 40 }}
                           animate={{ opacity: 1, x: 0 }}
                           exit={{
                             opacity: 0,
-                            x: 40,
+                            x: isRtl ? -40 : 40,
                             transition: { duration: 0.2 },
                           }}
                           className="flex gap-4 py-4"
@@ -233,8 +217,8 @@ export function CartDrawer() {
                               </div>
                               <button
                                 onClick={() => removeFromCart(product.id)}
-                                className="group flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--danger)]/10"
-                                aria-label={`Remove ${product.name}`}
+                                className="tap-native tap-pad group flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--danger)]/10"
+                                aria-label={t('a11y.removeItem', { name: product.name })}
                               >
                                 <Trash2
                                   size={14}
@@ -244,14 +228,17 @@ export function CartDrawer() {
                             </div>
 
                             <div className="flex items-center justify-between">
-                              {/* Quantity Controls */}
+                              {/* Quantity Controls — 44px designed targets
+                                  (.tap-native keeps the blanket rule from
+                                  inflating them to 48px, which crowded the
+                                  price column at 320px). */}
                               <div className="flex items-center gap-0.5 rounded-full border border-[var(--border)] bg-[var(--primary-bg)] p-0.5">
                                 <button
                                   onClick={() =>
                                     updateQuantity(product.id, quantity - 1)
                                   }
-                                  className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-[var(--border)]"
-                                  aria-label="Decrease quantity"
+                                  className="tap-native flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-[var(--border)]"
+                                  aria-label={t('a11y.decreaseQuantity')}
                                 >
                                   <Minus size={14} className="text-[var(--text-secondary)]" />
                                 </button>
@@ -263,8 +250,8 @@ export function CartDrawer() {
                                     updateQuantity(product.id, quantity + 1)
                                   }
                                   disabled={quantity >= Math.max(1, product.stockCount)}
-                                  className="flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-[var(--border)] disabled:opacity-40 disabled:cursor-not-allowed"
-                                  aria-label="Increase quantity"
+                                  className="tap-native flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-[var(--border)] disabled:opacity-40 disabled:cursor-not-allowed"
+                                  aria-label={t('a11y.increaseQuantity')}
                                   title={quantity >= Math.max(1, product.stockCount) ? `Only ${Math.max(1, product.stockCount)} available` : undefined}
                                 >
                                   <Plus size={14} className="text-[var(--text-secondary)]" />
@@ -272,7 +259,7 @@ export function CartDrawer() {
                               </div>
 
                               {/* Line Total */}
-                              <div className="text-right">
+                              <div className="min-w-0 text-end">
                                 <p className="text-sm font-semibold text-[var(--text-primary)]">
                                   {formatMoney(lineTotal, product.currency || currency)}
                                 </p>

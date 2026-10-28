@@ -90,6 +90,13 @@ function LocaleLayout() {
   const language = useStore((s) => s.language)
   const adminUser = useStore((s) => s.adminUser)
   const settings = useStoreSettings()
+  // Overlays used to mount unconditionally inside <Suspense>, which fetched
+  // the CommandSearch / AuthModal / CartDrawer chunks (and the framer-motion
+  // chunk they chain) on every page even while closed. Rendering them only
+  // while their store flag is on fetches those chunks on first use instead.
+  const commandOpen = useStore((s) => s.commandOpen)
+  const showAuthModal = useStore((s) => s.showAuthModal)
+  const showCartDrawer = useStore((s) => s.showCartDrawer)
 
   const isValid = locale !== undefined && VALID_LOCALES.includes(locale as Language)
 
@@ -124,9 +131,9 @@ function LocaleLayout() {
         <PageWrapper>
           <StoreAnalytics />
           <Suspense fallback={null}>
-            <CommandSearch />
-            <AuthModal />
-            <CartDrawer />
+            {commandOpen && <CommandSearch />}
+            {showAuthModal && <AuthModal />}
+            {showCartDrawer && <CartDrawer />}
           </Suspense>
           <Suspense fallback={<LoadingFallback />}>
             <Routes>

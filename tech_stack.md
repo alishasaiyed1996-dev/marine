@@ -34,7 +34,7 @@ _One monorepo (this repo, `marine`), two deployable services built from it. Reco
 - **Integrations**:
   - **PayPal** REST v2 (create/capture/refund, webhook signature verification + cert-URL SSRF guard) — live mode, USD
   - **eBay** marketplace sync (catalog import, quantity reconciliation scheduler, order-event webhooks)
-  - **Resend** over HTTPS (Railway blocks SMTP) with nodemailer/SMTP fallback + `email_queue`
+  - **Resend** over HTTPS — the only transport (Railway blocks SMTP ports; the nodemailer/SMTP fallback was removed) + `email_queue`
   - **Cloudinary** for media, **sharp** for image optimization
 
 ## Shared code (`shared/`)

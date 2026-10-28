@@ -65,3 +65,34 @@ export function skuCandidates(rawSku: string): string[] {
   if (collapsed) set.add(collapsed)
   return [...set]
 }
+
+/**
+ * Whether an eBay sale of this product may claim central stock (pure decision
+ * logic — unit-tested in ebayOrderService.test.ts).
+ *
+ * The ebay_listings mirror row IS the statement "this product is deliberately
+ * sold on eBay": imported items stay drafts until the admin clears the publish
+ * gate, and they keep selling on eBay the whole time. If drafts could not
+ * claim stock, central stock would go stale pre-publish and the first sync
+ * after publishing would push that stale snapshot back onto the live listing —
+ * resurrecting units that already sold. So ANY system-managed listing claims
+ * stock for draft/hidden products too; the publish gate only controls website
+ * visibility, not inventory truth.
+ *
+ * Mirror sync status (sync-pending/synced/failed/ended/pending) is NOT checked
+ * on purpose: an 'ended' row does not mean the sale is fake — an order placed
+ * before an admin ended the listing can still arrive afterwards through the
+ * webhook retry or the order poll, and its stock claim must not be dropped.
+ *
+ * Without a mirror row (a listing created outside this system that merely
+ * matches a website SKU), only a published catalog product claims — never
+ * guess that an unknown SKU belongs to this catalog. Archived products end the
+ * relationship entirely.
+ */
+export function sellableOnEbay(
+  product: { status: string } | null | undefined,
+  listing: { status: string } | null | undefined,
+): boolean {
+  if (!product || product.status === 'archived') return false
+  return listing ? true : product.status === 'published'
+}

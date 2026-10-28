@@ -37,7 +37,7 @@ export default function ForgotPassword() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2.5 mb-2">
             <img
-              src="/images/alka-traders-logo.png"
+              src="/images/alka-traders-logo-128.png"
               alt="Alka Traders Logo"
               className="w-8 h-8 rounded-xl object-cover shadow-sm"
             />

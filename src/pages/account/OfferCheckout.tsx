@@ -7,6 +7,7 @@ import {
   ChevronLeft, HandCoins, Loader2, MapPin, Shield, Tag,
 } from 'lucide-react'
 import { storefront } from '../../lib/api'
+import { countries } from '../../data/countries'
 import { useLocalizedPath } from '../../lib/locale'
 import { usePayPalAvailability } from '../../hooks/usePayPalAvailability'
 import { useStoreSettings } from '../../hooks/useStoreSettings'
@@ -265,35 +266,40 @@ export default function OfferCheckout() {
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Full Name</label>
-                <input type="text" value={shipping.fullName} onChange={(e) => update('fullName', e.target.value)} className={inputClass('fullName')} placeholder="John Doe" />
+                <label htmlFor="offer-full-name" className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Full Name</label>
+                <input id="offer-full-name" type="text" autoComplete="name" value={shipping.fullName} onChange={(e) => update('fullName', e.target.value)} className={inputClass('fullName')} placeholder="John Doe" />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Address Line 1</label>
-                <input type="text" value={shipping.addressLine1} onChange={(e) => update('addressLine1', e.target.value)} className={inputClass('addressLine1')} placeholder="Street address" />
+                <label htmlFor="offer-address-1" className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Address Line 1</label>
+                <input id="offer-address-1" type="text" autoComplete="address-line1" value={shipping.addressLine1} onChange={(e) => update('addressLine1', e.target.value)} className={inputClass('addressLine1')} placeholder="Street address" />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Address Line 2 <span className="normal-case font-normal">(optional)</span></label>
-                <input type="text" value={shipping.addressLine2} onChange={(e) => update('addressLine2', e.target.value)} className={inputClass('addressLine2')} placeholder="Apartment, suite, etc." />
+                <label htmlFor="offer-address-2" className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Address Line 2 <span className="normal-case font-normal">(optional)</span></label>
+                <input id="offer-address-2" type="text" autoComplete="address-line2" value={shipping.addressLine2} onChange={(e) => update('addressLine2', e.target.value)} className={inputClass('addressLine2')} placeholder="Apartment, suite, etc." />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">City</label>
-                  <input type="text" value={shipping.city} onChange={(e) => update('city', e.target.value)} className={inputClass('city')} />
+                  <label htmlFor="offer-city" className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">City</label>
+                  <input id="offer-city" type="text" autoComplete="address-level2" value={shipping.city} onChange={(e) => update('city', e.target.value)} className={inputClass('city')} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">State / Region</label>
-                  <input type="text" value={shipping.state} onChange={(e) => update('state', e.target.value)} className={inputClass('state')} />
+                  <label htmlFor="offer-state" className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">State / Region</label>
+                  <input id="offer-state" type="text" autoComplete="address-level1" value={shipping.state} onChange={(e) => update('state', e.target.value)} className={inputClass('state')} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Postal Code</label>
-                  <input type="text" value={shipping.postalCode} onChange={(e) => update('postalCode', e.target.value)} className={inputClass('postalCode')} />
+                  <label htmlFor="offer-postal" className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Postal Code</label>
+                  <input id="offer-postal" type="text" autoComplete="postal-code" value={shipping.postalCode} onChange={(e) => update('postalCode', e.target.value)} className={inputClass('postalCode')} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Country</label>
-                  <input type="text" value={shipping.country} onChange={(e) => update('country', e.target.value)} className={inputClass('country')} placeholder="US" />
+                  <label htmlFor="offer-country" className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Country</label>
+                  {/* Native select (mirrors normal checkout): free-text country
+                      codes silently broke PayPal's shipping calculations when
+                      visitors typed anything but a 2-letter code. */}
+                  <select id="offer-country" value={shipping.country} onChange={(e) => update('country', e.target.value)} className={`${inputClass('country')} select-chevron`} autoComplete="country">
+                    {countries.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
                 </div>
               </div>
             </div>

@@ -1,15 +1,16 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Check, Search, ShoppingCart } from 'lucide-react'
 import { Globe } from '@/components/ui/cobe-globe'
 import { useLocalizedPath } from '@/lib/locale'
 import { useStore } from '@/store/useStore'
 
 const TRUST_BADGES = [
-  'Worldwide Shipping',
-  'Quality Assured',
-  'Buyer Arranged Export',
-  'RFQ Support',
-]
+  'badgeShipping',
+  'badgeQuality',
+  'badgeExport',
+  'badgeRfq',
+] as const
 
 // Alka Traders global network — major shipping corridors the storefront
 // serves. Rendered as markers + arcs on the globe.
@@ -29,6 +30,7 @@ const ARCS = [
 ]
 
 export function Hero() {
+  const { t } = useTranslation()
   const localizedPath = useLocalizedPath()
   const isDark = useStore((s) => s.theme === 'dark')
 
@@ -37,7 +39,7 @@ export function Hero() {
 
   return (
     <section
-      aria-label="Alka Traders — trusted marine spare parts delivered worldwide"
+      aria-label={t('hero.label')}
       className="relative -mt-[var(--hero-header-offset)] flex min-h-[calc(100vh_+_var(--hero-header-offset))] items-center overflow-hidden bg-[var(--hero-bg)] supports-[height:100svh]:min-h-[calc(100svh_+_var(--hero-header-offset))]"
     >
       {/* Minimal ambient gradients — depth without heavy media. */}
@@ -52,27 +54,26 @@ export function Hero() {
 
       <div className="site-container relative z-10 pt-[var(--hero-header-offset)] pb-8 sm:pb-10 lg:pb-12">
         <div className="mx-auto grid w-full max-w-6xl items-center gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16">
-          {/* Copy column */}
-          <div className="mx-auto w-full max-w-xl text-center lg:mx-0 lg:text-left">
+          {/* Copy column — text-start keeps Arabic right-aligned on desktop */}
+          <div className="mx-auto w-full max-w-xl text-center lg:mx-0 lg:text-start">
             <span className="hero-reveal inline-flex items-center gap-2 rounded-full border border-[var(--hero-border)] bg-[var(--hero-chip-bg)] px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--hero-text-secondary)]">
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--hero-accent)]" aria-hidden="true" />
-              Marine &amp; Industrial Procurement
+              {t('hero.label')}
             </span>
 
             <h1
               className="hero-reveal mt-6 font-manrope text-[clamp(2.5rem,5.2vw,4.25rem)] font-extrabold leading-[1.06] tracking-[-0.03em] text-[var(--hero-text)]"
               style={{ animationDelay: '60ms' }}
             >
-              Trusted Marine Spare Parts.
-              <span className="mt-1 block text-[var(--hero-accent-hover)]">Delivered Worldwide.</span>
+              {t('hero.trustedLine')}
+              <span className="mt-1 block text-[var(--hero-accent-hover)]">{t('hero.deliveredLine')}</span>
             </h1>
 
             <p
               className="hero-reveal mx-auto mt-6 max-w-xl text-lg leading-relaxed text-[var(--hero-text-secondary)] lg:mx-0"
               style={{ animationDelay: '120ms' }}
             >
-              Global sourcing for ship owners, yards, and maintenance teams — shop online or send an
-              RFQ and our team will source it.
+              {t('hero.sub2')}
             </p>
 
             <div
@@ -80,13 +81,13 @@ export function Hero() {
               style={{ animationDelay: '160ms' }}
             >
               <Link to={localizedPath('/products')} className="hero-btn-primary px-7 py-3.5 no-underline">
-                <ShoppingCart size={18} strokeWidth={2} /> Shop Products
+                <ShoppingCart size={18} strokeWidth={2} /> {t('hero.ctaProducts')}
               </Link>
               <Link
                 to={localizedPath('/products?search=ship%20spares')}
                 className="hero-btn-secondary px-7 py-3.5 no-underline"
               >
-                <Search size={18} strokeWidth={2} /> Search Ship Spares
+                <Search size={18} strokeWidth={2} /> {t('hero.ctaSearch')}
               </Link>
             </div>
 
@@ -100,7 +101,7 @@ export function Hero() {
                   className="flex items-center gap-2 text-sm font-medium text-[var(--hero-text-secondary)]"
                 >
                   <Check size={15} strokeWidth={2.5} className="shrink-0 text-[var(--hero-accent)]" />
-                  {badge}
+                  {t(`hero.${badge}`)}
                 </li>
               ))}
             </ul>

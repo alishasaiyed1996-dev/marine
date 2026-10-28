@@ -98,7 +98,7 @@ export default function TrackOrder() {
         <div className="max-w-[720px] mx-auto px-4 sm:px-6 text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
             <img
-              src="/images/alka-traders-logo.png"
+              src="/images/alka-traders-logo-128.png"
               alt="Alka Traders Logo"
               className="w-8 h-8 rounded-xl object-cover shadow-sm"
             />

@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from '../../store/useStore'
+import { useOverlayBehavior } from '../../lib/overlay'
 import { LoginForm } from './LoginForm'
 import { RegisterForm } from './RegisterForm'
 
@@ -37,6 +39,7 @@ const cardVariants = {
 } as const
 
 export function AuthModal() {
+  const { t } = useTranslation()
   const showAuthModal = useStore((s) => s.showAuthModal)
   const setShowAuthModal = useStore((s) => s.setShowAuthModal)
   const login = useStore((s) => s.login)
@@ -60,6 +63,17 @@ export function AuthModal() {
   const [signUpConfirm, setSignUpConfirm] = useState('')
 
   const [errors, setErrors] = useState<FieldErrors>({})
+
+  // Shared overlay behavior (scroll lock, Escape, focus trap/restore) — this
+  // modal previously hand-rolled a document-level Escape listener and an
+  // html overflow lock with no focus management at all.
+  const panelRef = useRef<HTMLDivElement>(null)
+  useOverlayBehavior({
+    open: showAuthModal,
+    onClose: () => setShowAuthModal(false),
+    panelRef,
+    lockKey: 'auth',
+  })
 
   // Reset form state when modal opens or tab changes
   useEffect(() => {
@@ -88,25 +102,13 @@ export function AuthModal() {
   }, [activeTab, clearAuthErrors])
 
   // Escape key closes modal
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowAuthModal(false)
-    },
-    [setShowAuthModal]
-  )
-
   useEffect(() => {
-    if (showAuthModal) {
-      document.addEventListener('keydown', handleKeyDown)
-      document.documentElement.style.overflow = 'hidden'
-    }
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-      if (!document.querySelector('[role="dialog"], [role="alertdialog"]')) {
-        document.documentElement.style.overflow = ''
-      }
-    }
-  }, [showAuthModal, handleKeyDown])
+    setErrors({})
+    setShowPassword(false)
+    setShowConfirmPassword(false)
+    // A failed sign-in message must not follow the user to the Sign Up tab.
+    clearAuthErrors()
+  }, [activeTab, clearAuthErrors])
 
   if (!showAuthModal) return null
 
@@ -178,7 +180,12 @@ export function AuthModal() {
         >
           <motion.div
             key="auth-card"
-            className="relative w-full max-w-[420px] p-8 bg-[var(--surface)] border border-[var(--border)] shadow-2xl rounded-2xl"
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Sign in or create an account"
+            tabIndex={-1}
+            className="relative w-full max-w-[420px] p-5 sm:p-8 bg-[var(--surface)] border border-[var(--border)] shadow-2xl rounded-2xl focus:outline-none"
             variants={cardVariants}
             initial="hidden"
             animate="visible"
@@ -188,8 +195,8 @@ export function AuthModal() {
             {/* Close button */}
             <button
               onClick={closeModal}
-              className="absolute top-4 right-4 p-1.5 rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--primary-bg)] transition-all duration-200"
-              aria-label="Close"
+              className="tap-pad absolute top-3 end-3 p-2 rounded-full text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--primary-bg)] transition-all duration-200"
+              aria-label={t('a11y.closeDialog')}
             >
               <X size={18} strokeWidth={2.5} />
             </button>
@@ -198,7 +205,7 @@ export function AuthModal() {
             <div className="text-center mb-6">
               <div className="flex items-center justify-center gap-2.5 mb-1">
                 <img
-                  src="/images/alka-traders-logo.png"
+                  src="/images/alka-traders-logo-128.png"
                   alt="Alka Traders Logo"
                   className="w-9 h-9 rounded-xl object-cover shadow-sm"
                 />

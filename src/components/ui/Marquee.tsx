@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface MarqueeProps {
   items: string[]
@@ -8,6 +9,7 @@ interface MarqueeProps {
 
 export function Marquee({ items, direction = 'left', speed = '30s' }: MarqueeProps) {
   const [paused, setPaused] = useState(false)
+  const { t } = useTranslation()
   const animationClass = direction === 'left' ? 'animate-marquee-left' : 'animate-marquee-right'
 
   const togglePause = useCallback(() => setPaused(v => !v), [])
@@ -16,12 +18,12 @@ export function Marquee({ items, direction = 'left', speed = '30s' }: MarqueePro
     <div
       className="overflow-hidden relative w-full max-w-[100vw]"
       aria-live="off"
-      aria-label={`Scrolling list of ${items.length} brands`}
+      aria-label={t('a11y.marqueeLabel', { count: items.length })}
     >
       <button
         onClick={togglePause}
-        className="absolute right-2 top-1/2 -translate-y-1/2 z-10 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--surface)] border border-[var(--border)] rounded-full px-2 py-1 transition-colors"
-        aria-label={paused ? 'Resume scrolling' : 'Pause scrolling'}
+        className="tap-native tap-pad absolute end-2 top-1/2 -translate-y-1/2 z-10 text-xs font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--surface)] border border-[var(--border)] rounded-full px-2 py-1 transition-colors"
+        aria-label={paused ? t('a11y.marqueePlay') : t('a11y.marqueePause')}
       >
         {paused ? '▶' : '⏸'}
       </button>

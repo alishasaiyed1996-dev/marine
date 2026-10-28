@@ -4,7 +4,7 @@ import { Anchor, ArrowRight, Clock, Cog, Droplets, Package, Search, ShieldCheck,
 import { WhatsAppIcon } from '../components/ui/WhatsAppIcon'
 import { useTranslation } from 'react-i18next'
 import { useAddToCart } from '../hooks/useAddToCart'
-import { useLocalizedPath } from '../lib/locale'
+import { useLocalizedPath, useLocale } from '../lib/locale'
 import { buildShippingPromise } from '../lib/shippingPromise'
 import { SEO } from '../components/seo/SEO'
 import { useStaticPageSeo } from '../lib/seo/staticPageSeo'
@@ -25,14 +25,16 @@ import { CatalogOfflineNotice } from '../components/ui/CatalogOfflineNotice'
 import { ProductCardSkeleton } from '../components/ui/Skeleton'
 
 const ecommerceCategories = [
-  { icon: Anchor, label: 'Ship Spares', href: '/products?search=ship%20spares', copy: 'Deck, engine room, bridge, and vessel maintenance parts.' },
-  { icon: Cog, label: 'Marine Engine Parts', href: '/products?category=engine-spare', copy: 'Pistons, injectors, turbochargers, gaskets, and sensors.' },
-  { icon: Droplets, label: 'Marine Pumps', href: '/products?category=marine-pumps', copy: 'Bilge pumps, ballast pumps, seawater pumps, and impellers.' },
-  { icon: Zap, label: 'Electrical Automation', href: '/products?category=electrical', copy: 'PLC modules, VFD drives, relays, breakers, and control panels.' },
-  { icon: Wrench, label: 'Hydraulic Spares', href: '/products?category=hydraulic', copy: 'Hydraulic pumps, motors, valves, cylinders, and power units.' },
-  { icon: Package, label: 'Surplus Industrial Parts', href: '/products?search=surplus%20industrial%20equipment', copy: 'New old stock, used, refurbished, and tested MRO equipment.' },
+  { key: 't1', icon: Anchor, href: '/products?search=ship%20spares' },
+  { key: 't2', icon: Cog, href: '/products?category=engine-spare' },
+  { key: 't3', icon: Droplets, href: '/products?category=marine-pumps' },
+  { key: 't4', icon: Zap, href: '/products?category=electrical' },
+  { key: 't5', icon: Wrench, href: '/products?category=hydraulic' },
+  { key: 't6', icon: Package, href: '/products?search=surplus%20industrial%20equipment' },
 ]
 
+// High-intent search chips. Labels are translated (home.chips.c1..c10); the
+// hrefs keep the English query because the product catalog itself is English.
 const highIntentSearches = [
   'marine spare parts supplier',
   'ship spares online',
@@ -49,9 +51,13 @@ const highIntentSearches = [
 export default function Home() {
   const { t } = useTranslation()
   const lp = useLocalizedPath()
+  const locale = useLocale()
   // The home page is a static route too: its fallback metadata must come from
   // the same shared manifest as the prerendered HTML and the server shell
-  // (S-4/D-8). Admin-configured SEO settings may still override it.
+  // (S-4/D-8). Admin-configured SEO settings may still override it — but only
+  // on the English page: the admin writes one English title/description, and
+  // letting it clobber /es/ or /ar/ is exactly the English-leak SEO bug this
+  // fix removes.
   const staticSeo = useStaticPageSeo('')
   const { handleAddToCart, addedIds } = useAddToCart()
   const settings = useStoreSettings()
@@ -81,9 +87,10 @@ export default function Home() {
   return (
     <>
       <SEO
-        title={seoTitle || staticSeo.title}
-        description={seoDescription || staticSeo.description}
-        canonical="/en/"
+        title={(locale === 'en' && seoTitle) ? seoTitle : staticSeo.title}
+        description={(locale === 'en' && seoDescription) ? seoDescription : staticSeo.description}
+        canonical="/"
+        alternateLocales={['en', 'es', 'ar']}
         jsonLd={[
           {
             '@context': 'https://schema.org',
@@ -140,23 +147,23 @@ export default function Home() {
 
       <ShopByCategory />
 
-      <section className="section-y-sm bg-[var(--secondary-bg)]" aria-label="Shop marine spare parts">
+      <section className="section-y-sm bg-[var(--secondary-bg)]" aria-label={t('home.aria.store')}>
         <div className="site-container">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:items-center">
             <div className="section-header mb-0">
-              <SectionLabel>Online marine parts store</SectionLabel>
+              <SectionLabel>{t('home.store.label')}</SectionLabel>
               <h2 className="font-display text-section-lg font-bold tracking-tight text-[var(--text-primary)]">
-                Buy ship spares by category, brand, part number, or equipment type.
+                {t('home.store.title')}
               </h2>
               <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[var(--text-secondary)]">
-                Find marine spare parts online for vessel repair, shipyard maintenance, offshore procurement, and industrial MRO. Browse stock or send an RFQ for hard-to-find OEM and compatible replacement parts.
+                {t('home.store.sub')}
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link to={lp('/products')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent-primary)] px-5 py-3 text-sm font-black text-[var(--btn-blue-text)] no-underline hover:bg-[var(--accent-primary-hover)] hover:text-[var(--btn-blue-text)]">
-                  <Search size={16} /> Search all products
+                  <Search size={16} /> {t('home.store.searchAll')}
                 </Link>
                 <Link to={lp('/rfq')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-3 text-sm font-black text-[var(--text-primary)] no-underline hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]">
-                  Request a quote <ArrowRight size={16} />
+                  {t('home.store.requestQuote')} <ArrowRight size={16} />
                 </Link>
               </div>
             </div>
@@ -165,13 +172,13 @@ export default function Home() {
               {ecommerceCategories.map((cat) => {
                 const Icon = cat.icon
                 return (
-                  <Link key={cat.label} to={lp(cat.href)} className="group flex min-h-[132px] gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left no-underline shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-[var(--accent-primary)]">
+                  <Link key={cat.key} to={lp(cat.href)} className="group flex min-h-[132px] gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left no-underline shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-[var(--accent-primary)]">
                     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--teal-soft)] text-[var(--accent-primary)]">
                       <Icon size={21} />
                     </span>
                     <span>
-                      <strong className="block text-sm text-[var(--text-primary)] group-hover:text-[var(--accent-primary)]">{cat.label}</strong>
-                      <span className="mt-1 block text-xs leading-relaxed text-[var(--text-secondary)]">{cat.copy}</span>
+                      <strong className="block text-sm text-[var(--text-primary)] group-hover:text-[var(--accent-primary)]">{t(`home.tiles.${cat.key}.label`)}</strong>
+                      <span className="mt-1 block text-xs leading-relaxed text-[var(--text-secondary)]">{t(`home.tiles.${cat.key}.copy`)}</span>
                     </span>
                   </Link>
                 )
@@ -180,13 +187,13 @@ export default function Home() {
           </div>
 
           <div className="mt-8 flex flex-wrap gap-2">
-            {highIntentSearches.map((term) => (
+            {highIntentSearches.map((term, i) => (
               <Link
                 key={term}
                 to={lp(`/products?search=${encodeURIComponent(term)}`)}
-                className="rounded-full border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-bold text-[var(--text-secondary)] no-underline transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+                className="inline-flex items-center min-h-11 rounded-full border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-bold text-[var(--text-secondary)] no-underline transition hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
               >
-                {term}
+                {t(`home.chips.c${i + 1}`)}
               </Link>
             ))}
           </div>
@@ -194,7 +201,7 @@ export default function Home() {
       </section>
 
       {/* ── SHIPPING BADGES ── */}
-      <section className="section-y-sm bg-[var(--primary-bg)] border-y border-[var(--border)]" aria-label="Shipping and service guarantees">
+      <section className="section-y-sm bg-[var(--primary-bg)] border-y border-[var(--border)]" aria-label={t('home.aria.guarantees')}>
         <div className="site-container">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
@@ -227,10 +234,10 @@ export default function Home() {
             <div>
               <SectionLabel>{t('shop.newArrivals')}</SectionLabel>
               <h2 id="new-arrivals-heading" className="font-display font-bold text-section tracking-tight text-[var(--text-primary)]">
-                Featured marine spare parts and ship spares in stock
+                {t('home.new.title')}
               </h2>
               <p className="mt-3 max-w-[620px] text-sm leading-relaxed text-[var(--text-secondary)]">
-                Shop recently listed marine parts, tested surplus machinery, hydraulic spares, electrical automation components, engine spares, and hard-to-find MRO equipment.
+                {t('home.new.sub')}
               </p>
               <div className="gold-accent-bar mt-4" />
             </div>
@@ -267,23 +274,10 @@ export default function Home() {
       <section className="section-y-sm bg-[var(--primary-bg)]">
         <div className="site-container">
           <div className="grid gap-5 lg:grid-cols-3">
-            {[
-              {
-                title: 'Marine and ship spare parts',
-                copy: 'Source ship spares for bridge equipment, engine room systems, deck machinery, marine pumps, steering gear, ballast systems, safety equipment, and navigation equipment.',
-              },
-              {
-                title: 'Industrial automation and hydraulics',
-                copy: 'Buy ABB, Siemens, Schneider Electric, Parker, Bosch Rexroth, Danfoss, Festo, SMC, Omron, Honeywell, and similar electrical, pneumatic, and hydraulic replacement parts.',
-              },
-              {
-                title: 'RFQ support for rare parts',
-                copy: 'Send a part number, maker, model, serial plate, nameplate photo, or vessel details. We help locate new old stock, used, reconditioned, refurbished, and compatible alternatives.',
-              },
-            ].map((item) => (
-              <article key={item.title} className="equal-card rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-card)]">
-                <h3 className="font-display text-xl font-bold text-[var(--text-primary)]">{item.title}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-[var(--text-secondary)]">{item.copy}</p>
+            {(['s1', 's2', 's3'] as const).map((seg) => (
+              <article key={seg} className="equal-card rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-card)]">
+                <h3 className="font-display text-xl font-bold text-[var(--text-primary)]">{t(`home.segments.${seg}.title`)}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-[var(--text-secondary)]">{t(`home.segments.${seg}.copy`)}</p>
               </article>
             ))}
           </div>
@@ -294,35 +288,35 @@ export default function Home() {
         <div className="site-container grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-card)] md:p-8">
             <img
-              src="/images/alka-traders-logo.png"
+              src="/images/alka-traders-logo-128.png"
               alt="Alka Traders Logo"
               className="h-12 w-12 rounded-2xl object-cover shadow-sm mb-5"
             />
             <h2 className="font-display text-display-lg font-bold tracking-tight text-[var(--text-primary)]">
-              Sourcing built around clarity, condition, and dispatch.
+              {t('home.craft.heading')}
             </h2>
             <p className="mt-3 max-w-[720px] text-sm leading-relaxed text-[var(--text-secondary)]">
-              Send a maker, model, part number, serial plate, or product photo. Our team checks availability, condition, compatibility notes, export packing, and freight options before quoting.
+              {t('home.craft.sub')}
             </p>
             <div className="mt-6 grid gap-3 text-sm text-[var(--text-secondary)] sm:grid-cols-2">
-              {[
-                ['Marine focus', 'automation, navigation, pumps, engine spares, rigging, and deck equipment.'],
-                ['Industrial focus', 'ABB, Siemens, Parker, Bosch Rexroth, Danfoss, Festo, SMC, and similar MRO components.'],
-                ['Condition clarity', 'new old stock, used, refurbished, and reconditioned items are labelled before dispatch.'],
-                ['Export support', 'DHL, FedEx, air freight, sea freight, and buyer-arranged shipping from India.'],
-              ].map(([title, copy]) => (
-                <p key={title} className="min-h-[118px] rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/60 p-4">
-                  <strong className="block text-[var(--text-primary)]">{title}</strong>
-                  {copy}
+              {([
+                ['f1t', 'f1c'],
+                ['f2t', 'f2c'],
+                ['f3t', 'f3c'],
+                ['f4t', 'f4c'],
+              ] as const).map(([titleKey, copyKey]) => (
+                <p key={titleKey} className="min-h-[118px] rounded-xl border border-[var(--border)] bg-[var(--surface-soft)]/60 p-4">
+                  <strong className="block text-[var(--text-primary)]">{t(`home.craft.${titleKey}`)}</strong>
+                  {t(`home.craft.${copyKey}`)}
                 </p>
               ))}
             </div>
           </div>
           <div className="flex flex-col justify-between rounded-2xl border border-[var(--border)] bg-[var(--navy-deep)] p-6 text-white shadow-[var(--shadow-soft)] md:p-8">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-white/70">Urgent vessel procurement</p>
-            <h3 className="mt-3 font-display text-3xl font-bold leading-tight text-white">Need a rare ship spare?</h3>
-            <p className="mt-3 text-sm leading-relaxed text-white/70">Send the part number, photo, maker name, vessel details, and delivery port. We will confirm stock or source an alternative.</p>
-            <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-5 py-3 text-xs font-black uppercase tracking-[0.1em] text-[var(--btn-blue-text)] no-underline hover:bg-[var(--accent-primary-hover)] hover:text-[var(--btn-blue-text)]"><WhatsAppIcon size={16} /> WhatsApp RFQ</a>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-white/70">{t('home.urgent.eyebrow')}</p>
+            <h3 className="mt-3 font-display text-3xl font-bold leading-tight text-white">{t('home.urgent.heading')}</h3>
+            <p className="mt-3 text-sm leading-relaxed text-white/70">{t('home.urgent.sub')}</p>
+            <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[var(--accent-primary)] px-5 py-3 text-xs font-black uppercase tracking-[0.1em] text-[var(--btn-blue-text)] no-underline hover:bg-[var(--accent-primary-hover)] hover:text-[var(--btn-blue-text)]"><WhatsAppIcon size={16} /> {t('home.urgent.cta')}</a>
           </div>
         </div>
       </section>

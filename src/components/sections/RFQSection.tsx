@@ -1,9 +1,10 @@
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, Mail, Send } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { useStoreSettings } from '../../hooks/useStoreSettings'
 import { storefront } from '../../lib/api'
+import { useLocalizedPath } from '../../lib/locale'
 import { WhatsAppIcon } from '../ui/WhatsAppIcon'
 import { ResponseCountdown } from '../ui/ResponseCountdown'
 import { getRfqResponseDeadline } from '../../lib/rfqSla'
@@ -25,9 +26,16 @@ const INITIAL_RFQ = {
 
 export function RFQSection() {
   const { t } = useTranslation()
+  const lp = useLocalizedPath()
   const [spotlight, setSpotlight] = useState({ x: 0, y: 0 })
   const [isHovering, setIsHovering] = useState(false)
   const [isTouchDevice, setIsTouchDevice] = useState(() => 'ontouchstart' in window || navigator.maxTouchPoints > 0)
+  // Section rect captured once per hover instead of on every mousemove.
+  // Reading layout (getBoundingClientRect) inside a state-driven mousemove
+  // handler forced a synchronous reflow after each style write and dominated
+  // main-thread time during the audit; the rect only needs re-measuring when
+  // the pointer (re)enters the section.
+  const sectionRectRef = useRef<DOMRect | null>(null)
 
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0)
@@ -47,9 +55,16 @@ export function RFQSection() {
   const [consentGiven, setConsentGiven] = useState(false)
   const [consentError, setConsentError] = useState(false)
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
     if (isTouchDevice) return
-    const rect = e.currentTarget.getBoundingClientRect()
+    sectionRectRef.current = e.currentTarget.getBoundingClientRect()
+    setIsHovering(true)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
+    if (isTouchDevice) return
+    const rect = sectionRectRef.current
+    if (!rect) return
     setSpotlight({ x: e.clientX - rect.left, y: e.clientY - rect.top })
   }
 
@@ -103,7 +118,7 @@ export function RFQSection() {
       setSubmitError(
         err instanceof Error && err.message
           ? err.message
-          : 'Failed to send your RFQ. Please try again or contact us on WhatsApp.'
+          : t('rfq.submitFailed')
       )
     } finally {
       setSubmitting(false)
@@ -140,8 +155,8 @@ export function RFQSection() {
         backgroundImage: `linear-gradient(135deg, var(--teal-soft) 0%, transparent 48%), linear-gradient(180deg, var(--secondary-bg), var(--primary-bg))`,
       }}
       onMouseMove={handleMouseMove}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => { setIsHovering(false); sectionRectRef.current = null }}
     >
       <div
         className="site-container grid grid-cols-1 items-center gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-12"
@@ -155,26 +170,26 @@ export function RFQSection() {
       >
         <div>
           <h2 className="font-display font-bold text-section-xl tracking-tight mb-5">
-            Cannot find the ship spare?<br />Send the nameplate.
+            {t('rfq.homeForm.heading1')}<br />{t('rfq.homeForm.heading2')}
           </h2>
           <div className="gold-accent-bar mt-4 mb-6" />
           <p className="text-body text-[var(--text-secondary)] leading-relaxed mb-7 max-w-[520px]">
-            Upload a part description, model number, maker name, serial plate, or product photo. We will check Alang/Bhavnagar stock, compatible alternatives, condition, packing, and export options before quoting.
+            {t('rfq.homeForm.sub')}
           </p>
           <ul className="flex flex-col gap-3.5 mb-7">
             <li className="flex items-center gap-3 text-body-sm text-[var(--text-secondary)]">
-              <CircleCheck size={18} className="text-[var(--success)] flex-shrink-0" /> Tested used, refurbished, and new old stock options
+              <CircleCheck size={18} className="text-[var(--success)] flex-shrink-0" /> {t('rfq.homeForm.list1')}
             </li>
             <li className="flex items-center gap-3 text-body-sm text-[var(--text-secondary)]">
-              <CircleCheck size={18} className="text-[var(--success)] flex-shrink-0" /> Response target within 4 business hours
+              <CircleCheck size={18} className="text-[var(--success)] flex-shrink-0" /> {t('rfq.homeForm.list2')}
             </li>
             <li className="flex items-center gap-3 text-body-sm text-[var(--text-secondary)]">
-              <CircleCheck size={18} className="text-[var(--success)] flex-shrink-0" /> DHL, FedEx, air freight, and sea freight support
+              <CircleCheck size={18} className="text-[var(--success)] flex-shrink-0" /> {t('rfq.homeForm.list3')}
             </li>
           </ul>
           <div className="flex flex-col gap-2.5">
             <a href={`https://wa.me/${settings.whatsappNumber}`} className="flex items-center gap-2.5 text-sm font-semibold no-underline text-[var(--text-primary)] hover:text-[var(--success)] transition-colors">
-              <WhatsAppIcon size={18} className="text-[var(--success)]" /> WhatsApp Us Now
+              <WhatsAppIcon size={18} className="text-[var(--success)]" /> {t('rfq.whatsappUsNow')}
             </a>
             <a href={`mailto:${settings.rfqEmail}`} className="flex items-center gap-2.5 text-sm font-semibold no-underline text-[var(--text-primary)] hover:text-[var(--accent-primary)] transition-colors">
               <Mail size={18} className="text-[var(--accent-blue)]" /> {settings.rfqEmail}
@@ -184,62 +199,73 @@ export function RFQSection() {
 
         <form onSubmit={handleSubmit} className="card p-6 md:p-9">
           <div className="mb-5">
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">Full Name *</label>
+            <label htmlFor="rfq-name" className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">{t('rfq.name')} *</label>
             <input
+              id="rfq-name"
               type="text"
+              autoComplete="name"
               required
               value={formData.name}
               onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-              placeholder="Your full name"
+              placeholder={t('rfq.placeholders.fullName')}
               className="w-full px-4 py-3.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
             />
           </div>
           <div className="mb-5">
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">Company Name</label>
+            <label htmlFor="rfq-company" className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">{t('rfq.company')}</label>
             <input
+              id="rfq-company"
               type="text"
+              autoComplete="organization"
               value={formData.company}
               onChange={(e) => setFormData((p) => ({ ...p, company: e.target.value }))}
-              placeholder="Company name"
+              placeholder={t('rfq.placeholders.company')}
               className="w-full px-4 py-3.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
             />
           </div>
           <div className="mb-5">
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">Email Address *</label>
+            <label htmlFor="rfq-email" className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">{t('rfq.email')} *</label>
             <input
+              id="rfq-email"
               type="email"
+              autoComplete="email"
               required
               value={formData.email}
               onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
-              placeholder="you@company.com"
+              placeholder={t('rfq.placeholders.email')}
               className="w-full px-4 py-3.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
             />
           </div>
           <div className="mb-5">
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">Phone Number</label>
+            <label htmlFor="rfq-phone" className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">{t('rfq.phone')}</label>
             <input
+              id="rfq-phone"
               type="tel"
+              autoComplete="tel"
               value={formData.phone}
               onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
-              placeholder={t('rfq.placeholders.phone') || '+1 555 000 0000'}
+              placeholder={t('rfq.placeholders.phone')}
               className="w-full px-4 py-3.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
             />
           </div>
           <div className="mb-5">
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">Product Name or Description *</label>
+            <label htmlFor="rfq-product" className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">{t('rfq.productDesc')} *</label>
             <textarea
+              id="rfq-product"
               required
               value={formData.productDesc}
               onChange={(e) => setFormData((p) => ({ ...p, productDesc: e.target.value }))}
               rows={3}
-              placeholder="Example: Furuno radar display, ABB drive, Parker hydraulic pump, MAN B&W engine spare, or a nameplate photo reference"
+              placeholder={t('rfq.placeholders.productDesc')}
               className="w-full px-4 py-3.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all resize-vertical min-h-[80px]"
             />
           </div>
           <div className="mb-5">
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">Quantity Required</label>
+            <label htmlFor="rfq-quantity" className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">{t('rfq.quantity')}</label>
             <input
+              id="rfq-quantity"
               type="number"
+              inputMode="numeric"
               value={formData.quantity}
               onChange={(e) => setFormData((p) => ({ ...p, quantity: e.target.value }))}
               min={1}
@@ -247,20 +273,16 @@ export function RFQSection() {
             />
           </div>
           <div className="mb-7">
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">Urgency</label>
+            <label htmlFor="rfq-urgency" className="block text-xs font-semibold text-[var(--text-secondary)] mb-2">{t('rfq.urgency')}</label>
             <select
+              id="rfq-urgency"
               value={formData.urgency}
               onChange={(e) => setFormData((p) => ({ ...p, urgency: e.target.value }))}
-              className="w-full px-4 py-3.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all appearance-none"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394A3B8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 12px center',
-              }}
+              className="select-chevron w-full px-4 py-3.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] transition-all"
             >
-              <option value="standard">Standard (7-14 days)</option>
-              <option value="urgent">Urgent (24-48 hours)</option>
-              <option value="emergency">Emergency (Same day)</option>
+              <option value="standard">{t('rfq.homeForm.optStd')}</option>
+              <option value="urgent">{t('rfq.homeForm.optUrgent')}</option>
+              <option value="emergency">{t('rfq.homeForm.optEmergency')}</option>
             </select>
           </div>
           {submitError && (
@@ -284,7 +306,7 @@ export function RFQSection() {
             />
             <label htmlFor="rfq-consent" className="text-xs text-[var(--text-secondary)] leading-relaxed cursor-pointer">
               {t('rfq.consent')}{' '}
-              <a href="/en/privacy-policy" className="text-[var(--accent-primary)] underline">{t('rfq.consentPrivacy')}</a>
+              <a href={lp('/privacy-policy')} className="text-[var(--accent-primary)] underline">{t('rfq.consentPrivacy')}</a>
             </label>
           </div>
           {consentError && (
@@ -298,7 +320,7 @@ export function RFQSection() {
             className="w-full flex items-center justify-center gap-2.5 btn-primary text-sm maritime-shimmer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <Send size={14} />
-            {submitting ? 'Submitting…' : 'Submit RFQ'}
+            {submitting ? t('rfq.submitting') : t('rfq.submit')}
           </button>
         </form>
       </div>
