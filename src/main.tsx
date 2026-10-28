@@ -59,7 +59,15 @@ i18n.use(initReactI18next).init({
     ar: { translation: ar },
     es: { translation: es },
   },
-  lng: 'en',
+  // Boot in the URL/served document's locale, the same one `initialLocale`
+  // just applied to <html lang/dir>. With lng hardcoded to 'en' every
+  // non-English page mounted with English strings and then re-rendered all
+  // visible text when the locale effect fired — on /ar/ that repaints the
+  // whole document (and the prerendered consent banner mirror) Latin-for-Arabic
+  // between two paints, which Lighthouse attributed as a layout shift and
+  // readers saw as a language flash. Components must hydrate in the language
+  // the server already painted.
+  lng: initialLocale,
   fallbackLng: 'en',
   interpolation: { escapeValue: false },
 })
