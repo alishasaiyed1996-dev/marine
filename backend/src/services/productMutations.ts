@@ -100,7 +100,7 @@ async function createProductImage(productId: string, img: any, sortOrder: number
   })
 }
 
-async function assertPublishableProduct(data: any, productId?: string) {
+async function getPublishGateIssues(data: any, productId?: string): Promise<{ field: string; message: string }[]> {
   const details: { field: string; message: string }[] = []
   const add = (field: string, message: string) => details.push({ field, message })
   const name = String(data.name || '').trim()
@@ -143,9 +143,27 @@ async function assertPublishableProduct(data: any, productId?: string) {
     if (duplicate) add('description', `This description is already used by published product "${duplicate.name}". Write product-specific copy.`)
   }
 
+  return details
+}
+
+async function assertPublishableProduct(data: any, productId?: string) {
+  const details = await getPublishGateIssues(data, productId)
   if (details.length) {
     throw Object.assign(new Error('Product is saved only after all publish requirements are met.'), { status: 422, details })
   }
+}
+
+/**
+ * Non-throwing publish gate, used by the eBay catalog auto-sync: reports
+ * whether an eBay-imported product may publish itself automatically and, when
+ * not, exactly which gate requirements are missing (logged for diagnosis).
+ */
+export async function isProductPublishable(
+  data: any,
+  productId?: string,
+): Promise<{ ok: boolean; reasons: string[] }> {
+  const details = await getPublishGateIssues(data, productId)
+  return { ok: details.length === 0, reasons: details.map((issue) => `${issue.field}: ${issue.message}`) }
 }
 
 // ─── Create Product ────────────────────────────────────────────

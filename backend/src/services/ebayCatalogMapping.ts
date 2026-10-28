@@ -5,6 +5,12 @@
  * rules without importing the server bootstrap (which starts HTTP listeners).
  */
 import type { EbayItemDetails, EbayItemSpecific } from './ebayTradingService.js'
+import {
+  categoryIdForSlug,
+  resolveWebsiteCategory,
+  type CategoryAssignment,
+  type CategorySourceInput,
+} from './ebayCategoryMapping.js'
 
 export const MAX_DESCRIPTION_CHARS = 20_000
 
@@ -173,24 +179,21 @@ export function normalizeCurrency(value: string | null | undefined): string {
   return /^[A-Z]{3}$/.test(currency) ? currency : 'USD'
 }
 
-export function matchCategoryId(
-  categoryName: string | null | undefined,
-  categories: Array<{ id: string; name: string }>,
-): string | null {
-  const target = normalizeKey(String(categoryName || ''))
-  if (!target) return null
-
-  const exact = categories.find((category) => normalizeKey(category.name) === target)
-  if (exact) return exact.id
-
-  // Partial matches only for reasonably specific names; one-word generic
-  // categories ("Other", "Parts") must not swallow unrelated listings.
-  if (target.length < 5) return null
-  const partial = categories.find((category) => {
-    const name = normalizeKey(category.name)
-    return name.length >= 5 && (name.includes(target) || target.includes(name))
-  })
-  return partial?.id ?? null
+/**
+ * eBay → website category resolution.
+ *
+ * The whole rule set lives in `ebayCategoryMapping.ts` (aliased by eBay
+ * category name, then ordered keyword rules over title/specifics, then the
+ * 'other-business' fallback). Here we only bind the resolved slug to a live
+ * Category row id, so callers get one call that answers
+ * "which categoryId does this listing belong to and why".
+ */
+export function resolveCategoryId(
+  source: CategorySourceInput,
+  categories: Array<{ id: string; slug?: string | null; name: string }>,
+): { categoryId: string | null; assignment: CategoryAssignment } {
+  const assignment = resolveWebsiteCategory(source)
+  return { categoryId: categoryIdForSlug(assignment.slug, categories), assignment }
 }
 
 export function matchBrandId(

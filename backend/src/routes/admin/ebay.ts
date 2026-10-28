@@ -14,6 +14,8 @@ import { prisma } from '../../server.js'
 import { createListingForProduct } from '../../services/ebayListingService.js'
 import { getActiveEbayListings } from '../../services/ebayTradingService.js'
 import { syncNow } from '../../services/ebaySyncScheduler.js'
+import { sweepEbayCatalogAutoSync, getLastAutoSyncSummary } from '../../services/ebayCatalogAutoSync.js'
+import { autoPublishEnabled } from '../../services/ebayCatalogImportService.js'
 import {
   startEbayCatalogImport,
   getEbayCatalogImport,
@@ -133,6 +135,32 @@ router.post('/catalog-import/:id/cancel', requireRole('inventory-manager'), asyn
   const job = await cancelEbayCatalogImport(parsed.data)
   if (!job) return sendError(res, 'Import job not found', 404)
   return sendSuccess(res, { job })
+}))
+
+// ─── Catalog auto-sync (5-minute eBay→website reconciliation) ──
+router.post('/catalog-autosync/run', requireRole('inventory-manager'), asyncHandler(async (req: AuthRequest, res) => {
+  try {
+    const summary = await sweepEbayCatalogAutoSync({
+      marketplace: (req.body?.marketplace as string | undefined)?.toUpperCase(),
+    })
+    return sendSuccess(res, { summary })
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status || 500
+    return sendError(res, (err as Error).message, status)
+  }
+}))
+
+router.get('/catalog-autosync/status', asyncHandler(async (_req: AuthRequest, res) => {
+  const [lastJob, statusCounts] = await Promise.all([
+    getLatestEbayCatalogImport(),
+    prisma.ebayListing.groupBy({ by: ['status'], _count: { _all: true } }),
+  ])
+  return sendSuccess(res, {
+    lastSweep: getLastAutoSyncSummary(),
+    lastImportJob: lastJob,
+    autoPublishEnabled: autoPublishEnabled(),
+    listingStatuses: statusCounts.map((row) => ({ status: row.status, count: row._count._all })),
+  })
 }))
 
 export default router

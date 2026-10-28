@@ -29,7 +29,7 @@ import { generateSlug } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
 import type { AuthUser } from '../middleware/auth.js'
 import { isEbayConfigured, isRetryableError } from './ebayClient.js'
-import { getActiveEbayListings, getEbayItemDetails } from './ebayTradingService.js'
+import { getActiveEbayListings, getEbayItemDetails, type ActiveEbayListing } from './ebayTradingService.js'
 import { importMediaFromUrl } from './mediaService.js'
 import {
   cleanTitle,
@@ -37,7 +37,7 @@ import {
   htmlToPlainText,
   mapEbayCondition,
   matchBrandId,
-  matchCategoryId,
+  resolveCategoryId,
   normalizeCurrency,
   normalizeEbaySku,
 } from './ebayCatalogMapping.js'
@@ -45,12 +45,26 @@ import {
   makeUniqueSeoTitle,
   normalizeProductContent,
 } from './productContentNormalizer.js'
+import { isProductPublishable } from './productMutations.js'
 
 const log = logger.child({ context: 'ebay-catalog-import' })
 
 export const DEFAULT_IMPORT_MARKETPLACE = 'EBAY_US'
 const DISCOVERY_PAGE_SIZE = 100
 const DISCOVERY_MAX_PAGES = 500
+
+/**
+ * Auto-publish gate for the catalog auto-sync (requirement: a newly listed
+ * eligible eBay product must be on the website within 5 minutes). DRAFT-only
+ * would leave every new import invisible until an admin publishes it
+ * manually, so auto-sync publishes when the product already passes the exact
+ * same publish checks the admin UI enforces (category, substantive
+ * description, SEO lengths, an identity field, images with alt text, no
+ * duplicate description). `EBAY_AUTO_PUBLISH=0` restores manual-only.
+ */
+export function autoPublishEnabled(): boolean {
+  return String(process.env.EBAY_AUTO_PUBLISH || '1').trim() !== '0'
+}
 
 function envInt(name: string, fallback: number, min: number, max: number): number {
   const parsed = Number(process.env[name])
@@ -130,6 +144,54 @@ export async function getEbayCatalogImport(id: string): Promise<PublicEbayImport
   return job ? serializeImportJob(job) : null
 }
 
+/**
+ * Enqueue item ids for the catalog auto-sync (createdBy = null marks the job
+ * as system-owned). New ids are merged into an already-active autosync job
+ * instead of stacking a second job per sweep: appending only grows the tail of
+ * the work list, so the persisted cursor stays valid, and importOne's per-item
+ * dedupe makes repeated ids harmless.
+ */
+export async function enqueueCatalogImport(itemIds: string[], marketplace = DEFAULT_IMPORT_MARKETPLACE): Promise<{ job: PublicEbayImportJob; added: number; merged: boolean }> {
+  if (!isEbayConfigured()) {
+    throw Object.assign(new Error('eBay is not configured'), { status: 503 })
+  }
+  const deduped = [...new Set(itemIds.filter((id) => typeof id === 'string' && id))]
+  if (deduped.length === 0) {
+    throw Object.assign(new Error('No eBay item ids to import'), { status: 400 })
+  }
+
+  const activeAutosync = await prisma.ebayImportJob.findFirst({
+    where: { marketplace, status: { in: ['queued', 'running'] }, createdBy: null },
+    orderBy: { createdAt: 'desc' },
+  })
+  if (activeAutosync) {
+    const current = Array.isArray(activeAutosync.itemIds)
+      ? (activeAutosync.itemIds as unknown[]).filter((value): value is string => typeof value === 'string' && Boolean(value))
+      : []
+    const seen = new Set(current)
+    const fresh = deduped.filter((id) => !seen.has(id))
+    if (fresh.length === 0) {
+      return { job: serializeImportJob(activeAutosync), added: 0, merged: true }
+    }
+    const itemIds = [...current, ...fresh]
+    const job = await prisma.ebayImportJob.update({
+      where: { id: activeAutosync.id },
+      data: { itemIds, total: itemIds.length, lastError: null },
+    })
+    return { job: serializeImportJob(job), added: fresh.length, merged: true }
+  }
+
+  const job = await prisma.ebayImportJob.create({
+    data: {
+      marketplace,
+      itemIds: deduped,
+      total: deduped.length,
+      createdBy: null,
+    },
+  })
+  return { job: serializeImportJob(job), added: deduped.length, merged: false }
+}
+
 export async function getLatestEbayCatalogImport(marketplace?: string): Promise<PublicEbayImportJob | null> {
   const job = await prisma.ebayImportJob.findFirst({
     where: marketplace ? { marketplace: marketplace.toUpperCase() } : {},
@@ -154,30 +216,115 @@ export async function cancelEbayCatalogImport(id: string): Promise<PublicEbayImp
 
 // ─── Worker ────────────────────────────────────────────────────
 
-async function discoverItemIds(marketplace: string): Promise<string[]> {
-  const ids = new Set<string>()
-  let page = 1
-  let totalPages = 1
+export interface ActiveListingsWalk {
+  /** Eligible ActiveList ItemIDs (deduped, marketplace-filtered). */
+  itemIds: string[]
+  /** eBay's TotalNumberOfEntries from the walk (all marketplaces). */
+  totalEntries: number
+  /** Listings actually returned across the pages (all marketplaces). */
+  returnedCount: number
+  /** Active listing payload per id (price/quantity snapshot for the sweep). */
+  listingsById: Map<string, ActiveEbayListing>
+  /** True only when the walk returned the full set eBay reported. End-detection
+   *  must not run on a walk that came back short — a truncated walk would
+   *  false-flag live listings as ended. */
+  complete: boolean
+  /** Listings on pages that were skipped by the marketplace filter. */
+  skippedOtherMarketplace: number
+}
 
-  while (page <= totalPages && page <= DISCOVERY_MAX_PAGES) {
-    const result = await getActiveEbayListings({ page, limit: DISCOVERY_PAGE_SIZE })
-    if (page === 1) {
-      totalPages = Math.max(1, Math.min(DISCOVERY_MAX_PAGES, result.pagination.totalPages || 1))
+/**
+ * Walk the account's ActiveList page by page.
+ *
+ * Old behavior (removed): total pages were trusted from page 1 only, and an
+ * empty page ended the walk — a transient truncation silently dropped every
+ * listing after that page, which is exactly how the known 1,090↔1,074 catalog
+ * drift could widen. Now:
+ *   - total pages are re-read from every response and extended when eBay
+ *     grows the set mid-walk;
+ *   - an unexpectedly empty page is retried twice before failing loudly
+ *     (empty page + remaining pages → error, never a silent truncation);
+ *   - the caller learns whether the walk completed so catalog reconciliation
+ *     can be skipped on suspect data.
+ */
+export async function walkActiveListings(
+  marketplace: string,
+  options: { pageLimit?: number; maxPages?: number; failOnIncomplete?: boolean } = {},
+): Promise<ActiveListingsWalk> {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(options.pageLimit || DISCOVERY_PAGE_SIZE)))
+  const maxPages = Math.min(DISCOVERY_MAX_PAGES, Math.max(1, Math.floor(options.maxPages || DISCOVERY_MAX_PAGES)))
+  const ids = new Set<string>()
+  const listingsById = new Map<string, ActiveEbayListing>()
+  let totalEntries = 0
+  let totalPagesOnLastReport = 1
+  let returnedCount = 0
+  let skippedOtherMarketplace = 0
+  let pagesFetched = 0
+
+  for (let page = 1; page <= totalPagesOnLastReport && page <= maxPages; page += 1) {
+    let listings: ActiveEbayListing[] = []
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const result = await getActiveEbayListings({ page, limit: pageSize })
+      // eBay's totals can lag one page behind the item amble; trust the most
+      // recent report and let it grow/shrink the plan.
+      totalPagesOnLastReport = Math.max(1, Math.min(maxPages, result.pagination.totalPages || 1))
+      totalEntries = Math.max(totalEntries, result.pagination.total ?? 0)
+      listings = result.listings
+      if (result.listings.length > 0) break
+      if (page >= totalPagesOnLastReport) break // genuinely last page
+      if (attempt < 3) {
+        log.warn({ page, attempt, totalEntries, totalPagesOnLastReport }, 'eBay ActiveList page came back empty mid-walk — re-fetching')
+        continue
+      }
     }
-    for (const listing of result.listings) {
-      if (listing.marketplace !== marketplace) continue
-      if (listing.itemId) ids.add(listing.itemId)
+
+    if (listings.length === 0 && page < totalPagesOnLastReport) {
+      // Fail loudly: silently skipping a page is how valid listings stop
+      // appearing on the website.
+      throw Object.assign(
+        new Error(`eBay ActiveList page ${page} of ${totalPagesOnLastReport} returned no items after retries — review the eBay sync logs`),
+        { status: 502 },
+      )
     }
-    if (result.listings.length === 0) break
-    page += 1
+    if (listings.length === 0 && page >= totalPagesOnLastReport) break
+
+    pagesFetched = page
+    for (const listing of listings) {
+      if (listing.marketplace !== marketplace) {
+        skippedOtherMarketplace += 1
+        continue
+      }
+      if (listing.itemId) {
+        ids.add(listing.itemId)
+        listingsById.set(listing.itemId, listing)
+      }
+    }
+    returnedCount += listings.length
   }
 
-  return [...ids]
+  // Complete when either signal says the full set came back: entries returned
+  // cover eBay's total, or every reported page was fetched. An empty final
+  // page (totalPages off by one) still counts as complete; a mid-walk
+  // truncation satisfies neither and stays incomplete.
+  const complete = returnedCount >= totalEntries || pagesFetched >= totalPagesOnLastReport
+  if (!complete) {
+    const message = `eBay ActiveList walk incomplete: fetched ${pagesFetched}/${totalPagesOnLastReport} pages, ${returnedCount}/${totalEntries} entries`
+    log.warn({ marketplace, totalEntries, returnedCount, pagesFetched, totalPagesOnLastReport }, `(${message}) — treating mapped-but-unused listings cautiously`)
+    if (options.failOnIncomplete) throw Object.assign(new Error(message), { status: 502 })
+  }
+
+  return { itemIds: [...ids], totalEntries, returnedCount, listingsById, complete, skippedOtherMarketplace }
+}
+
+/** Back-compat shim: just the eligible item ids. */
+async function discoverItemIds(marketplace: string): Promise<string[]> {
+  const walk = await walkActiveListings(marketplace)
+  return walk.itemIds
 }
 
 async function loadLookup() {
   const [categories, brands] = await Promise.all([
-    prisma.category.findMany({ select: { id: true, name: true } }),
+    prisma.category.findMany({ select: { id: true, slug: true, name: true } }),
     prisma.brand.findMany({ select: { id: true, name: true } }),
   ])
   return { categories, brands }
@@ -206,7 +353,8 @@ export type ImportOutcome = 'created' | 'linked' | 'skipped' | 'failed'
 async function importOne(
   itemId: string,
   marketplace: string,
-  lookup: { categories: Array<{ id: string; name: string }>; brands: Array<{ id: string; name: string }> },
+  jobId: string,
+  lookup: { categories: Array<{ id: string; slug?: string | null; name: string }>; brands: Array<{ id: string; name: string }> },
   actorId: string | null,
   usedSeoTitles: Set<string>,
 ): Promise<ImportOutcome> {
@@ -277,7 +425,18 @@ async function importOne(
   )
   const price = details.price != null && Number.isFinite(details.price) ? details.price : 0
   const stockCount = Math.max(0, Math.floor(details.quantity || 0))
-  const categoryId = matchCategoryId(details.categoryName, lookup.categories)
+  // Category: eBay category id/name plus the listing content (title, item
+  // specifics) — never just the raw category name substring match that made
+  // almost every row uncategorized or mis-categorized.
+  const { categoryId, assignment } = resolveCategoryId(
+    {
+      categoryId: details.categoryId,
+      categoryName: details.categoryName,
+      title,
+      specifics: details.specifics,
+    },
+    lookup.categories,
+  )
   const brandId = matchBrandId(normalized.manufacturer, lookup.brands)
 
   const product = await prisma.product.create({
@@ -311,7 +470,7 @@ async function importOne(
       seoKeywords: normalized.keywords.join(', '),
       keyFeatures: normalized.keyFeatures,
       includedItems: normalized.includedItems,
-      internalNotes: `Imported from eBay item ${itemId} (${marketplace})${details.categoryName ? ` — eBay category: ${details.categoryName}` : ''}.`,
+      internalNotes: `Imported from eBay item ${itemId} (${marketplace})${details.categoryName ? ` — eBay category: ${details.categoryName}` : ''}. Category assigned: ${assignment.confidence} → ${assignment.slug} (${assignment.reason}).`,
       createdBy: actorId,
       updatedBy: actorId,
     },
@@ -368,6 +527,35 @@ async function importOne(
     await prisma.product.update({ where: { id: product.id }, data: { ogImageUrl: mainImageUrl } })
   }
 
+  // Auto-publish: the catalog must reflect new eligible eBay listings within
+  // minutes of being listed, which drafts alone cannot do. Publish through the
+  // exact same gate the admin UI enforces; failures keep the draft and are
+  // logged with the precise missing requirements.
+  if (autoPublishEnabled()) {
+    try {
+      const gate = await isProductPublishable(product, product.id)
+      if (gate.ok) {
+        await prisma.product.update({
+          where: { id: product.id },
+          data: { status: 'published', contentUpdatedAt: new Date() },
+        })
+        publishedCounts.set(jobId, (publishedCounts.get(jobId) ?? 0) + 1)
+        log.info({ itemId, sku, slug: product.slug, category: assignment.slug }, 'eBay catalog import: product auto-published (publish gate passed)')
+        await logAudit({
+          action: 'product.publish.auto',
+          entityType: 'product',
+          entityId: product.id,
+          entityName: product.name,
+          newValue: { id: product.id, sku, status: 'published', source: 'ebay-auto-sync', itemId },
+        })
+      } else {
+        log.info({ itemId, sku, reasons: gate.reasons }, 'eBay catalog import: product stays draft — automated publish gate not passed')
+      }
+    } catch (gateError) {
+      log.warn({ err: gateError, itemId, sku }, 'eBay catalog import: auto-publish check failed — leaving product as draft')
+    }
+  }
+
   await prisma.ebayListing.create({
     data: {
       productId: product.id,
@@ -388,6 +576,15 @@ async function importOne(
 // Per-job backoff after a rate limit / outage. Kept in memory: a restart
 // simply retries immediately, which is harmless.
 const pausedUntil = new Map<string, number>()
+
+// Per-job auto-publish tally (kept in memory; the durable record lives in the
+// product rows + the per-product audit logs).
+const publishedCounts = new Map<string, number>()
+
+/** How many items this job auto-published so far (for sweep summaries). */
+export function getAutoPublishedCount(jobId: string): number {
+  return publishedCounts.get(jobId) ?? 0
+}
 
 async function processJob(job: EbayImportJob): Promise<void> {
   if ((pausedUntil.get(job.id) ?? 0) > Date.now()) return
@@ -484,7 +681,7 @@ async function processJob(job: EbayImportJob): Promise<void> {
     }
 
     try {
-      const outcome = await importOne(itemId, job.marketplace, lookup, job.createdBy, usedSeoTitles)
+      const outcome = await importOne(itemId, job.marketplace, job.id, lookup, job.createdBy, usedSeoTitles)
       counts[outcome] += 1
     } catch (err) {
       // A rate limit / eBay outage must not burn through the remaining item

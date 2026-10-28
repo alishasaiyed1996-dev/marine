@@ -19,7 +19,7 @@ import {
   htmlToPlainText,
   mapEbayCondition,
   matchBrandId,
-  matchCategoryId,
+  resolveCategoryId,
   normalizeCurrency,
   normalizeEbaySku,
   validGtin,
@@ -191,20 +191,30 @@ test('buildDescription falls back to item specifics when the description is empt
 
 // ── Category / brand matching ────────────────────────────────
 
-test('matchCategoryId prefers exact normalized names', () => {
+test('resolveCategoryId binds the resolved slug to a live category id', () => {
   const categories = [
-    { id: 'cat-1', name: 'Marine Engines' },
-    { id: 'cat-2', name: 'Engine Parts' },
+    { id: 'cat-1', slug: 'engine-parts', name: 'Engine Parts' },
+    { id: 'cat-2', slug: 'other-business', name: 'Other Business & Industrial' },
   ]
-  assert.equal(matchCategoryId('marine engines', categories), 'cat-1')
-  assert.equal(matchCategoryId('MARINE-ENGINES', categories), 'cat-1')
+  const matched = resolveCategoryId({ categoryName: 'Engine Components', title: 'Caterpillar C32 Cylinder Liner' }, categories)
+  assert.equal(matched.categoryId, 'cat-1')
+  assert.equal(matched.assignment.slug, 'engine-parts')
 })
 
-test('matchCategoryId allows specific partial matches only', () => {
-  const categories = [{ id: 'cat-1', name: 'Marine Engine Parts' }]
-  assert.equal(matchCategoryId('Engine Parts', categories), 'cat-1')
-  // Short generic names must not match.
-  assert.equal(matchCategoryId('Other', categories), null)
+test('resolveCategoryId falls back to the other-business row when nothing matches', () => {
+  const categories = [
+    { id: 'cat-1', slug: 'engine-parts', name: 'Engine Parts' },
+    { id: 'cat-2', slug: 'other-business', name: 'Other Business & Industrial' },
+  ]
+  const matched = resolveCategoryId({ title: 'zzq unmappable listing 001' }, categories)
+  assert.equal(matched.assignment.confidence, 'fallback')
+  assert.equal(matched.categoryId, 'cat-2')
+})
+
+test('resolveCategoryId returns null ids when the fallback row is missing', () => {
+  const matched = resolveCategoryId({ title: 'zzq unmappable listing 002' }, [])
+  assert.equal(matched.assignment.slug, 'other-business')
+  assert.equal(matched.categoryId, null)
 })
 
 test('matchBrandId is exact after normalization', () => {

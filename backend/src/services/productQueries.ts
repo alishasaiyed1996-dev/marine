@@ -305,9 +305,15 @@ export async function getFeaturedProducts(take = 8) {
   })
 }
 
+/**
+ * Newest published products, newest first — what "New Arrivals" must mean.
+ * Previously this filtered on the admin `isNewArrival` flag, so the homepage
+ * section showed only hand-picked rows (often zero of them) instead of the
+ * products most recently listed/imported.
+ */
 export async function getNewArrivals(take = 8) {
   return prisma.product.findMany({
-    where: { status: 'published', isNewArrival: true },
+    where: { status: 'published' },
     include: productInclude,
     take,
     orderBy: { createdAt: 'desc' },
