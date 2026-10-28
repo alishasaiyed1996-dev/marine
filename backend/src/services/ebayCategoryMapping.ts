@@ -212,14 +212,23 @@ const CATEGORY_NAME_KEYWORD_RULES: Array<{ slug: WebsiteCategorySlug; keywords: 
   { slug: 'engine-parts', keywords: [
     'engine parts', 'engine components', 'diesel engine', 'engine', 'fuel injection', 'turbocharger', 'cylinder', 'piston', 'crankshaft', 'honing',
   ] },
-  { slug: 'pneumatic', keywords: ['pneumatic', 'pneumatics'] },
+  { slug: 'pneumatic', keywords: ['air tools', 'pneumatic', 'pneumatics'] },
   { slug: 'motor-components', keywords: ['motors', 'electric motor', 'motor components'] },
-  { slug: 'hand-tools', keywords: ['hand tools', 'spanner', 'wrench', 'screwdriver', 'plier'] },
-  { slug: 'tools-equipment', keywords: ['tools', 'equipments', 'equipment', 'welding', 'measuring'] },
+  { slug: 'hand-tools', keywords: [
+    'hand tools', 'pipe tools', 'pipe tool', 'flaring', 'spanner', 'wrench', 'screwdriver', 'plier',
+  ] },
+  // No bare "tools"/"equipments"/"equipment" here: they would blanket-match
+  // every "<X> Tools"/"<X> Equipment" leaf and steal rows from hand-tools,
+  // pneumatic ("Air Tools"), safety and electrical branches. Specific leaves
+  // map through their own keywords; generic segments still reach this bucket
+  // via the "equipment and tools" aliases or the title rules.
+  { slug: 'tools-equipment', keywords: ['power tools', 'welding', 'measuring'] },
   { slug: 'rigging', keywords: ['rigging', 'shackle', 'lashing'] },
   { slug: 'lifting-handling', keywords: ['lifting', 'hoist', 'crane'] },
   { slug: 'ship-machinery', keywords: ['machinery', 'compressor', 'purifier', 'separator', 'winch'] },
-  { slug: 'electrical', keywords: ['electrical', 'automation', 'breaker', 'switchgear', 'control'] },
+  { slug: 'electrical', keywords: [
+    'electrical', 'automation', 'breaker', 'switchgear', 'control', 'surveillance and alarm equipment', 'access control equipment',
+  ] },
   { slug: 'hydraulic', keywords: ['hydraulic'] },
   { slug: 'marine', keywords: ['marine', 'nautical'] },
   { slug: 'spares', keywords: ['spare parts', 'spares'] },
@@ -354,15 +363,16 @@ const CATEGORY_KEYWORD_RULES: Array<{ slug: WebsiteCategorySlug; keywords: strin
     'drilling machine', 'bench drill', 'band saw', 'lathe machine', 'milling machine', 'power tool',
     'impact wrench', 'hydraulic torque', 'press machine', 'pressure washer', 'measuring instrument',
     'dial gauge', 'vernier', 'caliper', 'micrometer', 'borescope', 'bore scope', 'torque multiplier',
-    'torque gauge', 'spring balance', 'tool box', 'tool kit', 'tools', 'equipments', 'equipment',
+    'torque gauge', 'spring balance', 'tool box', 'tool kit',
     'multitester', 'coating thickness gauge', 'laser pointer', 'thermal imaging', 'endoscope',
     'hilti', 'makita', 'bosch tool',
   ] },
   { slug: 'hand-tools', keywords: [
     'spanner set', 'spanner', 'combination spanner', 'ring spanner', 'open end spanner', 'wrench', 'pipe wrench',
+    'pipe cutter', 'tube cutter', 'tube bender', 'die head', 'flaring', 'pipe threader', 'threading tool',
     'torque wrench', 'box wrench', 'socket wrench', 'socket set', 'ratchet handle', 'plier', 'screwdriver',
     'hammer', 'mallet', 'hacksaw', 'hacksaw frame', 'file', 'files', 'chisel', 'punch', 'scraper', 'allen key',
-    'hex key', 'tin snips', 'wire cutter', 'crimping tool', 'reamer', 'tap and die', 'die set', 'threading tool',
+    'hex key', 'tin snips', 'wire cutter', 'crimping tool', 'reamer', 'tap and die', 'die set',
     'hand tool', 'handtools', 'puller', 'bearing puller', 'grease gun', 'riveter', 'clamp', 'shovel',
     'crow bar', 'crowbar', 'stanley', 'stahlwille', 'gedore', 'facom', 'koken', 'knipex', 'venus',
   ] },

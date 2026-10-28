@@ -181,6 +181,49 @@ test('hoists and winches branches map to lifting-handling', () => {
   assert.equal(assignment.slug, 'lifting-handling')
 })
 
+test('<X> Tools leaves do not blanket-map to tools-equipment', () => {
+  // RIDGID-style pipe working tooling lives in hand-tools, matching the
+  // site's own rules (threading tools, reamers, die sets are hand tools).
+  assert.equal(
+    resolveWebsiteCategory({ categoryName: 'Business & Industrial:Light Equipment & Tools:Pipe Tools' }).slug,
+    'hand-tools',
+  )
+  assert.equal(
+    resolveWebsiteCategory({ categoryName: 'Business & Industrial:Light Equipment & Tools:Pipe Tools:Flaring Tools' }).slug,
+    'hand-tools',
+  )
+  assert.equal(
+    resolveWebsiteCategory({ title: 'RIDGID No 358 Geared Ratchet Tube Bender 5/8 16MM OD' }).slug,
+    'hand-tools',
+  )
+})
+
+test('alarm and access-control branches stay out of tools-equipment', () => {
+  const assignment = resolveWebsiteCategory({
+    categoryName: 'Business & Industrial:Facility Maintenance & Safety:Surveillance & Alarm Equipment',
+    title: 'DNH HP-15 T Weatherproof Horn Speaker 15W 100V Line',
+  })
+  assert.equal(assignment.slug, 'electrical')
+  assert.equal(
+    resolveWebsiteCategory({ categoryName: 'Business & Industrial:Facility Maintenance & Safety:Access Control Equipment' }).slug,
+    'electrical',
+  )
+})
+
+test('Air Tools leaves resolve to pneumatic', () => {
+  assert.equal(
+    resolveWebsiteCategory({ categoryName: 'Business & Industrial:Light Equipment & Tools:Air Tools' }).slug,
+    'pneumatic',
+  )
+})
+
+test('genuinely generic power-tool leaves still reach tools-equipment', () => {
+  assert.equal(
+    resolveWebsiteCategory({ categoryName: 'Business & Industrial:Light Equipment & Tools:Power Tools' }).slug,
+    'tools-equipment',
+  )
+})
+
 // ── Plural-tolerant phrase matching ────────────────────────────
 
 test('matching is plural-tolerant on the final word', () => {
