@@ -16,6 +16,18 @@
 
 export const CONSENT_KEY = 'alka-cookie-consent'
 
+/**
+ * First-party mirror cookie (`alka-consent=accepted|rejected`) written on
+ * every consent answer. server.js reads it per request to send prerendered
+ * documents WITHOUT the static banner block (the React banner then stays
+ * hidden by consent, so the markup is redundant per visit). Lifetime/values
+ * must stay in sync with shared/consent-banner.mjs, which writes the same
+ * cookie in the pre-hydration wiring script — tests/consent-banner.test.mjs
+ * pins the two in sync.
+ */
+export const CONSENT_COOKIE_NAME = 'alka-consent'
+export const CONSENT_COOKIE_MAX_AGE_SECONDS = 15552000 // 180 days
+
 export type ConsentState = {
   accepted: boolean
   timestamp: number
@@ -51,6 +63,15 @@ export function writeConsent(accepted: boolean): void {
     window.localStorage.setItem(CONSENT_KEY, JSON.stringify({ accepted, timestamp: Date.now() }))
   } catch {
     /* storage unavailable — analytics stays off */
+  }
+  // The mirror cookie is written independently of localStorage availability:
+  // whenever the answer is recorded anywhere, the server should remember it.
+  // If the cookie write fails, the server keeps sending the static block and
+  // the inline cleanup script removes it pre-paint instead (no flash either way).
+  try {
+    window.document.cookie = `${CONSENT_COOKIE_NAME}=${accepted ? 'accepted' : 'rejected'}; max-age=${CONSENT_COOKIE_MAX_AGE_SECONDS}; path=/; samesite=lax`
+  } catch {
+    /* cookie write unavailable — the cleanup script covers the client side */
   }
   window.dispatchEvent(new CustomEvent('alka:consent-change', { detail: { accepted } }))
 }

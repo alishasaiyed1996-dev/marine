@@ -27,6 +27,7 @@ import { getAllRoutes } from './prerender-routes.mjs'
 import { fetchPublishedProducts, fetchSiteSeoSettings } from './fetch-products.mjs'
 import { buildProductPage, renderProductBodyHtml } from '../shared/product-page.mjs'
 import { hreflangAlternatesFor } from '../shared/route-i18n.mjs'
+import { consentBannerMarkup, stripStaticConsentBlock } from '../shared/consent-banner.mjs'
 
 const distArgIndex = process.argv.indexOf('--dist')
 const DIST = distArgIndex !== -1 && process.argv[distArgIndex + 1]
@@ -358,6 +359,22 @@ function injectIntoTemplate(template, path, routeData) {
       html = `${html.slice(0, rootStart)}<div id="root">\n    ${bodyHtml}\n    </div>${html.slice(closeIndex + '</div>'.length)}`
     }
   }
+
+  // Paint the consent banner with the first paint (perf fix). The React copy
+  // used to appear only after hydration plus a 2s pacing timer, making the
+  // banner text the mobile LCP element with ~3.3s of elementRenderDelay. The
+  // static copy (shared/consent-banner.mjs) is the same markup the React
+  // component renders; on mount React removes it in the same commit it
+  // renders its own copy, so the takeover is invisible.
+  //
+  // Strip-then-inject, never "skip if present": this script re-runs over a
+  // dist that already contains one of these blocks (pass N+1 reads the
+  // dist/index.html written by pass N, the English home doc). Skipping would
+  // let every non-English page inherit the English home's stale block.
+  // Stripping first keeps repeated prerender runs byte-stable and lets the
+  // builder evolve between passes.
+  html = stripStaticConsentBlock(html)
+  html = html.replace('</body>', `  ${consentBannerMarkup(locale)}\n</body>`)
 
   return html
 }

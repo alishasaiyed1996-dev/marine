@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Cookie, X } from 'lucide-react'
 import { writeConsent, readConsent } from '../lib/consent'
@@ -15,19 +15,32 @@ import { useOverlayBehavior } from '../lib/overlay'
  *
  * It is a modal dialog: it traps focus, can be dismissed with Escape, and
  * does not steal focus from the page on first paint.
+ *
+ * Prerendered takeover (perf): the build prerenders this exact markup before
+ * `</body>` (shared/consent-banner.mjs), so the banner paints with the first
+ * document paint instead of after hydration — it used to be the mobile LCP
+ * element with ~3.3s of elementRenderDelay. This component renders its own
+ * copy immediately on mount (the old 2s pacing timer is gone) and removes the
+ * static node in the same commit, before paint. The wiring script inside the
+ * static block covers clicks during the pre-hydration window, so the banner
+ * is never inert.
  */
 export function CookieConsent() {
   const { t, i18n } = useTranslation()
   const locale = ['en', 'ar', 'es'].includes(i18n.language) ? i18n.language : 'en'
-  const [visible, setVisible] = useState(false)
+  // Lazy initial read: the banner is visible from the very first render when
+  // no consent exists, mirroring the prerendered copy 1:1 in the same mount
+  // commit — no flash, no layout shift between the static and React copies.
+  const [visible, setVisible] = useState(() => !readConsent())
   const dialogRef = useRef<HTMLDivElement>(null)
   const acceptRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
-    if (readConsent()) return
-    // Show after a short delay to not block initial render.
-    const timer = setTimeout(() => setVisible(true), 2000)
-    return () => clearTimeout(timer)
+  // BEFORE paint: this commit renders the React copy and removes the
+  // prerendered node, so the browser paints a single banner. Runs
+  // unconditionally (also when `visible` is false, i.e. consent already
+  // recorded) so returning visitors never keep a non-React copy in the DOM.
+  useLayoutEffect(() => {
+    document.getElementById('alka-consent-static')?.remove()
   }, [])
 
   // Declared before the focus effect: Escape calls `decline`, and referencing

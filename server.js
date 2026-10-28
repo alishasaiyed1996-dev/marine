@@ -32,6 +32,11 @@ import { fileURLToPath } from 'url'
 import { buildProductPage, renderProductBodyHtml, isUuidSku, hubCoverageSentence } from './shared/product-page.mjs'
 import { isIndexableRoute, hreflangAlternatesFor, SHIPPED_LOCALES } from './shared/route-i18n.mjs'
 import { STATIC_PAGE_META } from './shared/static-pages.mjs'
+import {
+  CONSENT_COOKIE_NAME,
+  hasStaticConsentBlock,
+  stripStaticConsentBlock,
+} from './shared/consent-banner.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -352,6 +357,41 @@ function sendNotFound(req, res, heading, message) {
     .set('X-Robots-Tag', 'noindex, follow')
     .type('html')
     .send(notFoundHtml(res.locals.cspNonce, heading, message))
+}
+
+// ─── Static consent banner scope ─────────────────────────────────
+// Prerendered documents ship the consent-banner block (shared/consent-banner.
+// mjs) so first-time visitors see it with the first paint instead of after
+// hydration. The block's inline script already removes itself pre-paint for
+// consented visitors; for visitors whose answer is ALSO visible to the
+// server via the mirror cookie (`alka-consent`, written by the banner wiring
+// script and src/lib/consent.ts) the block is dead markup and the strip here
+// removes it.
+//
+// The strip is only applied to responses that are NOT candidates for shared
+// CDN caching: prerendered documents are sent without a shared Cache-Control,
+// so every response is computed against this request's cookie. Product/hub
+// server renders set `public, s-maxage` and deliberately keep the block —
+// a shared cache would otherwise pin one cookie variant for everyone (and
+// the inline pre-paint removal already makes the variant harmless).
+function consentCookieState(req) {
+  const header = req?.headers?.cookie
+  if (!header) return null
+  for (const part of String(header).split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1) continue
+    if (part.slice(0, eq).trim() === CONSENT_COOKIE_NAME) {
+      const value = part.slice(eq + 1).trim().toLowerCase()
+      return value === 'accepted' || value === 'rejected' ? value : null
+    }
+  }
+  return null
+}
+
+/** Strip the static banner block from a document for this visitor. */
+function stripStaticConsentForVisitor(html, req) {
+  if (!hasStaticConsentBlock(html) || consentCookieState(req) === null) return html
+  return stripStaticConsentBlock(html)
 }
 
 // Whether the built SPA is actually present — surfaced by the heartbeat so a
@@ -1247,7 +1287,7 @@ app.use((req, res, next) => {
       .type('html')
       .send(withCspNonce(fs.readFileSync(file, 'utf8'), res.locals.cspNonce))
   }
-  res.type('html').send(withCspNonce(fs.readFileSync(file, 'utf8'), res.locals.cspNonce))
+  res.type('html').send(withCspNonce(stripStaticConsentForVisitor(fs.readFileSync(file, 'utf8'), req), res.locals.cspNonce))
 })
 
 // Serve assets directly, but let route handlers own root, sitemap and dynamic
@@ -1331,7 +1371,7 @@ app.get('/{*splat}', async (req, res) => {
     const prerendered = indexable && !privateRoute ? prerenderedIndexFor(req.path) : null
     let html
     if (prerendered) {
-      html = fs.readFileSync(prerendered, 'utf8')
+      html = stripStaticConsentForVisitor(fs.readFileSync(prerendered, 'utf8'), req)
     } else {
       const pageMeta = translated && !privateRoute
         ? STATIC_PAGE_META[parsed.segments[0] || '']
@@ -1342,6 +1382,9 @@ app.get('/{*splat}', async (req, res) => {
         robots: noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large',
         canonical: !noindex ? `${SITE_ORIGIN}${canonicalPath(req.path)}` : undefined,
       })
+      // The renderDocument fallback inherits the template's banner block like
+      // a prerendered document would, so the strip policy applies here too.
+      html = stripStaticConsentForVisitor(html, req)
     }
     // Homepage only: settings are global, not per-product. This runs after the
     // prerendered file is read so bots and social scrapers receive the same
