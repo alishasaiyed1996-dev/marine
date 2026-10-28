@@ -20,13 +20,13 @@
  * Notifications are NEVER trusted directly: processEbayOrderEvent re-fetches
  * the order from the Fulfillment API before any stock moves.
  */
-import { Router } from 'express'
-import { createHash } from 'crypto'
+import { Router, Response } from 'express'
 import { prisma } from '../../server.js'
 import logger from '../../utils/logger.js'
 import { authenticateAdmin } from '../../middleware/auth.js'
 import { processEbayOrderEvent } from '../../services/ebayOrderService.js'
 import { extractTopic, extractEventId } from '../../services/ebayOrderEvents.js'
+import { buildChallengeResponse } from '../../utils/ebayChallenge.js'
 
 const router = Router()
 const log = logger.child({ context: 'ebay-webhook' })
@@ -34,18 +34,30 @@ const log = logger.child({ context: 'ebay-webhook' })
 /** eBay endpoint-registration challenge (Event Notification Platform). */
 router.get('/', (req, res) => {
   const code = req.query.challenge_code as string | undefined
-  const token = process.env.EBAY_VERIFICATION_TOKEN
-  const endpoint = process.env.EBAY_PUBLIC_ENDPOINT
-
-  if (!code || !token || !endpoint) {
-    return res.status(400).json({ error: 'Missing challenge_code or server configuration' })
-  }
-  const hash = createHash('sha256')
-  hash.update(code + token + endpoint)
-  return res.status(200).json({ challengeResponse: hash.digest('hex') })
+  respondChallenge(res, code)
 })
 
+/**
+ * Answers the endpoint-validation probe for whichever verb eBay sends it on:
+ * GET registration probes and POST-style registrations both carry the
+ * ?challenge_code query. buildChallengeResponse returns null when the server
+ * env is unconfigured → 400, never a wrong hash.
+ */
+function respondChallenge(res: Response, code: string | undefined): Response {
+  const challengeResponse = buildChallengeResponse(code)
+  if (!challengeResponse) {
+    return res.status(400).json({ error: 'Missing challenge_code or server configuration' })
+  }
+  return res.status(200).json({ challengeResponse })
+}
+
 router.post('/', (req, res) => {
+  // eBay also sends the endpoint-validation probe for POST registrations —
+  // answer it before treating the body as a notification.
+  if (req.query.challenge_code) {
+    return respondChallenge(res, req.query.challenge_code as string)
+  }
+
   const payload = (req.body || {}) as Record<string, unknown>
   const topic = extractTopic(payload) || 'unknown'
   const eventId = extractEventId(payload) || `${topic}:${Date.now()}`

@@ -143,6 +143,7 @@ import { startNotificationScheduler, stopNotificationScheduler } from './service
 import { startOfferExpiryScheduler, stopOfferExpiryScheduler } from './services/offerExpiryScheduler.js'
 import { startEbaySyncScheduler, stopEbaySyncScheduler } from './services/ebaySyncScheduler.js'
 import { startEbayCatalogImportScheduler, stopEbayCatalogImportScheduler } from './services/ebayCatalogImportService.js'
+import { startOrderStockSweepScheduler, stopOrderStockSweepScheduler } from './services/orderSweep.js'
 
 // ─── App Setup ─────────────────────────────────────────────────
 const app = express()
@@ -441,6 +442,7 @@ async function shutdown(signal: string, exitCode: number) {
   stopNotificationScheduler()
   stopOfferExpiryScheduler()
   stopEbaySyncScheduler()
+  stopOrderStockSweepScheduler()
   stopEbayCatalogImportScheduler()
   httpServer?.close()
   await prisma.$disconnect().catch(() => {})
@@ -513,6 +515,7 @@ async function main() {
     startOfferExpiryScheduler()
     startEbaySyncScheduler()
     startEbayCatalogImportScheduler()
+    startOrderStockSweepScheduler()
     startupLogger.info('APPLICATION_READY')
 
     // Heartbeat: an alive process prints every 30s, so an empty runtime log

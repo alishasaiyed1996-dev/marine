@@ -6,6 +6,7 @@ import { getPaypalAccessToken, PAYPAL_BASE, PAYPAL_WEBHOOK_ID, processPaypalRefu
 import { paypalReturnUrl, paypalCancelUrl } from '../utils/paypalUrls.js'
 import { markOfferPaid } from './offerService.js'
 import { decreaseStock, increaseStock, reserveStock, releaseReservation } from './centralInventory.js'
+import { classifyCaptureRefund } from './paypalRefundPolicy.js'
 import type { Prisma } from '@prisma/client'
 
 const hookLog = logger.child({ context: 'paypal-service' })
@@ -418,6 +419,128 @@ export async function handleCaptureFailed(resource: Record<string, unknown>) {
     hookLog.warn({ orderId: order.id }, 'PayPal capture denied')
   } catch (err) {
     hookLog.error({ err }, 'Error handling PayPal capture failed')
+  }
+}
+
+/**
+ * PAYMENT.CAPTURE.REFUNDED — money left through PayPal's own side (dashboard
+ * refund, dispute resolution, buyer self-service reversal) and this store
+ * must agree. Mirrors the admin-cancel refund semantics: a FULL refund marks
+ * the payment refunded AND returns the claimed units (both capture paths
+ * deduct stock before the paid flip, so restore via increaseStock the way
+ * restoreStockAndRefund does). A partial refund moves no state — only a
+ * timeline note. Idempotent: the not-'refunded' guard turns a replayed or
+ * duplicate delivery into a no-op that releases nothing, and the
+ * stockReserved guard makes the stock restore one-shot.
+ */
+export async function handleCaptureRefunded(resource: Record<string, unknown>) {
+  try {
+    const supplementaryData = resource?.supplementary_data as Record<string, unknown> | undefined
+    const relatedIds = supplementaryData?.related_ids as Record<string, unknown> | undefined
+    const purchaseUnit = (resource?.purchase_units as Array<Record<string, unknown>> | undefined)?.[0]
+    const customId = (resource?.custom_id || purchaseUnit?.custom_id) as string | undefined
+    const invoiceId = (resource?.invoice_id || purchaseUnit?.invoice_id) as string | undefined
+    const referenceId = (relatedIds?.order_id || resource?.custom_id) as string | undefined
+    if (!referenceId && !customId && !invoiceId) {
+      hookLog.warn('PayPal refund webhook carries no order reference — nothing to reconcile')
+      return
+    }
+
+    // Same priority-order reconciliation as the capture/denied handlers.
+    let order = customId
+      ? await prisma.order.findFirst({
+          where: {
+            OR: [
+              { id: customId },
+              { orderNumber: customId },
+              { paymentIntentId: customId },
+            ],
+          },
+          include: { items: true },
+        })
+      : null
+    if (!order && invoiceId) order = await prisma.order.findFirst({ where: { orderNumber: invoiceId }, include: { items: true } })
+    if (!order && referenceId) order = await prisma.order.findFirst({ where: { paymentIntentId: referenceId }, include: { items: true } })
+    if (!order && referenceId) order = await prisma.order.findFirst({ where: { orderNumber: referenceId }, include: { items: true } })
+    if (!order) {
+      hookLog.warn({ referenceId }, 'PayPal refund for an order this store cannot find — manual check recommended')
+      return
+    }
+
+    const classification = classifyCaptureRefund(resource, {
+      total: Number(order.total),
+      currency: order.currency,
+    })
+
+    if (classification.kind === 'unidentifiable') {
+      await prisma.orderTimeline.create({
+        data: {
+          orderId: order.id,
+          status: order.status,
+          note: 'PayPal refund notification could not be reconciled (amount or currency) — manual check required.',
+        },
+      })
+      hookLog.warn({ orderId: order.id, orderNumber: order.orderNumber, amount: classification.amount, orderTotal: classification.orderTotal }, 'Unreconcilable PayPal refund notification')
+      return
+    }
+
+    if (classification.kind === 'partial') {
+      await prisma.orderTimeline.create({
+        data: {
+          orderId: order.id,
+          status: order.status,
+          note: `Partial PayPal refund received (${classification.amount} ${order.currency || ''}) — payment state unchanged; release stock only on a full refund.`,
+        },
+      })
+      hookLog.info({ orderId: order.id, amount: classification.amount }, 'Partial PayPal refund — no payment state change')
+      return
+    }
+
+    // Full refund. Atomic transition first — a replayed or duplicate
+    // delivery no-ops here and releases nothing the second time.
+    const transitioned = await prisma.order.updateMany({
+      where: { id: order.id, paymentStatus: { not: 'refunded' } },
+      data: { paymentStatus: 'refunded' },
+    })
+    if (transitioned.count === 0) {
+      hookLog.info({ orderId: order.id }, 'Duplicate PayPal refunded delivery ignored (already refunded)')
+      return
+    }
+
+    // Units were deducted when this order was paid (both capture paths claim
+    // them). Return them exactly the way the admin-cancel path does.
+    const claim = await prisma.order.updateMany({
+      where: { id: order.id, stockReserved: true },
+      data: { stockReserved: false },
+    })
+    if (claim.count > 0) {
+      const items = order.items
+        .filter((item) => item.productId)
+        .map((item) => ({ productId: item.productId as string, quantity: item.quantity }))
+      for (const item of items) {
+        await increaseStock(item.productId, item.quantity, 'paypal', {
+          orderId: order.id,
+          note: 'PayPal refund confirmed — claimed stock returned to the shelf',
+        })
+      }
+    }
+
+    await prisma.orderTimeline.create({
+      data: {
+        orderId: order.id,
+        status: order.status,
+        note: 'Full PayPal refund confirmed — payment refunded and claimed stock returned to the shelf.',
+      },
+    })
+
+    await logAudit({
+      action: 'order.payment.refunded', entityType: 'order', entityId: order.id, entityName: order.orderNumber,
+      newValue: { paymentStatus: 'refunded', refundedAmount: classification.amount },
+    })
+
+    hookLog.warn({ orderId: order.id, orderNumber: order.orderNumber, amount: classification.amount }, 'PayPal refunded the buyer — order marked refunded and stock returned')
+  } catch (err) {
+    hookLog.error({ err }, 'Error handling PayPal capture refunded')
   }
 }
 
