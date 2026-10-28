@@ -6,6 +6,7 @@ import { useStore } from '../store/useStore'
 import { useAddToCart } from '../hooks/useAddToCart'
 import { useProductList } from '../hooks/useApiQuery'
 import { apiProductsToFrontend } from '../lib/adapters'
+import { shuffle } from '../lib/shuffle'
 import { ProductFilters } from '../components/product/ProductFilters'
 import { ProductGrid } from '../components/product/ProductGrid'
 import { ProductPagination } from '../components/product/ProductPagination'
@@ -91,13 +92,24 @@ export default function Products() {
     () => (productListData?.products?.length ? apiProductsToFrontend(productListData.products) : []),
     [productListData],
   )
+  // Rotate the listing on each load so repeat visits surface different stock
+  // first (a store with 1,000 rows keeps page 1 fresh). This never changes the
+  // result SET — filtering, pagination and explicit sorts are all decided by
+  // the API before this runs; shuffling is skipped entirely when the buyer
+  // picked a named/price sort. Memoized on the data identity, so React Query's
+  // structural sharing keeps an unchanged result in a stable order (cards
+  // don't jump mid-browse; a page/filter/reload reshuffles).
+  const rotatedProducts = useMemo(
+    () => (sortBy === 'relevance' ? shuffle(apiProducts) : apiProducts),
+    [apiProducts, sortBy],
+  )
   const serverTotal = productListData?.pagination?.total ?? 0
   const serverTotalPages = Math.max(1, productListData?.pagination?.totalPages ?? 1)
 
   // No demo fallback: if the API fails, the outage notice above explains and
   // the grid renders an explicit empty state — the bundled sample catalog is
   // never passed off as real stock.
-  const products = apiOk ? apiProducts : []
+  const products = apiOk ? rotatedProducts : []
   const initialLoading = isLoading && !productListData
   const finalCount = apiOk ? serverTotal : 0
   const totalPages = serverTotalPages

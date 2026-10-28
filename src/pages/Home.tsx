@@ -145,6 +145,50 @@ export default function Home() {
       />
       <Hero />
 
+      {/* ── NEW ARRIVALS (directly below the hero, newest products first) ── */}
+      <section className="section-y marine-section" aria-labelledby="new-arrivals-heading">
+        <div className="site-container">
+          <div className="mb-6 flex flex-col gap-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-card)] md:flex-row md:items-end md:justify-between md:p-8">
+            <div>
+              <SectionLabel>{t('shop.newArrivals')}</SectionLabel>
+              <h2 id="new-arrivals-heading" className="font-display font-bold text-section tracking-tight text-[var(--text-primary)]">
+                {t('home.new.title')}
+              </h2>
+              <p className="mt-3 max-w-[620px] text-sm leading-relaxed text-[var(--text-secondary)]">
+                {t('home.new.sub')}
+              </p>
+              <div className="gold-accent-bar mt-4" />
+            </div>
+            <Link
+              to={lp('/products')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--accent-primary)] bg-[var(--accent-primary)] px-6 py-3 text-sm font-bold text-[var(--btn-blue-text)] no-underline shadow-[0_8px_24px_var(--focus-ring)] transition-all duration-300 hover:bg-[var(--accent-primary-hover)] hover:text-[var(--btn-blue-text)]"
+            >
+              {t('shop.cta')} <ArrowRight size={16} />
+            </Link>
+          </div>
+          {newArrivalsError && (
+            <CatalogOfflineNotice
+              className="mb-6"
+              onRetry={() => { newArrivalsQuery.refetch() }}
+              retrying={newArrivalsQuery.isFetching}
+            />
+          )}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {newArrivalsQuery.isLoading ? (
+              Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={`home-skel-${i}`} />)
+            ) : displayProducts.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                added={addedIds.has(product.id)}
+                t={t}
+                onAddToCart={handleAddToCart}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
       <ShopByCategory />
 
       <section className="section-y-sm bg-[var(--secondary-bg)]" aria-label={t('home.aria.store')}>
@@ -223,50 +267,6 @@ export default function Home() {
                 </div>
               )
             })}
-          </div>
-        </div>
-      </section>
-
-      {/* ── NEW ARRIVALS ── */}
-      <section className="section-y marine-section" aria-labelledby="new-arrivals-heading">
-        <div className="site-container">
-          <div className="mb-6 flex flex-col gap-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[var(--shadow-card)] md:flex-row md:items-end md:justify-between md:p-8">
-            <div>
-              <SectionLabel>{t('shop.newArrivals')}</SectionLabel>
-              <h2 id="new-arrivals-heading" className="font-display font-bold text-section tracking-tight text-[var(--text-primary)]">
-                {t('home.new.title')}
-              </h2>
-              <p className="mt-3 max-w-[620px] text-sm leading-relaxed text-[var(--text-secondary)]">
-                {t('home.new.sub')}
-              </p>
-              <div className="gold-accent-bar mt-4" />
-            </div>
-            <Link
-              to={lp('/products')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--accent-primary)] bg-[var(--accent-primary)] px-6 py-3 text-sm font-bold text-[var(--btn-blue-text)] no-underline shadow-[0_8px_24px_var(--focus-ring)] transition-all duration-300 hover:bg-[var(--accent-primary-hover)] hover:text-[var(--btn-blue-text)]"
-            >
-              {t('shop.cta')} <ArrowRight size={16} />
-            </Link>
-          </div>
-          {newArrivalsError && (
-            <CatalogOfflineNotice
-              className="mb-6"
-              onRetry={() => { newArrivalsQuery.refetch() }}
-              retrying={newArrivalsQuery.isFetching}
-            />
-          )}
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {newArrivalsQuery.isLoading ? (
-              Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={`home-skel-${i}`} />)
-            ) : displayProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                added={addedIds.has(product.id)}
-                t={t}
-                onAddToCart={handleAddToCart}
-              />
-            ))}
           </div>
         </div>
       </section>
