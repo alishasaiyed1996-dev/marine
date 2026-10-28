@@ -153,8 +153,17 @@ async function main() {
       categories,
     ).assignment
 
+    // Clamp proposals to categories that actually exist on the site: the rules
+    // sometimes want a slug the Category table has no row for (e.g. the store
+    // curates 12 of the 18 seed categories). Writing the missing id would null
+    // the product's categoryId and hide it from every category page; the same
+    // fallback the importer uses ("missing slug → other-business") keeps it
+    // visible instead. The original proposal stays in the trace line.
+    const proposedRaw = assignment.slug
+    const slugExists = categories.some((category) => category.slug === proposedRaw)
+    const proposed = slugExists ? proposedRaw : FALLBACK_CATEGORY_SLUG
+    const clampedNote = slugExists ? '' : `; site row for "${proposedRaw}" missing → clamped to ${FALLBACK_CATEGORY_SLUG}`
     const current = product.category?.slug ?? null
-    const proposed = assignment.slug
     const confident = assignment.confidence === 'ebay-category' || assignment.confidence === 'ebay-category-id' || assignment.confidence === 'keyword'
 
     let action: string
@@ -173,7 +182,7 @@ async function main() {
             where: { id: product.id },
             data: {
               categoryId: categories.find((category) => category.slug === proposed)?.id ?? null,
-              internalNotes: `${product.internalNotes ?? ''}\n[category-remap ${new Date().toISOString()}] ${assignment.confidence} → ${proposed} (${assignment.reason})`.trim(),
+              internalNotes: `${product.internalNotes ?? ''}\n[category-remap ${new Date().toISOString()}] ${assignment.confidence} → ${proposed} (${assignment.reason}${clampedNote})`.trim(),
             },
           })
         }
@@ -189,7 +198,7 @@ async function main() {
           where: { id: product.id },
           data: {
             categoryId: categories.find((category) => category.slug === proposed)?.id ?? null,
-            internalNotes: `${product.internalNotes ?? ''}\n[category-remap ${new Date().toISOString()}] ${assignment.confidence} → ${proposed} (${assignment.reason})`.trim(),
+            internalNotes: `${product.internalNotes ?? ''}\n[category-remap ${new Date().toISOString()}] ${assignment.confidence} → ${proposed} (${assignment.reason}${clampedNote})`.trim(),
           },
         })
       }
