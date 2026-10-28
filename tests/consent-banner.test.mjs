@@ -174,14 +174,21 @@ test('server.js strips the block only from responses that are not shared-cache c
   assert.ok(!hubSend[0].includes('stripStaticConsentForVisitor'), 'hub render keeps the block (s-maxage)')
 })
 
-test('CookieConsent takes over the static node without the old pacing timer', () => {
+test('CookieConsent adopts the prerendered copy instead of repainting it', () => {
   const component = source('src/components/CookieConsent.tsx')
-  assert.match(
-    component,
-    /getElementById\('alka-consent-static'\)/,
-    'the React banner removes the prerendered static copy',
-  )
-  assert.match(component, /useLayoutEffect/, 'the removal happens before paint')
+  assert.match(component, /const STATIC_ID = 'alka-consent-static'/, 'the component references the shared static id')
+  assert.match(component, /getElementById\(STATIC_ID\)/, 'the component binds to the prerendered node')
+  // Repainting while the prerendered copy exists creates a new equal-size LCP
+  // candidate at mount, moving LCP from first paint to hydration time. React
+  // may render only when the prerendered copy is absent.
+  assert.match(component, /if \(mode !== 'react'\) return null/, "React renders only when there is no prerendered copy")
+  const removals = component.match(/getElementById\(STATIC_ID\)\?\.remove\(\)/g) || []
+  assert.equal(removals.length, 1, 'the static node is removed exactly once — in the consent listener')
+  const binding = component.match(/useLayoutEffect\(\(\) => \{[\s\S]*?\}, \[mode\]\)/)
+  assert.ok(binding, 'the mount-time binding effect exists')
+  assert.ok(!/\.remove\(\)\.?/.test(binding[0]), 'the mount effect must not remove the static node (that repaint steals LCP)')
+  assert.match(component, /onConsentChange/, 'consent resolution anywhere closes the adopted copy')
+  assert.match(component, /firstChild\.nodeValue/, 'language switches mirror into the adopted copy')
+  assert.match(component, /useOverlayBehavior/, 'overlay behavior (scroll lock, Escape, focus trap) still applies')
   assert.ok(!component.includes('setTimeout'), 'no 2s visible pacing timer is left behind')
-  assert.match(component, /useState\(\(\) => !readConsent\(\)\)/, 'visible is initialized from consent, not deferred')
 })
