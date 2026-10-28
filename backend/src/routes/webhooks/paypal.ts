@@ -34,6 +34,8 @@ router.post('/', async (req: Request, res: Response) => {
     await paypalService.handleCaptureCompleted(event.resource)
   } else if (event.event_type === 'PAYMENT.CAPTURE.DENIED') {
     await paypalService.handleCaptureFailed(event.resource)
+  } else if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED') {
+    await paypalService.handleCaptureRefunded(event.resource)
   }
 
   sendSuccess(res, { received: true })
