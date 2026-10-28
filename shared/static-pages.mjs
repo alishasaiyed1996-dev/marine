@@ -31,12 +31,23 @@ export const SITE_NAME = 'Alka Traders'
  * @property {string} h1          Visible page heading (prerendered body).
  */
 
+/**
+ * Canonical "countries served" figure for public copy. Single source so the
+ * meta descriptions can't drift apart again (previously the home page said
+ * "50+ countries" while the network page said "18+"). Matches every other
+ * shipped reference (en/ar/es locales, Intelligence stat card, testimonials,
+ * SEO copy). Truth-check against actual order/RFQ geography before ever
+ * raising it — until verified it stays a conservative-as-shipped figure, not
+ * an aspirational one.
+ */
+export const COUNTRIES_SERVED = '50+'
+
 /** @type {Record<string, StaticPageMeta>} Keyed by route slug ('' = home). */
 export const STATIC_PAGE_META = {
   "": {
     title: "Marine Spare Parts & Ship Spares Supplier | Alka Traders",
     description:
-      "Global supplier of marine spares, ship machinery, surplus equipment, hydraulics, pneumatics, electrical automation, and emergency procurement parts. Serving buyers in 50+ countries from Bhavnagar, Gujarat, India.",
+      "Global supplier of marine spares, ship machinery, surplus equipment, hydraulics, pneumatics, electrical automation, and emergency procurement parts. Serving buyers in " + COUNTRIES_SERVED + " countries from Bhavnagar, Gujarat, India.",
     h1: "Home",
   },
   "products": {
@@ -84,7 +95,7 @@ export const STATIC_PAGE_META = {
   "network": {
     title: "Global Network - Alka Traders",
     description:
-      "Alka Traders' global network spans 18+ countries across Asia-Pacific, EMEA, and the Americas. Head office in Bhavnagar, Gujarat, India.",
+      "Alka Traders' global network spans " + COUNTRIES_SERVED + " countries across Asia-Pacific, EMEA, and the Americas. Head office in Bhavnagar, Gujarat, India.",
     h1: "Global Supplier Network",
   },
   "intelligence": {
