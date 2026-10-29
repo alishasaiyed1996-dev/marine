@@ -47,19 +47,19 @@ export const STATIC_PAGE_META = {
   "": {
     title: "Marine Spare Parts & Ship Spares Supplier | Alka Traders",
     description:
-      "Global supplier of marine spares, ship machinery, surplus equipment, hydraulics, pneumatics, electrical automation, and emergency procurement parts. Serving buyers in " + COUNTRIES_SERVED + " countries from Bhavnagar, Gujarat, India.",
-    h1: "Home",
+      "Marine spare parts, ship machinery, and industrial equipment - hydraulics, pneumatics, automation, and emergency parts from Bhavnagar, India, to " + COUNTRIES_SERVED + " countries.",
+    h1: "Marine Spare Parts & Ship Spares Supplier",
   },
   "products": {
     title: "Marine Spare Parts & Ship Spares Catalog | Alka Traders",
     description:
-      "Browse marine spare parts, ship spares, marine engine parts, hydraulic pumps, electrical automation, navigation equipment, safety gear, rigging, and industrial surplus stock.",
+      "Browse marine spare parts, ship spares, engine parts, hydraulic pumps, navigation and safety gear, rigging, and industrial surplus stock.",
     h1: "Marine Spare Parts & Ship Spares Catalog",
   },
   "industries": {
-    title: "Industries Served - Marine, Oil & Gas, Power Generation | Alka Traders",
+    title: "Industries Served - Marine, Oil & Gas, Power | Alka Traders",
     description:
-      "Alka Traders serves marine shipping, oil and gas, power generation, manufacturing, chemical processing, shipbuilding, and mining industries with specialized equipment.",
+      "Alka Traders serves marine shipping, oil and gas, power generation, manufacturing, chemical processing, and mining with specialized equipment sourcing.",
     h1: "Industries We Serve",
   },
   "brands": {
@@ -75,7 +75,7 @@ export const STATIC_PAGE_META = {
     h1: "About Alka Traders",
   },
   "rfq": {
-    title: "Request a Quote - RFQ for Marine & Industrial Parts | Alka Traders",
+    title: "Request a Quote - Marine & Industrial Parts | Alka Traders",
     description:
       "Submit a request for quotation for marine spares, industrial equipment, surplus machinery, and hard-to-find parts. Fast response within hours.",
     h1: "Request a Quote",

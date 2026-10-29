@@ -25,7 +25,15 @@ export async function fetchSiteSeoSettings() {
     const payload = await res.json()
     const settings = payload?.settings || {}
     const title = String(settings['site.seoTitle'] || '').replace(/\s+/g, ' ').trim()
-    const description = String(settings['site.seoDescription'] || '').replace(/\s+/g, ' ').trim().slice(0, 160)
+    const rawDescription = String(settings['site.seoDescription'] || '').replace(/\s+/g, ' ').trim()
+    // Word-boundary cut: `slice` alone truncated to mid-word ("… Serving buy").
+    // The 55% fallback keeps a single long token intact instead of collapsing.
+    let description = rawDescription
+    if (description.length > 160) {
+      const cut = description.slice(0, 160)
+      const lastSpace = cut.lastIndexOf(' ')
+      description = (lastSpace > 88 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;:|/–—-]+$/, '')
+    }
     return title || description ? { title, description } : null
   } catch (err) {
     console.warn(`  ⚠️  Settings API unreachable (${err.message}) — using default homepage metadata.`)

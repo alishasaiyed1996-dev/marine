@@ -82,7 +82,7 @@ const LOCALE_BODIES = {
       "Las páginas de producto publicadas muestran el SKU, la marca, la categoría, el estado y la disponibilidad registrados por el equipo de compras. Si una pieza no aparece, envíe el fabricante, el modelo, la foto de la placa de serie o el número IMPA mediante el formulario de presupuesto y el equipo comprobará la disponibilidad con los proveedores.",
     ],
     "industries": [
-      "El transporte marítimo y los astilleros necesitan acceso rápido a repuestos de cámara de máquinas, maquinaria de cubierta, bombas, equipos de navegación y sistemas de seguridad. Alka Traders apoya a operadores de flotas, serializers navales, astilleros de reparación y proyectos de dique con compras y coordinación de exportación.",
+      "El transporte marítimo y los astilleros necesitan acceso rápido a repuestos de cámara de máquinas, maquinaria de cubierta, bombas, equipos de navegación y sistemas de seguridad. Alka Traders apoya a operadores de flotas, navieras, astilleros de reparación y proyectos de dique con compras y coordinación de exportación.",
       "Los equipos de petróleo y gas, generación eléctrica, fabricación, procesamiento químico y minería usan la misma red de compras para automatización, hidráulica, neumática, electricidad y mecánica. Las necesidades se pueden presupuestar a partir de un número de pieza, una descripción o una foto de la placa de características.",
     ],
     "brands": [

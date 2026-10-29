@@ -22,13 +22,13 @@ export const LOCALIZED_PAGE_META = {
     "": {
       title: "مورد قطع غيار السفن والمعدات البحرية | Alka Traders",
       description:
-        "مورد عالمي لقطع غيار السفن والآلات البحرية والمعدات الفائضة والهيدروليكية والنيوماتيكية والأتمتة الكهربائية وقطع المشتريات الطارئة. نخدم المشترين في أكثر من 50 دولة انطلاقا من بافناغور، غوجاراط، الهند.",
+        "مورد عالمي لقطع غيار السفن والآلات البحرية والمعدات الصناعية والهيدروليكية والنيوماتيكية وقطع المشتريات الطارئة. نخدم أكثر من 50 دولة من بافناغور، الهند.",
       h1: "قطع غيار بحرية ومعدات صناعية",
     },
     "products": {
       title: "كتالوج قطع غيار السفن والمعدات البحرية | Alka Traders",
       description:
-        "تصفح قطع غيار السفن والمعدات البحرية وقطع غيار محركات السفن والمضخات الهيدروليكية والأتمتة الكهربائية ومعدات الملاحة ومعدات السلامة ومخزون المعدات الصناعية الفائض.",
+        "تصفح قطع غيار السفن وقطع محركات السفن والمضخات الهيدروليكية والأتمتة الكهربائية ومعدات الملاحة ومعدات السلامة ومخزون المعدات الفائض.",
       h1: "كتالوج قطع غيار السفن والمعدات البحرية",
     },
     "industries": {
@@ -38,7 +38,7 @@ export const LOCALIZED_PAGE_META = {
       h1: "القطاعات التي نخدمها",
     },
     "brands": {
-      title: "العلامات التجارية - موردو المعدات البحرية والصناعية | Alka Traders",
+      title: "العلامات التجارية - المعدات البحرية | Alka Traders",
       description:
         "استكشف العلامات التجارية التي نتعامل معها - ABB وSiemens وParker Hannifin وBosch Rexroth وDanfoss وHoneywell وغيرها من المصنعين الرائدين.",
       h1: "العلامات التجارية",
@@ -70,7 +70,7 @@ export const LOCALIZED_PAGE_META = {
     "network": {
       title: "الشبكة العالمية - Alka Traders",
       description:
-        "تمتد شبكة Alka Traders العالمية عبر أكثر من 18 دولة في آسيا والمحيط الهادئ وأوروبا والشرق الأوسط وأفريقيا والأمريكتين. المقر الرئيسي في بافناغور، غوجاراط، الهند.",
+        "تمتد شبكة Alka Traders العالمية عبر أكثر من 50 دولة في آسيا والمحيط الهادئ وأوروبا والشرق الأوسط وأفريقيا والأمريكتين. المقر الرئيسي في بافناغور، الهند.",
       h1: "الشبكة العالمية",
     },
     "intelligence": {
@@ -100,21 +100,21 @@ export const LOCALIZED_PAGE_META = {
   },
   es: {
     "": {
-      title: "Proveedor de repuestos marítimos y maquinaria naval | Alka Traders",
+      title: "Repuestos marítimos y maquinaria naval | Alka Traders",
       description:
-        "Proveedor global de repuestos marítimos, maquinaria naval, equipos sobrantes, hidráulica, neumática, automatización eléctrica y piezas de compras de emergencia. Servimos a compradores en más de 50 países desde Bhavnagar, Gujarat, India.",
+        "Proveedor global de repuestos marítimos, equipos industriales, hidráulica, neumática y piezas de emergencia desde Bhavnagar, India, a más de 50 países.",
       h1: "Repuestos marítimos y equipos industriales",
     },
     "products": {
       title: "Catálogo de repuestos marítimos y maquinaria naval | Alka Traders",
       description:
-        "Explore repuestos marítimos, piezas navales, repuestos de motores navales, bombas hidráulicas, automatización eléctrica, equipos de navegación, seguridad, aparejos y existencias industriales sobrantes.",
+        "Explore repuestos marítimos y piezas de motor naval: bombas hidráulicas, automatización, navegación, seguridad, aparejos y stock industrial sobrante.",
       h1: "Catálogo de repuestos marítimos",
     },
     "industries": {
       title: "Sectores atendidos: naval, petróleo y gas, energía | Alka Traders",
       description:
-        "Alka Traders sirve a los sectores de transporte marítimo, petróleo y gas, generación eléctrica, fabricación, procesamiento químico, construcción naval y minería con equipos especializados.",
+        "Alka Traders da servicio a transporte marítimo, petróleo y gas, energía, fabricación, proceso químico y minería con equipos especializados.",
       h1: "Sectores que atendemos",
     },
     "brands": {
@@ -124,45 +124,45 @@ export const LOCALIZED_PAGE_META = {
       h1: "Marcas",
     },
     "about": {
-      title: "Sobre nosotros - Especialistas en equipos marítimos | Alka Traders",
+      title: "Sobre nosotros - Equipos marítimos e industriales | Alka Traders",
       description:
-        "Alka Traders: proveedor global de equipos marítimos e industriales con sede en Bhavnagar, Gujarat, India. Desde 1990, más de 35 años de experiencia en el sector.",
+        "Alka Traders: proveedor global de equipos marítimos e industriales con sede en Bhavnagar, Gujarat, India. Desde 1990, 35 años de experiencia en el sector.",
       h1: "Sobre nosotros",
     },
     "rfq": {
       title: "Solicitar presupuesto de piezas marítimas | Alka Traders",
       description:
-        "Envíe una solicitud de presupuesto para repuestos marítimos, equipos industriales, maquinaria sobrante y piezas difíciles de encontrar. Respuesta rápida en pocas horas.",
+        "Envíe una solicitud de presupuesto para repuestos marítimos, equipos industriales y piezas difíciles de encontrar. Respuesta rápida en pocas horas.",
       h1: "Solicitar un presupuesto",
     },
     "contact": {
       title: "Contáctenos - Alka Traders",
       description:
-        "Póngase en contacto con Alka Traders. Con sede en Bhavnagar, Gujarat, India. Escríbanos por correo electrónico, teléfono, WhatsApp o mediante el formulario de contacto.",
+        "Póngase en contacto con Alka Traders, con sede en Bhavnagar, Gujarat, India. Correo electrónico, teléfono, WhatsApp o formulario de contacto.",
       h1: "Contáctenos",
     },
     "emergency": {
       title: "Compras de emergencia - Soporte naval 24/7 | Alka Traders",
       description:
-        "Compras de emergencia de piezas marítimas e industriales: soporte 24/7 con historial de entrega en 18 horas. Envíe los datos de la pieza por WhatsApp o teléfono para respuesta inmediata.",
+        "Compras de emergencia marítimas e industriales: soporte 24/7 con entregas en 18 horas. Envíe los datos por WhatsApp o teléfono para respuesta inmediata.",
       h1: "Compras de emergencia",
     },
     "network": {
       title: "Red global - Alka Traders",
       description:
-        "La red global de Alka Traders abarca más de 18 países en Asia-Pacífico, EMEA y América. Oficina central en Bhavnagar, Gujarat, India.",
+        "La red global de Alka Traders abarca más de 50 países en Asia-Pacífico, EMEA y América. Oficina central en Bhavnagar, Gujarat, India.",
       h1: "Red global",
     },
     "intelligence": {
       title: "Inteligencia de abastecimiento marino e industrial | Alka Traders",
       description:
-        "Tendencias de abastecimiento, datos de disponibilidad regional, referencias de compras de emergencia e ideas de gestión de obsolescencia para compradores marítimos e industriales.",
+        "Tendencias de abastecimiento, disponibilidad regional, referencias de compras de emergencia y gestión de obsolescencia para compradores del sector.",
       h1: "Inteligencia de abastecimiento",
     },
     "privacy-policy": {
       title: "Política de privacidad | Alka Traders",
       description:
-        "Política de privacidad de Alka Traders: cómo recopilamos, usamos, compartimos y protegemos su información personal, incluidas las cookies, la retención de datos y sus derechos.",
+        "Política de privacidad de Alka Traders: cómo recopilamos y protegemos su información personal, incluidas las cookies, la retención de datos y sus derechos.",
       h1: "Política de privacidad",
     },
     "terms-of-service": {
@@ -174,7 +174,7 @@ export const LOCALIZED_PAGE_META = {
     "refund-policy": {
       title: "Política de devoluciones y reembolsos | Alka Traders",
       description:
-        "Política de devoluciones y reembolsos de Alka Traders: ventana de 30 días y RMA obligatorio. Detalles de elegibilidad, proceso, artículos dañados y plazos de reembolso.",
+        "Política de devoluciones y reembolsos de Alka Traders: ventana de 30 días y RMA obligatorio. Elegibilidad, proceso, artículos dañados y plazos de reembolso.",
       h1: "Política de devoluciones y reembolsos",
     },
   },

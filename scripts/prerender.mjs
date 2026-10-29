@@ -61,6 +61,21 @@ function plainText(str, max = 0) {
   return max > 0 ? text.slice(0, max) : text
 }
 
+/**
+ * Cut at a word boundary when the limit forces truncation. A plain
+ * `.slice(0, 160)` produced mid-word meta descriptions ("… Serving buy") on
+ * pages whose copy exceeded the SERP budget — mirrors the `trimToWords`
+ * helper in shared/product-page.mjs, including the 55% fallback so a single
+ * long token (SKU, model number) still ends up on one line.
+ */
+function truncateWords(value, max = 0) {
+  const text = plainText(value)
+  if (max <= 0 || text.length <= max) return text
+  const cut = text.slice(0, max)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > max * 0.55 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;:|/–—-]+$/, '')
+}
+
 /** Canonical public path (one trailing slash). */
 function canonicalPath(path) {
   const clean = String(path || '/').split(/[?#]/)[0]
@@ -154,7 +169,7 @@ function seoHeadTags({ path, title, description, locale = 'en', extraJsonLd, bre
     : titleSuffix === 'auto'
       ? (rawTitle.length + brandSuffix.length <= 60 ? `${rawTitle}${brandSuffix}` : rawTitle)
       : `${rawTitle}${brandSuffix}`
-  const fullDesc = plainText(description).slice(0, 160) || DEFAULT_DESC
+  const fullDesc = truncateWords(description, 160) || DEFAULT_DESC
   const url = `${BASE_URL}${canonicalPath(path)}`
   const image = ogImage || LOGO_URL
   const imageAlt = ogImageAlt || fullTitle
@@ -274,7 +289,14 @@ function breadcrumbNav(segments) {
  * class is hidden only when JavaScript is active (html.js), so the content
  * remains visible for no-JS visitors instead of leaving a blank page.
  */
-function generateBodyHtml({ title, description, h1, body, breadcrumbs }) {
+const DEFAULT_BROWSE_LINKS = [
+  { path: '/en/products/', label: 'Marine spare parts and ship spares catalog' },
+  { path: '/en/brands/', label: 'Marine and industrial equipment brands' },
+  { path: '/en/rfq/', label: 'Request a quotation for a hard-to-find part' },
+  { path: '/en/emergency/', label: 'Emergency procurement support' },
+]
+
+function generateBodyHtml({ title, description, h1, body, breadcrumbs, links, linksHeading }) {
   // h1 (when provided) is the short page identity without the brand suffix —
   // better as visible H1 text than the full SEO title.
   const heading = h1 || String(title || SITE_NAME).split('|')[0].trim()
@@ -284,18 +306,22 @@ function generateBodyHtml({ title, description, h1, body, breadcrumbs }) {
     .filter(Boolean)
     .map((paragraph) => `<p>${esc(paragraph)}</p>`)
     .join('\n      ')
+  // Per-page cross-link block. Route configs may override it so the crawlable
+  // shell is not word-for-word identical on every page (shared text blocks).
+  // Only static English routes exist here — the audit rejects links into
+  // database-driven directories that a prerendered file cannot guarantee.
+  const browseLinks = (Array.isArray(links) ? links : DEFAULT_BROWSE_LINKS)
+    .filter((link) => link && typeof link.path === 'string' && typeof link.label === 'string')
+  const browseHeading = plainText(linksHeading) || 'Browse Alka Traders'
   return `<div class="seo-shell">
       ${breadcrumbNav(breadcrumbs)}
       <h1>${esc(heading)}</h1>
       <p>${esc(desc)}</p>
       ${paragraphs}
-      <h2>Browse Alka Traders</h2>
+      <h2>${esc(browseHeading)}</h2>
       ${shellHeaderNav()}
       <ul>
-        <li><a href="/en/products/">Marine spare parts and ship spares catalog</a></li>
-        <li><a href="/en/brands/">Marine and industrial equipment brands</a></li>
-        <li><a href="/en/rfq/">Request a quotation for a hard-to-find part</a></li>
-        <li><a href="/en/emergency/">Emergency procurement support</a></li>
+        ${browseLinks.map((link) => `<li><a href="${esc(canonicalPath(link.path))}">${esc(link.label)}</a></li>`).join('\n        ')}
       </ul>
       ${shellFooterNav()}
     </div>`
@@ -489,6 +515,8 @@ async function main() {
       description: route.path === `/${locale}/` && siteSeo?.description ? siteSeo.description : route.description,
       h1: route.h1,
       body: route.body,
+      links: route.links,
+      linksHeading: route.linksHeading,
       locale,
       extraJsonLd,
       breadcrumbs,

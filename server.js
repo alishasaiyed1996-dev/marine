@@ -187,7 +187,14 @@ function cleanText(value = '', max = 0) {
     .replace(/&nbsp;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-  return max > 0 ? text.slice(0, max) : text
+  if (!(max > 0) || text.length <= max) return text
+  // Truncating with `slice` alone cut meta descriptions mid-word (e.g. the
+  // home description ended "… Serving buy"). Break at the last space instead
+  // — same policy as `trimToWords` in shared/product-page.mjs — with a strict
+  // fallback when the limit is one unbroken token.
+  const cut = text.slice(0, max)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > max * 0.55 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;:|/–—-]+$/, '')
 }
 
 /** Absolute URL for relative asset paths; Cloudinary URLs pass through. */
