@@ -89,6 +89,8 @@ async function main() {
   let changed = 0
   let noListing = 0
   let fetchErrors = 0
+  let stopped: 'quota-exhausted' | null = null
+  let consecutiveQuotaErrors = 0
 
   for (const product of products) {
     const mirror =
@@ -115,6 +117,7 @@ async function main() {
     try {
       const details = await getEbayItemDetails(mirror.ebayListingId)
       checked += 1
+      consecutiveQuotaErrors = 0
       const plan = planConditionUpdate(
         { condition: product.condition, conditionNotes: product.conditionNotes },
         details.condition,
@@ -144,6 +147,22 @@ async function main() {
       })
     } catch (err) {
       fetchErrors += 1
+      // eBay enforces daily application limits per Trading call. A exhausted
+      // quota rejects every remaining call, so grinding through 1,000 rows
+      // only burns minutes — stop the walk and say how many rows remain.
+      if (/exceeded usage limit/i.test((err as Error).message)) {
+        consecutiveQuotaErrors += 1
+        if (consecutiveQuotaErrors >= 3) {
+          stopped = 'quota-exhausted'
+          log.error(
+            { sku: product.sku, processed: rows.length, remaining: products.length - rows.length },
+            'condition backfill stopped: eBay daily quota exhausted — rerun after 00:00 PT reset',
+          )
+          break
+        }
+      } else {
+        consecutiveQuotaErrors = 0
+      }
       rows.push({
         sku: product.sku,
         productSlug: product.slug,
@@ -186,6 +205,8 @@ async function main() {
     generatedAt: new Date().toISOString(),
     mode: apply ? 'APPLY' : 'DRY RUN',
     products: rows.length,
+    stopped,
+    stoppedRemaining: stopped ? products.length - rows.length : 0,
     checked,
     changed,
     alreadyEqual: rows.filter((row) => row.action === 'already-equal').length,
@@ -208,6 +229,7 @@ async function main() {
   console.log('[condition-backfill] summary:', JSON.stringify(summary, null, 2))
   console.log(`[condition-backfill] report: ${jsonPath}`)
   console.log(`[condition-backfill] report: ${csvPath}`)
+  if (stopped) console.log(`[condition-backfill] STOPPED: eBay daily quota exhausted — ${products.length - rows.length} rows left. Rerun after 00:00 PT reset.`)
   if (!apply) console.log('[condition-backfill] DRY RUN — nothing written. Re-run with --apply to commit.')
   await prisma.$disconnect().catch(() => {})
 }
