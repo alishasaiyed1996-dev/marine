@@ -10,7 +10,10 @@
  */
 import type { Prisma } from '@prisma/client'
 import { XMLParser } from 'fast-xml-parser'
-import { prisma } from '../server.js'
+// prisma comes from utils/prismaClient (not ../server) so eBay Trading calls
+// work from standalone scripts (route-less cron/ops scripts) without booting
+// the HTTP app — same singleton instance either way.
+import { prisma } from '../utils/prismaClient.js'
 import logger from '../utils/logger.js'
 import { getUserAccessToken } from './ebayClient.js'
 
