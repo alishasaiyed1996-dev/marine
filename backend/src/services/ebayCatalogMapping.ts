@@ -81,8 +81,50 @@ export function normalizeEbaySku(sku: string | null | undefined, itemId: string)
 
 export type WebsiteCondition = 'new' | 'unused' | 'used' | 'refurbished' | 'reconditioned'
 
+/**
+ * One row's condition decision, pure so the sweep, the backfill script and
+ * the test suite share it. `product` is an eBay-imported row;
+ * `ebayConditionRaw` is the seller-stated condition as eBay words it
+ * ("Used - Very Good", "For parts or not working", a numeric Id when the
+ * display name is absent). Returns the write to make or null when the row
+ * already mirrors eBay:
+ *
+ *   - condition column disagrees with mapEbayCondition(raw) → import it.
+ *   - the stored note words a different condition class than eBay's → refresh
+ *     it (stale default from old imports misreads the page, e.g. note "New
+ *     other" on a row eBay says is Used).
+ *   - no note at all → record eBay's exact wording (the page shows it).
+ */
+export function planConditionUpdate(
+  product: { condition: string; conditionNotes: string | null },
+  ebayConditionRaw: string | null | undefined,
+): { condition: WebsiteCondition; conditionNotes: string | null } | null {
+  if (!ebayConditionRaw) return null
+  const mapped = mapEbayCondition(ebayConditionRaw)
+  const notes = (product.conditionNotes || '').trim()
+  if (mapped !== product.condition) return { condition: mapped, conditionNotes: ebayConditionRaw }
+  if (notes && mapEbayCondition(notes) !== mapped) return { condition: mapped, conditionNotes: ebayConditionRaw }
+  if (!notes) return { condition: mapped, conditionNotes: ebayConditionRaw }
+  return null
+}
+
+/**
+ * eBay ConditionDisplayName → site condition. When the display name is absent
+ * the parse falls back to the numeric ConditionID, so those are mapped too:
+ * 1000 New · 1500 New other · 1750 New with defects · 2000/2500/3000/3500
+ * refurb family · 4000/5000/6000 used family · 7000 For parts or not working.
+ * Anything unrecognized defaults to 'used' — the conservative reading for an
+ * industrial-parts storefront (never oversell a used part as new).
+ */
 export function mapEbayCondition(condition: string | null | undefined): WebsiteCondition {
-  const value = String(condition || '').toLowerCase()
+  const value = String(condition || '').trim().toLowerCase()
+  if (/^\d+$/.test(value)) {
+    const id = Number(value)
+    if (id < 1750) return id <= 1000 ? 'new' : 'unused'
+    if (id < 2000) return 'unused' // New with defects
+    if (id <= 3500) return 'refurbished'
+    return 'used'
+  }
   if (/refurb|recondition/.test(value)) return 'refurbished'
   if (/new\s*(other|with\s*defects)|like\s*new|open\s*box|new\s*without\s*tags/.test(value)) return 'unused'
   if (/(^new\b|brand\s*new)/.test(value)) return 'new'

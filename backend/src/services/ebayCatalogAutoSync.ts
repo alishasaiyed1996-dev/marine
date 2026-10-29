@@ -25,11 +25,14 @@
  *           this is reversible: a returning listing is re-activated by the
  *           next sweep. Never runs on an incomplete walk — a truncated walk
  *           must not false-flag live listings as ended.
- *   3. Import eBay price and stock changes for (and only for) eBay-imported
- *      products, keeping the site truthful when the seller reprices or
- *      re-quantities a listing on eBay. Sale windows are respected, and the
- *      quantity import is guarded by the mirror's lastSyncedQty so the
- *      website→eBay stock reconcile keeps ownership of locally-changed stock.
+ *   3. Import eBay price, stock AND condition changes for (and only for)
+ *      eBay-imported products, keeping the site truthful when the seller
+ *      reprices, re-quantities or re-states a listing's condition on eBay.
+ *      Sale windows are respected, the quantity import is guarded by the
+ *      mirror's lastSyncedQty so the website→eBay stock reconcile keeps
+ *      ownership of locally-changed stock, and the condition comes from the
+ *      walk when eBay reports it — otherwise a bounded GetItem budget
+ *      (rotating window per sweep) verifies rows.
  *   4. Everything is logged (structured, greppable EBAY_AUTOSYNC marker) and
  *      audited per sweep, so a missing product can be diagnosed from the logs
  *      alone.
@@ -39,6 +42,8 @@ import logger from '../utils/logger.js'
 import { logAudit } from '../utils/audit.js'
 import { isEbayConfigured } from './ebayClient.js'
 import { DEFAULT_IMPORT_MARKETPLACE, enqueueCatalogImport, processEbayImportJobs, walkActiveListings } from './ebayCatalogImportService.js'
+import { getEbayItemDetails } from './ebayTradingService.js'
+import { planConditionUpdate } from './ebayCatalogMapping.js'
 
 const log = logger.child({ context: 'ebay-catalog-autosync' })
 
@@ -48,6 +53,11 @@ const MIRROR_QUERY_CHUNK = 500
 /** Defense-in-depth for end-detection: a real store rarely ends >5% in one
  *  sweep; anything larger is suspect (eBay outage, walk bug) and is skipped. */
 const ENDED_PER_SWEEP_CAP = 200
+/** Bounded GetItem budget per sweep for condition verification: eBay's
+ *  ActiveList walk may not return ConditionDisplayName on every plan, so a
+ *  rotating slice of mirror rows is verified against GetItem each sweep
+ *  (40 rows / 5 min → every catalog row re-verifies within ~2.3 h). */
+const CONDITION_GETITEM_BUDGET = 40
 /** Were these rows created ("Imported from eBay") — the scope where the sweep
  *  may flip availability/price to eBay's own values. Admin-authored catalog
  *  rows stay under warehouse control. */
@@ -68,10 +78,15 @@ export interface AutosyncSweepSummary {
   reactivated: number
   priceUpdates: number
   stockUpdates: number
+  conditionUpdates: number
+  conditionChecked: number
   error: string | null
 }
 
 let lastSummary: AutosyncSweepSummary | null = null
+
+/** Rotating GetItem verification window across sweeps (see section d). */
+let conditionRefreshCursor = 0
 
 /** Last sweep result, surfaced on the admin eBay route for diagnosis. */
 export function getLastAutoSyncSummary(): AutosyncSweepSummary | null {
@@ -100,6 +115,8 @@ export async function sweepEbayCatalogAutoSync(options: { marketplace?: string }
     reactivated: 0,
     priceUpdates: 0,
     stockUpdates: 0,
+    conditionUpdates: 0,
+    conditionChecked: 0,
     error: null,
   }
 
@@ -135,6 +152,8 @@ export async function sweepEbayCatalogAutoSync(options: { marketplace?: string }
         saleStartsAt: Date | null
         saleEndsAt: Date | null
         stockCount: number
+        condition: string
+        conditionNotes: string | null
         internalNotes: string | null
       }
     }
@@ -161,6 +180,8 @@ export async function sweepEbayCatalogAutoSync(options: { marketplace?: string }
               saleStartsAt: true,
               saleEndsAt: true,
               stockCount: true,
+              condition: true,
+              conditionNotes: true,
               internalNotes: true,
             },
           },
@@ -254,14 +275,36 @@ export async function sweepEbayCatalogAutoSync(options: { marketplace?: string }
       }
     }
 
-    // ── c. keep imported prices and stock true to eBay (outside sale windows) ──
+    // ── c. keep imported prices, stock and condition true to eBay ──
     if (walk.complete) {
       const now = new Date()
+      // Rows whose ActiveList walk carried no condition — verified through a
+      // bounded GetItem budget each sweep (rotating window) so every row
+      // converges without one draw costing 1,000+ calls.
+      const conditionGetItemTargets: Array<{ listingId: string; row: MirrorRow }> = []
       for (const [listingId, row] of mirrorRows) {
         if (row.status === 'ended' || !activeIdSet.has(listingId)) continue
         if (!row.product.internalNotes?.startsWith(IMPORTED_FROM_EBAY)) continue
         if (row.product.status === 'archived') continue
         const listing = walk.listingsById.get(listingId)
+
+        if (listing?.condition) {
+          summary.conditionChecked += 1
+          const plan = planConditionUpdate(row.product, listing.condition)
+          if (plan) {
+            await prisma.product.update({
+              where: { id: row.product.id },
+              data: { condition: plan.condition, conditionNotes: plan.conditionNotes },
+            })
+            summary.conditionUpdates += 1
+            log.info(
+              { sku: row.sku, productId: row.product.id, itemId: listingId, from: row.product.condition, to: plan.condition, eBay: listing.condition },
+              'EBAY_AUTOSYNC condition imported from eBay listing',
+            )
+          }
+        } else {
+          conditionGetItemTargets.push({ listingId, row })
+        }
 
         // Quantity: when eBay itself moved since the last recorded sync
         // (listing quantity ≠ the mirror's lastSyncedQty), the eBay value is
@@ -313,6 +356,40 @@ export async function sweepEbayCatalogAutoSync(options: { marketplace?: string }
           }
         }
       }
+
+      // ── d. condition via GetItem for rows the walk said nothing about ──
+      // Rotating window: sweep N verifies rows [cursor, cursor+budget), so the
+      // whole catalog re-verifies without ever one-sweeping all 1,089 items.
+      if (conditionGetItemTargets.length > 0) {
+        const sorted = conditionGetItemTargets.slice().sort((a, b) => a.listingId.localeCompare(b.listingId))
+        const budget = Math.min(CONDITION_GETITEM_BUDGET, sorted.length)
+        const start = conditionRefreshCursor % sorted.length
+        const targets: Array<{ listingId: string; row: MirrorRow }> = []
+        for (let i = 0; i < Math.min(budget, sorted.length); i += 1) {
+          targets.push(sorted[(start + i) % sorted.length])
+        }
+        conditionRefreshCursor = (conditionRefreshCursor + budget) % Math.max(1, sorted.length)
+        summary.conditionChecked += targets.length
+        for (const { listingId, row } of targets) {
+          try {
+            const details = await getEbayItemDetails(listingId)
+            const plan = planConditionUpdate(row.product, details.condition)
+            if (plan) {
+              await prisma.product.update({
+                where: { id: row.product.id },
+                data: { condition: plan.condition, conditionNotes: plan.conditionNotes },
+              })
+              summary.conditionUpdates += 1
+              log.info(
+                { sku: row.sku, productId: row.product.id, itemId: listingId, from: row.product.condition, to: plan.condition, eBay: details.condition },
+                'EBAY_AUTOSYNC condition imported from eBay GetItem',
+              )
+            }
+          } catch (err) {
+            log.warn({ err: (err as Error).message, itemId: listingId, sku: row.sku }, 'EBAY_AUTOSYNC condition GetItem refresh failed — retried next sweep')
+          }
+        }
+      }
     }
   } catch (err) {
     summary.error = (err as Error).message.slice(0, 500)
@@ -325,7 +402,15 @@ export async function sweepEbayCatalogAutoSync(options: { marketplace?: string }
   log.info(summary, 'EBAY_AUTOSYNC sweep summary')
   lastSummary = summary
 
-  if (summary.newlyListed > 0 || summary.ended > 0 || summary.reactivated > 0 || summary.priceUpdates > 0 || summary.stockUpdates > 0 || summary.error) {
+  if (
+    summary.newlyListed > 0 ||
+    summary.ended > 0 ||
+    summary.reactivated > 0 ||
+    summary.priceUpdates > 0 ||
+    summary.stockUpdates > 0 ||
+    summary.conditionUpdates > 0 ||
+    summary.error
+  ) {
     await logAudit({
       action: 'catalog.autosync',
       entityType: 'ebay_autosync',

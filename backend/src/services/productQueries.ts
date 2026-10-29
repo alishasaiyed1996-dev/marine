@@ -1,6 +1,7 @@
 import { prisma } from '../server.js'
 import { getEffectivePrice, isOnSale, isProductInStock, paginationParams, paginationResponse } from '../utils/helpers.js'
 import { productAdminInclude, productInclude } from '../utils/prisma-helpers.js'
+import { pickRelatedIds, relatedPoolSize } from './relatedProductRules.js'
 
 export interface ProductFilters {
   status?: string
@@ -279,21 +280,52 @@ export async function getStorefrontProduct(id: string) {
   return { ...product, price: getEffectivePrice(product), onSale: isOnSale(product), inStock: isProductInStock(product) }
 }
 
+/**
+ * Related products for one detail page: randomized per request from
+ * category-first, brand-second, newest-fallback pools. Never repeats `id`
+ * itself; keeps at most `take` items.
+ */
 export async function getRelatedProducts(id: string, categoryId: string | null, brandId: string | null, take = 4) {
-  const related = await prisma.product.findMany({
-    where: {
-      status: 'published',
-      id: { not: id },
-      OR: [
-        ...(categoryId ? [{ categoryId }] : []),
-        ...(brandId ? [{ brandId }] : []),
-      ],
-    },
-    include: productInclude,
+  const poolSize = relatedPoolSize(take)
+  const [categoryPool, brandPool, latestPool] = await Promise.all([
+    categoryId
+      ? prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM products
+          WHERE status = 'published' AND id <> ${id}::uuid AND category_id = ${categoryId}::uuid
+          ORDER BY random() LIMIT ${poolSize}`
+      : Promise.resolve([] as Array<{ id: string }>),
+    brandId
+      ? prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM products
+          WHERE status = 'published' AND id <> ${id}::uuid AND brand_id = ${brandId}::uuid
+          ORDER BY random() LIMIT ${poolSize}`
+      : Promise.resolve([] as Array<{ id: string }>),
+    prisma.product.findMany({
+      where: { status: 'published', id: { not: id } },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+      take,
+    }),
+  ])
+
+  const ids = pickRelatedIds(
+    id,
+    categoryPool.map((entry) => entry.id),
+    brandPool.map((entry) => entry.id),
+    latestPool.map((entry) => entry.id),
     take,
-    orderBy: { createdAt: 'desc' },
+  )
+  if (ids.length === 0) return []
+
+  const rows = await prisma.product.findMany({
+    where: { id: { in: ids }, status: 'published' },
+    include: productInclude,
   })
-  return related.map(p => ({ ...p, price: getEffectivePrice(p), onSale: isOnSale(p), inStock: isProductInStock(p) }))
+  const byId = new Map(rows.map((product) => [product.id, product]))
+  return ids
+    .map((relatedId) => byId.get(relatedId))
+    .filter((product): product is NonNullable<typeof product> => Boolean(product))
+    .map((product) => ({ ...product, price: getEffectivePrice(product), onSale: isOnSale(product), inStock: isProductInStock(product) }))
 }
 
 export async function getFeaturedProducts(take = 8) {

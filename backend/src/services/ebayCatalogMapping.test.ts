@@ -18,6 +18,7 @@ import {
   extractIdentity,
   htmlToPlainText,
   mapEbayCondition,
+  planConditionUpdate,
   matchBrandId,
   resolveCategoryId,
   normalizeCurrency,
@@ -94,8 +95,55 @@ test('mapEbayCondition maps new/refurbished/used variants', () => {
   assert.equal(mapEbayCondition('Refurbished'), 'refurbished')
   assert.equal(mapEbayCondition('Seller refurbished'), 'refurbished')
   assert.equal(mapEbayCondition('Used'), 'used')
+  assert.equal(mapEbayCondition('Used - Very Good'), 'used')
+  assert.equal(mapEbayCondition('Good'), 'used')
+  assert.equal(mapEbayCondition('Acceptable - Used'), 'used')
   assert.equal(mapEbayCondition('For parts or not working'), 'used')
   assert.equal(mapEbayCondition(null), 'used')
+})
+
+test('mapEbayCondition reads eBay numeric ConditionIds (display name absent)', () => {
+  assert.equal(mapEbayCondition('1000'), 'new')
+  assert.equal(mapEbayCondition('1500'), 'unused')
+  assert.equal(mapEbayCondition('1750'), 'unused')
+  assert.equal(mapEbayCondition('2000'), 'refurbished')
+  assert.equal(mapEbayCondition('2500'), 'refurbished')
+  assert.equal(mapEbayCondition('3000'), 'refurbished')
+  assert.equal(mapEbayCondition('4000'), 'used')
+  assert.equal(mapEbayCondition('5000'), 'used')
+  assert.equal(mapEbayCondition('6000'), 'used')
+  assert.equal(mapEbayCondition('7000'), 'used')
+})
+
+// ── Condition mirror plan (sweep / backfill shared rule) ──────
+
+test('planConditionUpdate imports eBay condition when the row disagrees', () => {
+  const plan = planConditionUpdate({ condition: 'unused', conditionNotes: null }, 'Used - Very Good')
+  assert.deepEqual(plan, { condition: 'used', conditionNotes: 'Used - Very Good' })
+})
+
+test('planConditionUpdate refreshes stale notes that word a different class', () => {
+  // Old default rows: condition column may already say "used" while the note
+  // still claims the old boxed/never-used wording.
+  const plan = planConditionUpdate({ condition: 'used', conditionNotes: 'New other (see details)' }, 'Used - Good')
+  assert.deepEqual(plan, { condition: 'used', conditionNotes: 'Used - Good' })
+})
+
+test('planConditionUpdate records eBay wording when the row has no note yet', () => {
+  const plan = planConditionUpdate({ condition: 'used', conditionNotes: null }, 'Used - Very Good')
+  assert.deepEqual(plan, { condition: 'used', conditionNotes: 'Used - Very Good' })
+})
+
+test('planConditionUpdate returns null once the row mirrors eBay', () => {
+  const row = { condition: 'used', conditionNotes: 'Used - Very Good' }
+  assert.equal(planConditionUpdate(row, 'Used - Very good'), null)
+  assert.equal(planConditionUpdate(row, null), null)
+  assert.equal(planConditionUpdate(row, undefined), null)
+})
+
+test('planConditionUpdate tracks eBay condition edits in both directions', () => {
+  const plan = planConditionUpdate({ condition: 'used', conditionNotes: 'Used - Very Good' }, 'Seller refurbished')
+  assert.deepEqual(plan, { condition: 'refurbished', conditionNotes: 'Seller refurbished' })
 })
 
 // ── Identity ──────────────────────────────────────────────────
