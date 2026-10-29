@@ -154,8 +154,6 @@ export const brandImages: string[] = [
   "https://res.cloudinary.com/y7up4zti/image/upload/v1785148389/alka/brands/imgi_233_image-1779187807110-437530939.png",
   "https://res.cloudinary.com/y7up4zti/image/upload/v1785148389/alka/brands/imgi_234_image-1780492288344-9434519.jpg",
   "https://res.cloudinary.com/y7up4zti/image/upload/v1785148390/alka/brands/imgi_235_image-1781874745199-586377845.png",
-  "https://res.cloudinary.com/y7up4zti/image/upload/v1785148391/alka/brands/imgi_236_footer-logo.png",
-  "https://res.cloudinary.com/y7up4zti/image/upload/v1785148391/alka/brands/imgi_237_payments.png",
   "https://res.cloudinary.com/y7up4zti/image/upload/v1785148392/alka/brands/imgi_238_image-1765537236244-786827332.png",
   "https://res.cloudinary.com/y7up4zti/image/upload/v1785148393/alka/brands/imgi_239_image-1765439953481-268371209.jpg",
   "https://res.cloudinary.com/y7up4zti/image/upload/v1785148393/alka/brands/imgi_23_image-1763545204416-190679528.png",

@@ -109,7 +109,7 @@ export default function Home() {
             name: 'Marine Spare Parts Online Store',
             description: 'Ecommerce storefront for ship spares, marine equipment, engine spare parts, hydraulic systems, electrical automation, navigation spares, safety gear, rigging, and industrial surplus parts.',
             url: 'https://alkatraders.co/en/',
-            about: highIntentSearches,
+            about: highIntentSearches.map((term) => ({ '@type': 'Thing', name: term })),
           },
           {
             '@context': 'https://schema.org',

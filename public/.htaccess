@@ -25,6 +25,13 @@
   RewriteRule ^ index.html [L]
 </IfModule>
 
+# Real HTTP 404 status for static Apache mode. This only takes effect when the
+# site is served statically (Hostinger Apache) and relies on /404.html existing
+# in the web root (public/404.html is prerendered and copied). In Node mode
+# server.js handles 404s itself and this file is ignored — no rewrite rules are
+# duplicated for that path.
+ErrorDocument 404 /404.html
+
 # Protect dotfiles (incl. .env, .git)
 <FilesMatch "^\.">
   Require all denied

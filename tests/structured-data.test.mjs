@@ -127,3 +127,34 @@ test('the SPA fallback generator delegates to the shared policy instead of its o
     'the return policy value must be defined once (shared/product-page.mjs)',
   )
 })
+
+test('mapCondition maps the 5-value enum explicitly and omits unknown values', () => {
+  const build = (condition) =>
+    buildProductPage(
+      {
+        id: 'cond-t',
+        sku: 'COND-T-1',
+        name: 'Condition Test Bearing',
+        description: 'Test part used to verify the JSON-LD condition mapping.',
+        price: 10,
+        currency: 'USD',
+        condition,
+        slug: 'condition-test-bearing',
+        category: 'engine-spare',
+      },
+      { locale: 'en' },
+    )
+  const offers = (condition) => build(condition).jsonLd.find((e) => e['@type'] === 'Product').offers
+
+  assert.equal(offers('used').itemCondition, 'https://schema.org/UsedCondition')
+  assert.equal(offers('new').itemCondition, 'https://schema.org/NewCondition')
+  assert.equal(offers('unused').itemCondition, 'https://schema.org/NewCondition')
+  assert.equal(offers('refurbished').itemCondition, 'https://schema.org/RefurbishedCondition')
+  assert.equal(offers('reconditioned').itemCondition, 'https://schema.org/RefurbishedCondition')
+
+  // Unknown / blank → mapper returns undefined and the Offer omits
+  // itemCondition entirely: never assert a condition the catalog does not state.
+  for (const unknown of ['', null, undefined, 'OEM', 'Overhauled', 'surplus — no grade']) {
+    assert.equal(offers(unknown).itemCondition, undefined, `condition=${String(unknown)}`)
+  }
+})

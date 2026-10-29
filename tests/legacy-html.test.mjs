@@ -20,7 +20,12 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..')
-const PORT = String(46000 + Math.floor(Math.random() * 18_000))
+// Disjoint port band (28000–32000): host-canonicalization.test.mjs spawns on
+// 42000–62000 (dev 60000–64000). Both files pick random ports per run and
+// execute in parallel — an overlapping band occasionally produced a flaky
+// EADDRINUSE exit ("server.js exited early with code 1"), its startup FATAL
+// line swallowed by this hook's stdio: 'ignore'.
+const PORT = String(28000 + Math.floor(Math.random() * 4_000))
 const ORIGIN = `http://127.0.0.1:${PORT}`
 
 function probe(pathname) {

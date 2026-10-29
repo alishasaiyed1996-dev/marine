@@ -121,7 +121,7 @@ export interface ProductPageModel {
   sku: string
   condition: string
   conditionLabel: string
-  conditionSchema: string
+  conditionSchema: string | undefined
   packPhrase: string
   category: ProductPageCategory
   currency: string
@@ -187,8 +187,8 @@ export declare function buildImageAlt(
   },
 ): string
 
-export declare function mapProductCondition(condition: string | null | undefined): string
-export declare function mapCondition(condition: string | null | undefined): string
+export declare function mapProductCondition(condition: string | null | undefined): string | undefined
+export declare function mapCondition(condition: string | null | undefined): string | undefined
 export declare function conditionLabel(condition: string | null | undefined): string
 
 /**

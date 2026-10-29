@@ -102,23 +102,36 @@ export default function Brands() {
                   animationDirection: rowIndex % 2 === 0 ? 'normal' : 'reverse',
                 }}
               >
-                {[...row, ...row].map((img, i) => (
-                  <div
-                    key={`${rowIndex}-${i}`}
-                    className="flex-shrink-0 w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface)]/50 hover:border-[var(--accent-gold)]/40 hover:shadow-lg transition-all duration-300 group"
-                  >
-                    <OptimizedImage
-                      src={img.startsWith('http') ? img : `/brand/${img}`}
-                      alt={`${img.replace(/\.(avif|png|jpg|jpeg|webp)$/i, '').replace(/-/g, ' ')} brand logo`}
-                      width={112}
-                      height={112}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-500"
-                      onError={(e) => { const img = e.target as HTMLImageElement; img.src = '/images/placeholder.jpg'; img.onerror = null; }}
-                    />
-                  </div>
-                ))}
+                {[...row, ...row].map((img, i) => {
+                  // The second half repeats the row purely to close the CSS
+                  // marquee loop: it must stay invisible to assistive tech and
+                  // carry no alt text (it duplicates the primary tiles).
+                  const isDuplicate = i >= row.length
+                  const altText = img
+                    .replace(/\.(avif|png|jpg|jpeg|webp)$/i, '')
+                    .replace(/imgi_\d+_/i, '')
+                    .replace(/-/g, ' ')
+                  return (
+                    <div
+                      key={`${rowIndex}-${i}`}
+                      aria-hidden={isDuplicate ? true : undefined}
+                      className="flex-shrink-0 w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface)]/50 hover:border-[var(--accent-gold)]/40 hover:shadow-lg transition-all duration-300 group"
+                    >
+                      <OptimizedImage
+                        src={img.startsWith('http') ? img : `/brand/${img}`}
+                        alt={isDuplicate ? '' : `${altText} brand logo`}
+                        width={112}
+                        height={112}
+                        sizes="112px"
+                        transformWidth={112}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-contain p-2 group-hover:scale-110 transition-transform duration-500"
+                        onError={(e) => { const img = e.target as HTMLImageElement; img.src = '/images/placeholder.jpg'; img.onerror = null; }}
+                      />
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ))}

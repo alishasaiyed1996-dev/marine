@@ -1537,7 +1537,10 @@ export function buildProductPage(input, options = {}) {
             priceCurrency: currency,
             price: effectivePrice.toFixed(2),
             availability: availabilitySchema,
-            itemCondition: conditionSchema,
+            // itemCondition is optional in schema.org; omit it entirely when
+            // mapCondition returns undefined (blank/unrecognized condition) —
+            // never assert a condition the catalog does not state.
+            ...(conditionSchema ? { itemCondition: conditionSchema } : {}),
             seller: { '@type': 'Organization', name: SITE_NAME, url: `${baseUrl}/` },
             hasMerchantReturnPolicy: buildMerchantReturnPolicy(options.returnPolicy),
           },
@@ -1629,6 +1632,20 @@ function absoluteUrl(value, baseUrl) {
   return /^https?:\/\//i.test(url) ? url : `${String(baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, '')}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
+/**
+ * Map the internal 5-value condition enum to schema.org itemCondition.
+ *
+ * The value space is exactly { new, unused, used, refurbished, reconditioned }
+ * (backend/src/routes/admin/products.ts zod enum, mirrored by the admin form
+ * and the eBay ingest normalizer; live catalog verified 2026-10). The previous
+ * default branch asserted UsedCondition for ANY unrecognized/blank string —
+ * a structured-data accuracy violation: the JSON-LD must never claim a
+ * condition the catalog does not state. Unknown values now return undefined
+ * and the Offer omits itemCondition (schema.org makes it optional);
+ * marketplaces keep their own conservative fallbacks where a value is
+ * mandatory (backend/src/services/merchantFeedService.ts,
+ * backend/src/services/ebayListingService.ts).
+ */
 function mapCondition(condition) {
   switch (cleanText(condition).toLowerCase()) {
     case 'new':
@@ -1637,8 +1654,10 @@ function mapCondition(condition) {
     case 'refurbished':
     case 'reconditioned':
       return 'https://schema.org/RefurbishedCondition'
-    default:
+    case 'used':
       return 'https://schema.org/UsedCondition'
+    default:
+      return undefined
   }
 }
 

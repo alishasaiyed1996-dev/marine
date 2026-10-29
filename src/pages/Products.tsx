@@ -332,7 +332,7 @@ export default function Products() {
       itemListElement: products.slice(0, 24).map((product, index) => ({
         '@type': 'ListItem',
         position: index + 1,
-        url: `https://alkatraders.co/en/product/${product.slug || product.id}/`,
+        url: `https://alkatraders.co/${language}/product/${product.slug || product.id}/`,
         name: product.name,
       })),
     },
