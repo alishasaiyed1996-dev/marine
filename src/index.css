@@ -365,6 +365,11 @@ html.dark {
     font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
     -webkit-font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
     text-rendering: optimizeLegibility;
+    /* Keep the scrollbar gutter reserved on Android/WebViews with classic
+       (non-overlay) scrollbars: navigating between short and tall pages used
+       to add/remove the bar, shifting the whole layout horizontally — read
+       as a shaking navbar on phones. Overlay-scroll platforms ignore this. */
+    scrollbar-gutter: stable;
   }
 
   body {
@@ -1235,19 +1240,32 @@ html.dark {
 /* ── Mobile top-bar hide-on-scroll ────────────────────────────────
    On mobile (<1024px) the utility bar smoothly collapses to zero
    height when the user scrolls down, while the main nav stays sticky
-   at top:0. On desktop the top bar always stays visible. */
+   at top:0. On desktop the top bar always stays visible.
+
+   The collapse animates a grid track (1fr → 0fr), not max-height.
+   max-height needed a generous 200px guess: the transition spent most
+   of its time travelling from 200px to the bar's real ~78px height
+   with nothing moving, then snapped — which phones rendered as a
+   glitchy shake. A 0fr/1fr track is exact, animates the whole bar
+   including its safe-area padding, and browsers without interpolating
+   grid tracks simply collapse instantly (no animation, no shake). */
 .navbar-top-bar {
-  transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
-  max-height: 200px; /* generous upper bound for the two-row mobile layout */
+  display: grid;
+  grid-template-rows: 1fr;
   opacity: 1;
+  overflow: hidden;
+  transition: grid-template-rows 0.3s ease, opacity 0.3s ease;
+}
+
+.navbar-top-bar-inner {
+  min-height: 0;
   overflow: hidden;
 }
 
 @media (max-width: 1023px) {
   .navbar-top-bar.navbar-top-bar-hidden {
-    max-height: 0;
+    grid-template-rows: 0fr;
     opacity: 0;
-    padding-top: 0;
     border-bottom-width: 0;
   }
 }

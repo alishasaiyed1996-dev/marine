@@ -1,12 +1,22 @@
 import { useTranslation } from 'react-i18next'
+import { useLocation } from 'react-router-dom'
 import { WhatsAppIcon } from '../components/ui/WhatsAppIcon'
 import { useStoreSettings } from '../hooks/useStoreSettings'
+import { PAYMENT_ROUTE } from '../lib/routes'
 
 export function WhatsAppFloat() {
   const { t } = useTranslation()
+  const { pathname } = useLocation()
   const { whatsappNumber } = useStoreSettings()
 
   if (!whatsappNumber) return null
+
+  // Never on the payment pages. The float is anchored bottom-end, exactly
+  // where the checkout's final action lives, so it covered the PayPal button
+  // and the order-summary controls at the single step where a customer must
+  // not be blocked. Everywhere else it stays: it is the emergency RFQ channel,
+  // and the buying pages are where it earns its keep.
+  if (PAYMENT_ROUTE.test(pathname)) return null
 
   return (
     // z-index scale: content < cart drawer (60) < sticky header (70) < modals (100/110) < toast & cookie consent (200)
