@@ -417,6 +417,69 @@ const categoryEnvIdMap: Map<string, string> = (() => {
   return map
 })()
 
+/**
+ * eBay Hub runtime overlay for the pin map (database-managed pins).
+ *
+ * The env pins above can only be changed with a redeploy, so the admin
+ * "Catalog repair" tab keeps its own pin table in StoreSetting and applies it
+ * here at boot and on every save. Admin pins always win over env pins for the
+ * same category id; an empty map leaves the env map untouched. The module
+ * stays pure — the settings service calls applyCategoryPins() with validated
+ * data, nothing here touches prisma.
+ */
+let adminCategoryPins: Map<string, string> = new Map()
+
+/** How many admin-managed pins are currently applied at runtime. */
+export function adminCategoryPinCount(): number {
+  return adminCategoryPins.size
+}
+
+/**
+ * Apply admin pin entries at runtime (validated, pure). Entries with an empty
+ * slug are dropped (delete the pin), entries with an unknown website slug are
+ * reported invalid and skipped — the caller decides how to surface them.
+ */
+export function applyCategoryPins(entries: Record<string, unknown>): { applied: number; invalid: string[] } {
+  const invalid: string[] = []
+  const next = new Map<string, string>()
+  for (const [rawId, rawSlug] of Object.entries(entries || {})) {
+    const id = String(rawId || '').trim()
+    const slug = String(rawSlug ?? '').trim()
+    if (!id) continue
+    if (!slug) continue // deletion: pin removed
+    if (!isWebsiteCategorySlug(slug)) {
+      invalid.push(`${id} → ${slug}`)
+      continue
+    }
+    next.set(id, slug)
+  }
+  adminCategoryPins = next
+  return { applied: next.size, invalid }
+}
+
+/** Effective pin for one eBay category id: admin overlay first, then env. */
+export function activeCategoryPinFor(categoryId: string): { slug: string; source: 'admin' | 'env' } | null {
+  const id = String(categoryId || '')
+  if (!id) return null
+  const admin = adminCategoryPins.get(id)
+  if (admin) return { slug: admin, source: 'admin' }
+  const env = categoryEnvIdMap.get(id)
+  if (env) return { slug: env, source: 'env' }
+  return null
+}
+
+/** Merged active pins for the admin config view (admin entries first). */
+export function activeCategoryPins(): Array<{ id: string; slug: string; source: 'admin' | 'env' | 'admin-overrides-env' }> {
+  const out: Array<{ id: string; slug: string; source: 'admin' | 'env' | 'admin-overrides-env' }> = []
+  for (const [id, slug] of adminCategoryPins) {
+    out.push({ id, slug, source: categoryEnvIdMap.has(id) ? 'admin-overrides-env' : 'admin' })
+  }
+  for (const [id, slug] of categoryEnvIdMap) {
+    if (!adminCategoryPins.has(id)) out.push({ id, slug, source: 'env' })
+  }
+  return out
+}
+
 // ─── Resolution ────────────────────────────────────────────────
 
 function buildSpecificsText(specifics?: CategorySourceInput['specifics']): string {
@@ -445,10 +508,18 @@ export function resolveWebsiteCategory(input: CategorySourceInput = {}): Categor
   const normalizedTitle = normalizeCategoryText(title || '')
   const specificsText = buildSpecificsText(specifics)
 
-  // 1. Pinned eBay category ID (env override) — deterministic.
-  if (categoryId && categoryEnvIdMap.has(String(categoryId))) {
-    const slug = categoryEnvIdMap.get(String(categoryId))!
-    return { slug, confidence: 'ebay-category-id', reason: `EBAY_CATEGORY_ID_MAP pin ${categoryId} → ${slug}` }
+  // 1. Pinned eBay category ID — admin-managed overlay (StoreSetting) first,
+  //    then the EBAY_CATEGORY_ID_MAP env pins. Deterministic: a pin always
+  //    beats category names and keyword evidence.
+  if (categoryId) {
+    const pin = activeCategoryPinFor(categoryId)
+    if (pin) {
+      return {
+        slug: pin.slug,
+        confidence: 'ebay-category-id',
+        reason: `eBay category pin ${categoryId} → ${pin.slug} (${pin.source === 'admin' ? 'admin-managed' : 'EBAY_CATEGORY_ID_MAP env'} pin)`,
+      }
+    }
   }
 
   // 2. eBay category name — leaf first. eBay sends colon-separated

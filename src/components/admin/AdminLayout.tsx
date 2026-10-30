@@ -2,6 +2,7 @@ import { Suspense, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { AdminSidebar } from './AdminSidebar'
 import { AdminHeader } from './AdminHeader'
+import { AdminCommandPalette } from './AdminCommandPalette'
 import { useStore } from '../../store/useStore'
 
 export function AdminLayout() {
@@ -13,26 +14,37 @@ export function AdminLayout() {
   }, [])
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-[var(--primary-bg)]">
       <AdminSidebar />
 
       <div
-        className={`flex flex-1 flex-col min-w-0 transition-all duration-300 ${
-          collapsed ? 'lg:ml-[68px]' : 'lg:ml-[260px]'
+        className={`admin-main flex min-w-0 flex-1 flex-col transition-all duration-300 ${
+          collapsed ? 'lg:ml-[76px]' : 'lg:ml-[264px]'
         }`}
       >
         <AdminHeader />
 
-        <main className="admin-content flex-1 p-3 sm:p-6 lg:p-8 overflow-x-hidden">
-          <Suspense fallback={
-            <div className="flex items-center justify-center min-h-[50vh]">
-              <div className="w-8 h-8 border-2 border-[var(--accent-blue)] border-t-transparent rounded-full animate-spin" />
-            </div>
-          }>
-            <Outlet />
-          </Suspense>
+        <main className="admin-content flex-1 px-3 py-4 sm:px-5 sm:py-6 lg:px-8 lg:py-7">
+          <div className="mx-auto w-full max-w-[1500px]">
+            <Suspense
+              fallback={
+                <div className="space-y-4" aria-hidden="true">
+                  <div className="h-8 w-48 animate-pulse rounded-lg bg-[var(--surface-soft)]" />
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {[0, 1, 2, 3].map((key) => (
+                      <div key={key} className="h-28 animate-pulse rounded-2xl bg-[var(--surface-soft)]" />
+                    ))}
+                  </div>
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
+          </div>
         </main>
       </div>
+
+      <AdminCommandPalette />
     </div>
   )
 }

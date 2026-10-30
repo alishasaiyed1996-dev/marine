@@ -145,6 +145,7 @@ model Product {
   specs         ProductSpec[]
   industries    ProductIndustry[]
   ebayListings  EbayListing[]
+  ebayListingPreviews EbayListingPreview[]
   orderItems    OrderItem[]
   offers        Offer[]
   createdByUser AdminUser?        @relation("CreatedProducts", fields: [createdBy], references: [id])
@@ -180,6 +181,7 @@ model ProductImage {
   productId    String   @map("product_id") @db.Uuid
   mediaAssetId String?  @map("media_asset_id") @db.Uuid
   url          String   @db.Text
+  sourceUrl    String?  @map("source_url") @db.Text
   altText      String?  @map("alt_text") @db.VarChar(500)
   label        String?  @db.VarChar(100)
   sortOrder    Int      @default(0) @map("sort_order")
@@ -713,6 +715,11 @@ model EbayListing {
   lastSyncedQty  Int?     @map("last_synced_qty")
   lastSyncAt     DateTime? @map("last_sync_at")
   lastError      String?  @map("last_error") @db.Text
+  // Admin pause (eBay Hub): when true the website→eBay quantity push and the
+  // drift reconciler skip this mirror row. eBay→website catalog tracking
+  // (an active listing no longer visible on eBay is still marked ended) is
+  // intentionally NOT affected — pause only stops us writing to eBay.
+  syncDisabled   Boolean  @default(false) @map("sync_disabled")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -780,4 +787,64 @@ model EbayImportJob {
 
   @@index([status, createdAt])
   @@map("ebay_import_jobs")
+}
+
+// ─── eBay Listing previews (GraphQL Inventory Mapping API) ─────
+// One row per eBay listingPreviewsCreationTask. startListingPreviewsCreation
+// submits website products (SKU, title, images, aspects) as "external
+// products"; the async task result carries eBay's recommendations, which are
+// flattened into EbayListingPreview rows for the admin to apply when listing.
+// Task polling is pull-based (GET tasks/:id live-polls eBay) — no scheduler.
+model EbayListingPreviewTask {
+  id          String    @id @default(uuid()) @db.Uuid
+  ebayTaskId  String    @unique @map("ebay_task_id") @db.VarChar(50)
+  marketplace String    @default("EBAY_US") @db.VarChar(20)
+  status      String    @default("running") @db.VarChar(30) // running|completed|completed_with_error|failed|cancelled
+  productIds  Json      @default("[]") @map("product_ids") @db.JsonB
+  total       Int       @default(0)
+  created     Int       @default(0) // listing previews eBay actually produced
+  unprocessed Int       @default(0)
+  unmapped    Int       @default(0)
+  invalid     Int       @default(0)
+  lastError   String?   @map("last_error") @db.Text
+  createdBy   String?   @map("created_by") @db.Uuid
+  startedAt   DateTime? @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("ebay_listing_preview_tasks")
+}
+
+// eBay's recommended listing details for one product (category, aspects with
+// PREFILL/HINT confidence, ePID). status: suggested → applied (used by
+// createListingForProduct) → superseded (a newer task replaced the row).
+model EbayListingPreview {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  taskId    String   @map("task_id") @db.VarChar(50)
+  marketplace String @default("EBAY_US") @db.VarChar(20)
+  status    String   @default("suggested") @db.VarChar(20) // suggested|applied
+  // eBay's recommendation (null when the product was unmapped/invalid):
+  categoryId String? @map("category_id") @db.VarChar(20)
+  categoryLevel Int? @map("category_level")
+  categoryName String? @map("category_name") @db.VarChar(999)
+  epid      String?  @map("epid") @db.VarChar(50)
+  // ListingPreview.mappingReferenceId: 25-char id eBay asks sellers to
+  // reference when creating/revising listings from a preview (diagnostics).
+  mappingReferenceId String? @map("mapping_reference_id") @db.VarChar(32)
+  suggestedTitle String? @map("suggested_title") @db.VarChar(999)
+  aspects   Json?    @db.JsonB // [{name, values, value, confidence}]
+  outcome   String?  @db.VarChar(20) // ok|unprocessed|unmapped|invalid
+  reason    String?  @db.Text // invalidProduct description / unmapped note
+  response  Json?    @db.JsonB // raw ListingPreview for debugging/admin view
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, productId])
+  @@index([productId, status])
+  @@map("ebay_listing_previews")
 }

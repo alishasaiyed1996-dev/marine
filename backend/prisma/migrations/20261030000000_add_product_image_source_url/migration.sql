@@ -1,0 +1,12 @@
+-- eBay mirror-mode photo provenance (mirrorProductImages).
+--
+-- A mirrored photo row records which eBay URL it came from. Without this,
+-- a re-sync cannot tell an unchanged photo from a changed one: the stored
+-- url is the Cloudinary mirror, the incoming urls are the raw eBay urls,
+-- and they never compare equal — so the naive diff deletes and re-mirrors
+-- the whole photo set on every pass, and every re-create collides with the
+-- (product_id, sort_order) unique key.
+--
+-- Nullable: rows uploaded by an admin keep NULL. Legacy rows are replaced
+-- by the first mirror pass, which re-mirrors with provenance attached.
+ALTER TABLE "product_images" ADD COLUMN "source_url" TEXT;

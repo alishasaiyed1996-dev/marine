@@ -55,7 +55,7 @@ const AdminGuard = lazy(() => import('./components/admin/AdminGuard').then(m => 
 import { ErrorBoundary } from './components/admin/ErrorBoundary'
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'))
 const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'))
-const AdminEbayInventory = lazy(() => import('./pages/admin/AdminEbayInventory'))
+const AdminEbayHub = lazy(() => import('./pages/admin/AdminEbayHub'))
 const AdminMedia = lazy(() => import('./pages/admin/AdminMedia'))
 const AdminBrands = lazy(() => import('./pages/admin/AdminBrands'))
 const AdminIndustries = lazy(() => import('./pages/admin/AdminIndustries'))
@@ -246,7 +246,9 @@ function AppContent() {
       >
         <Route index element={<AdminDashboard />} />
         <Route path="products" element={<AdminProducts />} />
-        <Route path="ebay-inventory" element={<AdminEbayInventory />} />
+        <Route path="ebay" element={<AdminEbayHub />} />
+        {/* Old bookmarked URL from before the page became the eBay Hub. */}
+        <Route path="ebay-inventory" element={<Navigate to="/admin/ebay" replace />} />
         <Route path="media" element={<AdminMedia />} />
         <Route path="brands" element={<AdminBrands />} />
         <Route path="industries" element={<AdminIndustries />} />

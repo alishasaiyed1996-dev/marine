@@ -25,6 +25,7 @@ import { prisma } from '../../server.js'
 import logger from '../../utils/logger.js'
 import { authenticateAdmin } from '../../middleware/auth.js'
 import { processEbayOrderEvent } from '../../services/ebayOrderService.js'
+import { noteEbayOrderWebhook } from '../../services/ebaySyncScheduler.js'
 import { extractTopic, extractEventId } from '../../services/ebayOrderEvents.js'
 import { buildChallengeResponse } from '../../utils/ebayChallenge.js'
 
@@ -61,6 +62,10 @@ router.post('/', (req, res) => {
   const payload = (req.body || {}) as Record<string, unknown>
   const topic = extractTopic(payload) || 'unknown'
   const eventId = extractEventId(payload) || `${topic}:${Date.now()}`
+
+  // eBay EPN is the normal order delivery path. Keep the Fulfillment poll as
+  // a gap-filler, but reset its cadence when notifications arrive.
+  noteEbayOrderWebhook()
 
   log.info({ eventId, topic }, 'eBay notification received')
 

@@ -16,10 +16,11 @@ import { XMLParser } from 'fast-xml-parser'
 import { prisma } from '../utils/prismaClient.js'
 import logger from '../utils/logger.js'
 import { getUserAccessToken } from './ebayClient.js'
+import { buildReviseInventoryStatusRequest } from './ebayPayloads.js'
 
 const log = logger.child({ context: 'ebay-active-listings' })
 const TRADING_API_VERSION = '967'
-const PAGE_SIZE_MAX = 100
+const PAGE_SIZE_MAX = 200
 
 export interface ActiveEbayListing {
   itemId: string | null
@@ -88,8 +89,41 @@ function money(value: unknown): { amount: number | null; currency: string | null
   return { amount: xmlNumber(record['#text']), currency }
 }
 
-function marketplaceFromUrl(url: string | null): string {
-  if (!url) return 'EBAY_US'
+/**
+ * Multi-variation listings (size/color variants) carry stock and price inside
+ * Item.Variations.Variation[], not at the item level: a variation listing's
+ * item-level QuantityAvailable is typically 0 and SellingStatus.CurrentPrice
+ * is only a base/min price. Mirror consumers want ONE number each because
+ * every listing maps to one website product:
+ *   quantity = SUM of the variations' available quantities
+ *   price    = the LOWEST variation price (the "from X USD" a buyer sees)
+ */
+function aggregateVariations(item: Record<string, any>): {
+  quantity: number
+  price: { amount: number | null; currency: string | null } | null
+} | null {
+  const variations = xmlArray(item.Variations?.Variation)
+  if (variations.length === 0) return null
+  let quantity = 0
+  let lowest: { amount: number | null; currency: string | null } | null = null
+  for (const entry of variations) {
+    const variation = (entry || {}) as Record<string, any>
+    const sellingStatus = (variation.SellingStatus || {}) as Record<string, any>
+    quantity += xmlNumber(sellingStatus.QuantityAvailable) ?? xmlNumber(variation.Quantity) ?? 0
+    const converted = money(sellingStatus.ConvertedCurrentPrice)
+    const current = money(sellingStatus.CurrentPrice)
+    const value = converted.amount != null ? converted : current
+    if (
+      value.amount != null &&
+      (lowest == null || lowest.amount == null || value.amount < lowest.amount)
+    ) {
+      lowest = value
+    }
+  }
+  return { quantity, price: lowest }
+}
+
+function marketplaceFromUrl(url: string | null): string {  if (!url) return 'EBAY_US'
   try {
     const host = new URL(url).hostname.toLowerCase()
     if (host.endsWith('ebay.co.uk')) return 'EBAY_GB'
@@ -202,15 +236,27 @@ function parseActiveItem(input: unknown): ActiveEbayListing {
   const listingUrl = xmlText(listingDetails.ViewItemURL)
   const current = money(sellingStatus.CurrentPrice)
   const converted = money(sellingStatus.ConvertedCurrentPrice)
-  const linkedPictures = xmlArray(pictureDetails.PictureURL).map((value) => xmlText(value)).filter(Boolean)
+  const variations = aggregateVariations(item)
+  let linkedPictures = xmlArray(pictureDetails.PictureURL).map((value) => xmlText(value)).filter(Boolean)
+  // Variation listings keep their photo set inside each Variation, not on the
+  // item — without this fallback the walk card (and any mirror consumer) shows
+  // no image at all.
+  if (linkedPictures.length === 0) {
+    for (const entry of xmlArray(item.Variations?.Variation)) {
+      const variation = (entry || {}) as Record<string, any>
+      linkedPictures = linkedPictures.concat(
+        xmlArray((variation.PictureDetails || {}).PictureURL).map((value) => xmlText(value)).filter(Boolean),
+      )
+    }
+  }
 
   return {
     itemId: xmlText(item.ItemID),
     title: xmlText(item.Title),
     sku: xmlText(item.SKU),
-    quantity: xmlNumber(item.QuantityAvailable) ?? xmlNumber(item.Quantity) ?? 0,
-    price: converted.amount ?? current.amount,
-    currency: converted.currency ?? current.currency,
+    quantity: variations?.quantity ?? xmlNumber(item.QuantityAvailable) ?? xmlNumber(item.Quantity) ?? 0,
+    price: variations?.price?.amount ?? converted.amount ?? current.amount,
+    currency: variations?.price?.currency ?? converted.currency ?? current.currency,
     originalPrice: current.amount,
     originalCurrency: current.currency,
     listingUrl,
@@ -311,11 +357,23 @@ function parseItemDetails(input: unknown): EbayItemDetails {
   const listingUrl = xmlText(listingDetails.ViewItemURL)
   const current = money(sellingStatus.CurrentPrice)
   const converted = money(sellingStatus.ConvertedCurrentPrice)
+  const variations = aggregateVariations(item)
   const images = [
     xmlText(pictureDetails.GalleryURL),
     ...xmlArray(pictureDetails.PictureURL).map((value) => xmlText(value)),
     ...xmlArray(pictureDetails.ExternalPictureURL).map((value) => xmlText(value)),
   ].filter((value): value is string => Boolean(value))
+  // Variation listings keep their extra photos per variation. Item-level
+  // GalleryURL is often the only item-level picture, so merging only when
+  // `images` is empty left variation listings with a single mirrored photo.
+  // Merge unconditionally; the Set below dedupes the shared pictures.
+  for (const entry of xmlArray(item.Variations?.Variation)) {
+    const variation = (entry || {}) as Record<string, any>
+    images.push(
+      ...xmlArray((variation.PictureDetails || {}).PictureURL).map((value) => xmlText(value)).filter((v): v is string => Boolean(v)),
+      ...xmlArray((variation.PictureDetails || {}).ExternalPictureURL).map((value) => xmlText(value)).filter((v): v is string => Boolean(v)),
+    )
+  }
 
   const specifics = nameValues
     .map((entry) => {
@@ -333,11 +391,11 @@ function parseItemDetails(input: unknown): EbayItemDetails {
     itemId: xmlText(item.ItemID) || '',
     title: xmlText(item.Title) || '',
     sku: xmlText(item.SKU),
-    quantity: xmlNumber(item.QuantityAvailable) ?? xmlNumber(item.Quantity) ?? 0,
-    price: converted.amount ?? current.amount,
-    currency: converted.currency ?? current.currency,
+    quantity: variations?.quantity ?? xmlNumber(item.QuantityAvailable) ?? xmlNumber(item.Quantity) ?? 0,
+    price: variations?.price?.amount ?? converted.amount ?? current.amount,
+    currency: variations?.price?.currency ?? converted.currency ?? current.currency,
     listingUrl,
-    images: [...new Set(images)],
+    images: [...new Set(images.filter((value): value is string => Boolean(value)))],
     descriptionHtml: typeof item.Description === 'string' ? item.Description : xmlText(item.Description),
     categoryId: xmlText(primaryCategory.CategoryID),
     categoryName: xmlText(primaryCategory.CategoryName),
@@ -388,16 +446,10 @@ export async function reviseTradingQuantity(itemId: string, quantity: number): P
   if (!itemId) {
     throw Object.assign(new Error('eBay item id is required'), { status: 400 })
   }
-  const safeQuantity = Math.max(0, Math.floor(Number.isFinite(quantity) ? quantity : 0))
-  await tradingCall('ReviseInventoryStatus', `
-<ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-  <InventoryStatus>
-    <ItemID>${xmlEscape(itemId)}</ItemID>
-    <Quantity>${safeQuantity}</Quantity>
-  </InventoryStatus>
-  <ErrorLanguage>en_US</ErrorLanguage>
-  <WarningLevel>High</WarningLevel>
-</ReviseInventoryStatusRequest>`)
+  // Payload builder lives in ebayPayloads.ts so the exact request body is
+  // contract-tested and replayable against the sandbox (see
+  // src/scripts/validateEbaySandboxPayloads.ts).
+  await tradingCall('ReviseInventoryStatus', buildReviseInventoryStatusRequest(itemId, quantity))
 }
 
 export async function getActiveEbayListings(options: { page?: number; limit?: number } = {}): Promise<ActiveEbayListingsResult> {

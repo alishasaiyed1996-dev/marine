@@ -144,6 +144,7 @@ import { startOfferExpiryScheduler, stopOfferExpiryScheduler } from './services/
 import { startEbaySyncScheduler, stopEbaySyncScheduler } from './services/ebaySyncScheduler.js'
 import { startEbayCatalogImportScheduler, stopEbayCatalogImportScheduler } from './services/ebayCatalogImportService.js'
 import { startEbayCatalogAutoSync, stopEbayCatalogAutoSync } from './services/ebayCatalogAutoSync.js'
+import { loadEbayAdminRuntime } from './services/ebayAdminRuntime.js'
 import { startOrderStockSweepScheduler, stopOrderStockSweepScheduler } from './services/orderSweep.js'
 
 // ─── App Setup ─────────────────────────────────────────────────
@@ -526,6 +527,10 @@ async function main() {
     startOfferExpiryScheduler()
     startEbaySyncScheduler()
     startEbayCatalogImportScheduler()
+    // Admin overrides for mirror mode / auto-publish / category pins must
+    // land before the first sweep reads them. Non-fatal on failure: the env
+    // defaults keep running and the error is logged.
+    await loadEbayAdminRuntime()
     startEbayCatalogAutoSync()
     startOrderStockSweepScheduler()
     startupLogger.info('APPLICATION_READY')

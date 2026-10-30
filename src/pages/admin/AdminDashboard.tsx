@@ -1,31 +1,35 @@
+import type { ReactNode } from 'react'
 import {
-  Package,
-  ShoppingCart,
-  FileText,
-  HandCoins,
-  AlertTriangle,
-  Clock,
-  Plus,
-  Upload,
-  FolderPlus,
-  ArrowRight,
-  BarChart3,
   Activity,
-  TrendingDown,
+  AlertTriangle,
+  ArrowRight,
+  ArrowUpRight,
+  BarChart3,
+  Clock,
+  FileText,
+  FolderPlus,
+  HandCoins,
   ImageOff,
-  Boxes,
-  Warehouse,
   Mail,
+  Package,
+  Plus,
+  ShoppingCart,
+  Store,
+  TrendingDown,
+  Upload,
+  Users,
+  Warehouse,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAdminDashboard } from '../../hooks/useAdminDashboard'
+import { useStore } from '../../store/useStore'
 
 const quickActions = [
-  { label: 'Add Product', icon: <Plus size={14} />, to: '/admin/products/new' },
-  { label: 'Upload Images', icon: <Upload size={14} />, to: '/admin/media' },
-  { label: 'New Category', icon: <FolderPlus size={14} />, to: '/admin/categories' },
+  { label: 'Add product', icon: <Plus size={14} />, to: '/admin/products/new' },
+  { label: 'Upload images', icon: <Upload size={14} />, to: '/admin/media' },
+  { label: 'New category', icon: <FolderPlus size={14} />, to: '/admin/categories' },
   { label: 'View RFQs', icon: <FileText size={14} />, to: '/admin/rfqs' },
-  { label: 'View Orders', icon: <ShoppingCart size={14} />, to: '/admin/orders' },
+  { label: 'View orders', icon: <ShoppingCart size={14} />, to: '/admin/orders' },
 ]
 
 // Alert entityType → the admin route that lists those records. Naive
@@ -50,116 +54,271 @@ function entityHref(entityType?: string): string {
   return (entityType && ENTITY_ADMIN_PATH[entityType]) || '/admin/audit-log'
 }
 
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+})
+
+const numberFormatter = new Intl.NumberFormat('en-US')
+
+function formatCurrency(value: number): string {
+  return currencyFormatter.format(Number.isFinite(value) ? value : 0)
+}
+
+function formatNumber(value: number): string {
+  return numberFormatter.format(Number.isFinite(value) ? value : 0)
+}
+
+function formatTimestamp(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+interface SectionCardProps {
+  title: string
+  description?: string
+  action?: ReactNode
+  icon?: ReactNode
+  className?: string
+  children: ReactNode
+}
+
+function SectionCard({ title, description, action, icon, className = '', children }: SectionCardProps) {
+  return (
+    <section className={`admin-card flex flex-col ${className}`}>
+      <header className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-[var(--text-muted)]">{description}</p>}
+        </div>
+        {action ?? (icon && (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-soft)] text-[var(--text-muted)]">
+            {icon}
+          </span>
+        ))}
+      </header>
+      <div className="flex-1 p-5">{children}</div>
+    </section>
+  )
+}
+
+interface StatCardProps {
+  label: string
+  value: string
+  hint: string
+  icon: ReactNode
+  accent: string
+  progress?: number
+  to?: string
+  loading: boolean
+}
+
+function StatCard({ label, value, hint, icon, accent, progress, to, loading }: StatCardProps) {
+  const body = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[0.6875rem] font-bold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
+          <p className="mt-2 font-display text-[1.75rem] font-extrabold leading-none tabular-nums text-[var(--text-primary)]">
+            {loading
+              ? <span className="inline-block h-7 w-20 animate-pulse rounded bg-[var(--surface-soft)]" />
+              : value}
+          </p>
+        </div>
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]"
+          style={{ background: `color-mix(in srgb, ${accent} 12%, transparent)`, color: accent }}
+          aria-hidden="true"
+        >
+          {icon}
+        </span>
+      </div>
+      {typeof progress === 'number' && (
+        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-soft)]">
+          <div
+            className="h-full rounded-full transition-all duration-500"
+            style={{ width: `${Math.min(100, Math.max(0, progress))}%`, background: accent }}
+          />
+        </div>
+      )}
+      <p className="mt-3 text-[0.6875rem] font-medium text-[var(--text-muted)]">{hint}</p>
+    </>
+  )
+
+  if (to) {
+    return <Link to={to} className="admin-stat-card no-underline">{body}</Link>
+  }
+  return <div className="admin-stat-card">{body}</div>
+}
+
+interface QueueCardProps {
+  label: string
+  value: number
+  hint: string
+  icon: ReactNode
+  accent: string
+  to: string
+}
+
+function QueueCard({ label, value, hint, icon, accent, to }: QueueCardProps) {
+  return (
+    <Link to={to} className="admin-stat-card group no-underline">
+      <div className="flex items-center justify-between">
+        <span
+          className="flex h-8 w-8 items-center justify-center rounded-lg"
+          style={{ background: `color-mix(in srgb, ${accent} 12%, transparent)`, color: accent }}
+          aria-hidden="true"
+        >
+          {icon}
+        </span>
+        <ArrowUpRight
+          size={14}
+          className="text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
+          aria-hidden="true"
+        />
+      </div>
+      <p className="mt-3 font-display text-2xl font-extrabold tabular-nums leading-none text-[var(--text-primary)]">
+        {formatNumber(value)}
+      </p>
+      <p className="mt-1 text-xs font-bold text-[var(--text-secondary)]">{label}</p>
+      <p className="mt-0.5 text-[0.6875rem] text-[var(--text-muted)]">{hint}</p>
+    </Link>
+  )
+}
+
 export default function AdminDashboard() {
   const { stats: dashboard, activity, alerts: dashboardAlerts, loading } = useAdminDashboard()
+  const adminUser = useStore((s) => s.adminUser)
 
-  // Build real-time alerts from dashboard data
+  const firstName = adminUser?.name?.trim().split(/\s+/)[0]
+  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+  const pending = loading && dashboard.totalProducts === 0
+
   const displayedAlerts = [
     ...(dashboard.outOfStockProducts > 0
       ? [{
           type: 'danger' as const,
-          icon: <AlertTriangle size={16} />,
-          message: `${dashboard.outOfStockProducts} products are out of stock`,
+          icon: <AlertTriangle size={15} />,
+          message: `${dashboard.outOfStockProducts} product${dashboard.outOfStockProducts === 1 ? '' : 's'} out of stock`,
           link: '/admin/products?filter=out-of-stock',
         }]
       : []),
     ...(dashboard.missingImageCount > 0
       ? [{
           type: 'warning' as const,
-          icon: <ImageOff size={16} />,
-          message: `${dashboard.missingImageCount} products have missing images`,
+          icon: <ImageOff size={15} />,
+          message: `${dashboard.missingImageCount} product${dashboard.missingImageCount === 1 ? '' : 's'} missing images`,
           link: '/admin/products?filter=missing-images',
         }]
       : []),
     ...(dashboard.lowStockCount > 0
       ? [{
           type: 'info' as const,
-          icon: <TrendingDown size={16} />,
-          message: `${dashboard.lowStockCount} products are low on stock (at or below their low-stock threshold)`,
+          icon: <TrendingDown size={15} />,
+          message: `${dashboard.lowStockCount} product${dashboard.lowStockCount === 1 ? '' : 's'} low on stock`,
           link: '/admin/products?filter=low-stock',
         }]
       : []),
     ...(dashboardAlerts.length > 0
-      ? dashboardAlerts.filter(a => a.entityType !== 'product').map(a => ({
-          type: a.type as 'info' | 'danger' | 'warning',
-          icon: a.type === 'danger' ? <AlertTriangle size={16} /> : <Clock size={16} />,
-          message: a.message,
-          link: entityHref(a.entityType),
+      ? dashboardAlerts.filter((alert) => alert.entityType !== 'product').map((alert) => ({
+          type: alert.type as 'info' | 'danger' | 'warning',
+          icon: alert.type === 'danger' ? <AlertTriangle size={15} /> : <Clock size={15} />,
+          message: alert.message,
+          link: entityHref(alert.entityType),
         }))
       : []),
   ]
 
-  // Use real activity from API or low-stock products as fallback
-  const recentActivity = activity.length > 0
-    ? activity.slice(0, 6).map((a) => ({
-        action: a.action,
-        subject: a.entityName || a.entityType,
-        time: new Date(a.createdAt).toLocaleString(),
-        icon: <Package size={14} />,
-      }))
-    : dashboard.lowStockProducts.length > 0
-      ? dashboard.lowStockProducts.slice(0, 5).map((p) => ({
-          action: 'Low stock alert',
-          subject: `${p.name} (${p.sku}) — ${p.stockCount} units remaining`,
-          time: 'Now',
-          icon: <Package size={14} />,
-        }))
-      : [{ action: loading ? 'Loading...' : 'No recent activity', subject: loading ? 'Fetching dashboard data' : 'Dashboard data will appear here', time: '', icon: <Activity size={14} /> }]
-
-  const stats = [
+  const kpis = [
     {
-      label: 'Total Products',
-      value: dashboard.totalProducts.toString(),
-      change: `${dashboard.inStockProducts} in stock, ${dashboard.outOfStockProducts} out`,
-      icon: <Package size={20} />,
-      color: 'text-[var(--accent-blue)]',
-      bg: 'bg-[var(--accent-blue)]/10',
+      label: 'Products',
+      value: formatNumber(dashboard.totalProducts),
+      hint: `${formatNumber(dashboard.inStockProducts)} in stock · ${formatNumber(dashboard.outOfStockProducts)} out`,
+      icon: <Package size={18} />,
+      accent: 'var(--accent-teal)',
+      progress: dashboard.totalProducts > 0
+        ? Math.round((dashboard.inStockProducts / dashboard.totalProducts) * 100)
+        : 0,
+      to: '/admin/products',
     },
     {
-      label: 'Total Stock Units',
-      value: dashboard.totalStockUnits.toString(),
-      change: `${dashboard.emergencyProducts} emergency available`,
-      icon: <Warehouse size={20} />,
-      color: 'text-[var(--accent-gold)]',
-      bg: 'bg-[var(--accent-gold)]/10',
+      label: 'Stock units',
+      value: formatNumber(dashboard.totalStockUnits),
+      hint: `${formatNumber(dashboard.emergencyProducts)} emergency-ready`,
+      icon: <Warehouse size={18} />,
+      accent: 'var(--accent-gold)',
+      to: '/admin/products?filter=low-stock',
     },
     {
-      label: 'Brands & Categories',
-      value: `${dashboard.totalBrands}`,
-      change: `${dashboard.totalCategories} categories, ${dashboard.totalIndustries} industries`,
-      icon: <Boxes size={20} />,
-      color: 'text-[var(--accent-teal)]',
-      bg: 'bg-[var(--accent-teal)]/10',
+      label: 'Orders',
+      value: formatNumber(dashboard.totalOrders),
+      hint: `${formatNumber(dashboard.pendingOrders)} awaiting action`,
+      icon: <ShoppingCart size={18} />,
+      accent: 'var(--accent-blue)',
+      to: '/admin/orders',
     },
     {
-      label: 'Sale & New Arrivals',
-      value: `${dashboard.saleProducts + dashboard.newArrivals}`,
-      change: `${dashboard.saleProducts} on sale, ${dashboard.newArrivals} new`,
-      icon: <HandCoins size={20} />,
-      color: 'text-[var(--success)]',
-      bg: 'bg-[var(--success)]/10',
+      label: 'Revenue',
+      value: formatCurrency(dashboard.totalRevenue),
+      hint: `${formatNumber(dashboard.totalCustomers)} customers on file`,
+      icon: <HandCoins size={18} />,
+      accent: 'var(--success)',
+      to: '/admin/insights',
     },
   ]
 
+  const queue = [
+    { label: 'Pending orders', value: dashboard.pendingOrders, hint: `${formatNumber(dashboard.totalOrders)} total`, icon: <ShoppingCart size={16} />, accent: 'var(--accent-blue)', to: '/admin/orders' },
+    { label: 'New RFQs', value: dashboard.newRfqs, hint: `${formatNumber(dashboard.totalRfqs)} total`, icon: <FileText size={16} />, accent: 'var(--accent-gold)', to: '/admin/rfqs' },
+    { label: 'New offers', value: dashboard.newOffers, hint: `${formatNumber(dashboard.totalOffers)} total`, icon: <HandCoins size={16} />, accent: 'var(--success)', to: '/admin/offers' },
+    { label: 'Unread messages', value: dashboard.newMessages, hint: 'Contact inbox', icon: <Mail size={16} />, accent: 'var(--accent-teal)', to: '/admin/messages' },
+  ]
+
+  const recentActivity = activity.length > 0
+    ? activity.slice(0, 6).map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        subject: entry.entityName || entry.entityType,
+        actor: entry.actorEmail,
+        time: formatTimestamp(entry.createdAt),
+      }))
+    : dashboard.lowStockProducts.slice(0, 5).map((product) => ({
+        id: product.id,
+        action: 'Low stock alert',
+        subject: `${product.name} (${product.sku}) — ${product.stockCount} units left`,
+        actor: 'system',
+        time: 'Now',
+      }))
+
   return (
-    <div className="space-y-6">
-      {/* Page Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-extrabold text-[var(--text-primary)]">
+    <div className="space-y-5 sm:space-y-6">
+      {/* Page header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="type-overline text-[var(--accent-primary)]">Overview</p>
+          <h1 className="mt-1 font-display text-2xl font-extrabold text-[var(--text-primary)]">
             Dashboard
           </h1>
-          <p className="text-sm text-[var(--text-muted)] mt-1">
-            Store overview — {dashboard.totalProducts} products across {dashboard.totalBrands} brands
+          <p className="mt-1 text-sm text-[var(--text-muted)]">
+            Welcome back{firstName ? `, ${firstName}` : ''} · {today}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-xs font-bold text-[var(--text-secondary)] no-underline transition-colors hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+          >
+            <Store size={14} />
+            View store
+          </Link>
           <Link
             to="/admin/products/new"
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-gold)] px-4 py-2.5 text-xs font-extrabold text-[var(--btn-blue-text)] no-underline transition-all hover:brightness-95 hover:-translate-y-0.5"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-primary)] px-3.5 py-2.5 text-xs font-extrabold text-[var(--btn-blue-text)] no-underline transition-colors hover:bg-[var(--accent-primary-hover)]"
           >
             <Plus size={14} />
-            Add Product
+            New product
           </Link>
         </div>
       </div>
@@ -167,96 +326,73 @@ export default function AdminDashboard() {
       {/* Alerts */}
       {displayedAlerts.length > 0 && (
         <div className="space-y-2">
-          {displayedAlerts.map((alert, i) => (
+          {displayedAlerts.map((alert, index) => (
             <Link
-              key={i}
+              key={`${alert.link}-${index}`}
               to={alert.link}
-              className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-semibold no-underline transition-all hover:-translate-y-0.5 ${
+              className={`flex items-center gap-3 rounded-xl border px-4 py-2.5 text-xs font-bold no-underline transition-colors ${
                 alert.type === 'danger'
-                  ? 'border-danger/20 bg-[var(--danger)]/10 text-danger hover:bg-[var(--danger)]/15'
+                  ? 'border-[var(--danger-border)] bg-[var(--danger-subtle)] text-[var(--danger)] hover:bg-[var(--danger-glow)]'
                   : alert.type === 'warning'
-                  ? 'border-[var(--accent-gold)]/20 bg-[var(--accent-gold)]/5 text-[var(--accent-gold)] hover:bg-[var(--accent-gold)]/10'
-                  : 'border-[var(--accent-blue)]/20 bg-[var(--accent-blue)]/5 text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10'
+                  ? 'border-[var(--warning-border)] bg-[var(--warning-subtle)] text-[var(--admin-badge-draft-text)]'
+                  : 'border-[var(--info-border)] bg-[var(--info-subtle)] text-[var(--admin-badge-info-text)]'
               }`}
             >
-              {alert.icon}
-              {alert.message}
-              <ArrowRight size={14} className="ml-auto opacity-50" />
+              <span className="shrink-0">{alert.icon}</span>
+              <span className="min-w-0 flex-1">{alert.message}</span>
+              <ArrowRight size={14} className="shrink-0 opacity-60" aria-hidden="true" />
             </Link>
           ))}
         </div>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="admin-stat-card">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  {stat.label}
-                </p>
-                <p className="mt-2 font-display text-3xl font-extrabold text-[var(--text-primary)]">
-                  {stat.value}
-                </p>
-                <p className="mt-1 text-xs text-[var(--text-muted)] font-medium">
-                  {stat.change}
-                </p>
-              </div>
-              <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${stat.bg} ${stat.color}`}>
-                {stat.icon}
-              </div>
-            </div>
-          </div>
+      {/* KPI cards */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {kpis.map((kpi) => (
+          <StatCard
+            key={kpi.label}
+            label={kpi.label}
+            value={kpi.value}
+            hint={kpi.hint}
+            icon={kpi.icon}
+            accent={kpi.accent}
+            progress={kpi.progress}
+            to={kpi.to}
+            loading={pending}
+          />
         ))}
       </div>
 
-      {/* Operations Queue — counts the backend already returns but the page
-          previously never surfaced (pending orders, new RFQs/offers/messages). */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Pending Orders', value: dashboard.pendingOrders, sub: `${dashboard.totalOrders} total`, icon: <ShoppingCart size={20} />, color: 'text-[var(--accent-blue)]', bg: 'bg-[var(--accent-blue)]/10', to: '/admin/orders' },
-          { label: 'New RFQs', value: dashboard.newRfqs, sub: `${dashboard.totalRfqs} total`, icon: <FileText size={20} />, color: 'text-[var(--accent-gold)]', bg: 'bg-[var(--accent-gold)]/10', to: '/admin/rfqs' },
-          { label: 'New Offers', value: dashboard.newOffers, sub: `${dashboard.totalOffers} total`, icon: <HandCoins size={20} />, color: 'text-[var(--success)]', bg: 'bg-[var(--success)]/10', to: '/admin/offers' },
-          { label: 'Unread Messages', value: dashboard.newMessages, sub: 'Inbox', icon: <Mail size={20} />, color: 'text-[var(--accent-teal)]', bg: 'bg-[var(--accent-teal)]/10', to: '/admin/messages' },
-        ].map((card) => (
-          <Link
-            key={card.label}
-            to={card.to}
-            className="admin-stat-card no-underline transition-all hover:-translate-y-0.5"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  {card.label}
-                </p>
-                <p className="mt-2 font-display text-3xl font-extrabold text-[var(--text-primary)]">
-                  {card.value}
-                </p>
-                <p className="mt-1 text-xs text-[var(--text-muted)] font-medium">
-                  {card.sub}
-                </p>
-              </div>
-              <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.bg} ${card.color}`}>
-                {card.icon}
-              </div>
-            </div>
-          </Link>
-        ))}
+      {/* Operations queue */}
+      <div>
+        <div className="mb-2.5 flex items-end justify-between gap-3">
+          <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">Needs your attention</h2>
+          <span className="text-[0.6875rem] font-semibold text-[var(--text-muted)]">Live queue</span>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {queue.map((item) => (
+            <QueueCard
+              key={item.label}
+              label={item.label}
+              value={item.value}
+              hint={item.hint}
+              icon={item.icon}
+              accent={item.accent}
+              to={item.to}
+            />
+          ))}
+        </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h2 className="font-display text-sm font-bold text-[var(--text-primary)] mb-3">
-          Quick Actions
-        </h2>
+      {/* Quick actions */}
+      <div className="admin-card flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">Quick actions</h2>
+          <p className="mt-0.5 text-xs text-[var(--text-muted)]">Jump straight into the most common catalog tasks.</p>
+        </div>
         <div className="flex flex-wrap gap-2">
           {quickActions.map((action) => (
-            <Link
-              key={action.label}
-              to={action.to}
-              className="admin-quick-action"
-            >
+            <Link key={action.label} to={action.to} className="admin-quick-action">
               {action.icon}
               {action.label}
             </Link>
@@ -264,125 +400,184 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Content Grid: Category Breakdown + Condition Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Category Breakdown */}
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">
-              Products by Category
-            </h2>
-            <BarChart3 size={16} className="text-[var(--text-muted)]" />
-          </div>
-          <div className="space-y-2.5">
-            {dashboard.categoryBreakdown.slice(0, 8).map((cat) => (
-              <div key={cat.id} className="flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-[var(--text-secondary)] truncate">
-                      {cat.name}
-                    </span>
-                    <span className="font-mono text-xs font-bold text-[var(--text-primary)] ml-2">
-                      {cat.count}
+      {/* Catalog + activity */}
+      <div className="grid gap-5 xl:grid-cols-3">
+        <SectionCard
+          className="xl:col-span-2"
+          title="Products by category"
+          description="Top categories by catalog share"
+          action={
+            <Link
+              to="/admin/categories"
+              className="shrink-0 text-xs font-bold text-[var(--accent-primary)] no-underline hover:underline"
+            >
+              Manage →
+            </Link>
+          }
+        >
+          {dashboard.categoryBreakdown.length === 0 ? (
+            <p className="py-6 text-center text-xs text-[var(--text-muted)]">
+              No category data yet — add products to see the breakdown.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {dashboard.categoryBreakdown.slice(0, 8).map((category) => (
+                <div key={category.id}>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-semibold text-[var(--text-secondary)]">{category.name}</span>
+                    <span className="shrink-0 font-mono text-xs font-bold tabular-nums text-[var(--text-primary)]">
+                      {formatNumber(category.count)}
+                      <span className="ml-1.5 font-sans text-[0.625rem] font-medium text-[var(--text-muted)]">
+                        {category.percentage}%
+                      </span>
                     </span>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-[var(--surface-soft)] overflow-hidden">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-soft)]">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-[var(--accent-blue)] to-[var(--accent-teal)] transition-all duration-500"
-                      style={{ width: `${cat.percentage}%` }}
+                      style={{ width: `${Math.max(2, category.percentage)}%` }}
                     />
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Condition Breakdown */}
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">
-              Products by Condition
-            </h2>
-            <Activity size={16} className="text-[var(--text-muted)]" />
-          </div>
-          <div className="space-y-3">
-            {dashboard.conditionBreakdown.map((item) => (
-              <div key={item.condition} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`h-2.5 w-2.5 rounded-full ${
-                    item.condition === 'new'
-                      ? 'bg-[var(--success)]'
-                      : item.condition === 'used'
-                      ? 'bg-[var(--accent-blue)]'
-                      : item.condition === 'refurbished'
-                      ? 'bg-[var(--accent-gold)]'
-                      : item.condition === 'reconditioned'
-                      ? 'bg-[var(--accent-teal)]'
-                      : 'bg-[var(--text-muted)]'
-                  }`} />
-                  <span className="text-sm font-medium text-[var(--text-secondary)] capitalize">
-                    {item.condition}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-bold text-[var(--text-primary)]">
-                    {item.count}
-                  </span>
-                  <span className="text-[0.625rem] text-[var(--text-muted)] font-medium">
-                    ({item.percentage}%)
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">
-            Recent Activity
-          </h2>
-          <Activity size={16} className="text-[var(--text-muted)]" />
-        </div>
-        <div className="space-y-3">
-          {recentActivity.map((item, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-soft)] text-[var(--text-muted)] mt-0.5">
-                {item.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[var(--text-primary)]">
-                  {item.action}
-                </p>
-                <p className="text-xs text-[var(--text-muted)] truncate">
-                  {item.subject}
-                </p>
-              </div>
-              <span className="text-[0.625rem] text-[var(--text-muted)] font-medium whitespace-nowrap">
-                {item.time}
-              </span>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Recent activity"
+          description="Audit trail from the last actions"
+          action={adminUser?.role === 'owner' ? (
+            <Link
+              to="/admin/audit-log"
+              className="shrink-0 text-xs font-bold text-[var(--accent-primary)] no-underline hover:underline"
+            >
+              All →
+            </Link>
+          ) : undefined}
+        >
+          {recentActivity.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
+              <Activity size={18} className="text-[var(--text-muted)]" aria-hidden="true" />
+              <p className="text-xs text-[var(--text-muted)]">
+                {loading ? 'Loading activity…' : 'No recent activity yet.'}
+              </p>
+            </div>
+          ) : (
+            <ol className="relative space-y-3.5">
+              {recentActivity.map((item, index) => (
+                <li key={item.id} className="relative flex gap-3">
+                  <span className="relative flex flex-col items-center">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--teal-soft)] text-[var(--accent-primary)]">
+                      <Package size={12} aria-hidden="true" />
+                    </span>
+                    {index < recentActivity.length - 1 && (
+                      <span className="mt-1 w-px flex-1 bg-[var(--border)]" aria-hidden="true" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1 pb-1">
+                    <span className="block truncate text-xs font-bold capitalize text-[var(--text-primary)]">{item.action}</span>
+                    <span className="block truncate text-[0.6875rem] text-[var(--text-muted)]">{item.subject}</span>
+                    <span className="mt-0.5 block truncate text-[0.625rem] text-[var(--text-muted)]">
+                      {item.actor} · {item.time}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </SectionCard>
       </div>
 
-      {/* Low Stock Alerts Table */}
+      {/* Condition + brands */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <SectionCard
+          title="Products by condition"
+          description="New versus used stock mix"
+          icon={<Activity size={15} />}
+        >
+          {dashboard.conditionBreakdown.length === 0 ? (
+            <p className="py-6 text-center text-xs text-[var(--text-muted)]">No condition data yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {dashboard.conditionBreakdown.map((item) => {
+                const color = item.condition === 'new'
+                  ? 'var(--success)'
+                  : item.condition === 'used'
+                  ? 'var(--accent-blue)'
+                  : item.condition === 'refurbished'
+                  ? 'var(--accent-gold)'
+                  : item.condition === 'reconditioned'
+                  ? 'var(--accent-teal)'
+                  : 'var(--text-muted)'
+                return (
+                  <div key={item.condition} className="flex items-center gap-3">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate text-xs font-semibold capitalize text-[var(--text-secondary)]">
+                      {item.condition}
+                    </span>
+                    <span className="shrink-0 font-mono text-xs font-bold tabular-nums text-[var(--text-primary)]">
+                      {formatNumber(item.count)}
+                    </span>
+                    <span className="w-10 shrink-0 text-right text-[0.625rem] font-medium text-[var(--text-muted)]">
+                      {item.percentage}%
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Top brands"
+          description="Ranked by product count"
+          action={
+            <Link
+              to="/admin/brands"
+              className="shrink-0 text-xs font-bold text-[var(--accent-primary)] no-underline hover:underline"
+            >
+              Manage →
+            </Link>
+          }
+        >
+          {dashboard.brandBreakdown.length === 0 ? (
+            <p className="py-6 text-center text-xs text-[var(--text-muted)]">No brands have products yet.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              {dashboard.brandBreakdown.slice(0, 9).map((brand) => (
+                <div
+                  key={brand.name}
+                  className="flex flex-col items-center rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-2 py-2.5 text-center"
+                >
+                  <span className="font-display text-base font-extrabold tabular-nums text-[var(--text-primary)]">
+                    {formatNumber(brand.count)}
+                  </span>
+                  <span className="mt-0.5 w-full truncate text-[0.625rem] font-bold text-[var(--text-muted)]">
+                    {brand.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      </div>
+
+      {/* Low stock */}
       {dashboard.lowStockProducts.length > 0 && (
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">
-              Stock Alerts — Low Stock Products ({dashboard.lowStockCount})
-            </h2>
+        <section className="admin-card overflow-hidden">
+          <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-5 py-4">
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">Low stock products</h2>
+              <span className="admin-badge admin-badge-danger">{formatNumber(dashboard.lowStockCount)}</span>
+            </div>
             <Link
               to="/admin/products?filter=low-stock"
-              className="text-xs font-bold text-[var(--accent-gold)] hover:text-[var(--gold-light)] no-underline transition-colors"
+              className="text-xs font-bold text-[var(--accent-primary)] no-underline hover:underline"
             >
-              View All →
+              View all →
             </Link>
-          </div>
+          </header>
           <div className="overflow-x-auto">
             <table className="admin-table">
               <thead>
@@ -397,25 +592,21 @@ export default function AdminDashboard() {
               <tbody>
                 {dashboard.lowStockProducts.slice(0, 10).map((product) => (
                   <tr key={product.id}>
-                    <td className="font-semibold text-[var(--text-primary)]">
-                      {product.name}
-                    </td>
+                    <td className="font-semibold text-[var(--text-primary)]">{product.name}</td>
                     <td className="font-mono text-xs">{product.sku}</td>
                     <td className="text-xs">{product.brand}</td>
                     <td className={`font-mono text-xs font-bold ${
-                      product.stockCount <= 2
-                        ? 'text-[var(--danger)]'
-                        : 'text-[var(--accent-gold)]'
+                      product.stockCount <= 2 ? 'text-[var(--danger)]' : 'text-[var(--admin-badge-draft-text)]'
                     }`}>
                       {product.stockCount}
                     </td>
                     <td>
                       {product.stockCount === 0 ? (
-                        <span className="admin-badge admin-badge-danger">Out of Stock</span>
+                        <span className="admin-badge admin-badge-danger">Out of stock</span>
                       ) : product.stockCount <= 2 ? (
                         <span className="admin-badge admin-badge-danger">Critical</span>
                       ) : (
-                        <span className="admin-badge admin-badge-draft">Low Stock</span>
+                        <span className="admin-badge admin-badge-draft">Low stock</span>
                       )}
                     </td>
                   </tr>
@@ -423,40 +614,36 @@ export default function AdminDashboard() {
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Top Brands */}
-      {dashboard.brandBreakdown.length > 0 && (
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-sm font-bold text-[var(--text-primary)]">
-              Top Brands by Product Count
-            </h2>
-            <Link
-              to="/admin/brands"
-              className="text-xs font-bold text-[var(--accent-gold)] hover:text-[var(--gold-light)] no-underline transition-colors"
-            >
-              Manage Brands →
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {dashboard.brandBreakdown.slice(0, 10).map((brand) => (
-              <div
-                key={brand.name}
-                className="flex flex-col items-center rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] p-3 text-center transition-all hover:border-[var(--accent-gold)] hover:-translate-y-0.5"
-              >
-                <span className="font-display text-lg font-extrabold text-[var(--text-primary)]">
-                  {brand.count}
-                </span>
-                <span className="text-[0.625rem] font-bold text-[var(--text-muted)] mt-0.5 truncate w-full">
-                  {brand.name}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Catalog footprint */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Brands', value: dashboard.totalBrands, icon: <Users size={16} />, to: '/admin/brands' },
+          { label: 'Categories', value: dashboard.totalCategories, icon: <BarChart3 size={16} />, to: '/admin/categories' },
+          { label: 'Industries', value: dashboard.totalIndustries, icon: <Warehouse size={16} />, to: '/admin/industries' },
+          { label: 'On sale', value: dashboard.saleProducts, icon: <HandCoins size={16} />, to: '/admin/products?filter=on-sale' },
+        ].map((item) => (
+          <Link
+            key={item.label}
+            to={item.to}
+            className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 no-underline transition-colors hover:border-[var(--accent-primary)]"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--surface-soft)] text-[var(--text-muted)]">
+              {item.icon}
+            </span>
+            <span className="min-w-0">
+              <span className="block font-display text-lg font-extrabold tabular-nums leading-none text-[var(--text-primary)]">
+                {formatNumber(item.value)}
+              </span>
+              <span className="mt-1 block text-[0.625rem] font-bold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                {item.label}
+              </span>
+            </span>
+          </Link>
+        ))}
+      </div>
     </div>
   )
 }

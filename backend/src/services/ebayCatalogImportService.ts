@@ -11,8 +11,9 @@
  *    are ignored.
  *  - Idempotent: an eBay item already mapped is skipped; a listing whose SKU
  *    already exists in the catalog is linked instead of duplicated.
- *  - Images are mirrored to Cloudinary (bounded per listing) so the storefront
- *    never depends on eBay's image CDN.
+ *  - Images are mirrored to Cloudinary (up to eBay's 24-photo allowance) so
+ *    the storefront never depends on eBay's image CDN; revisions to a
+ *    listing's photo set are re-mirrored by the autosync deep pass.
  *  - Central stock starts at the eBay quantity. The listing row is marked
  *    'synced' with that quantity, so the first real drift triggers the normal
  *    reconciliation path (Trading API ReviseInventoryStatus for imported rows
@@ -29,7 +30,7 @@ import { generateSlug } from '../utils/helpers.js'
 import { logAudit } from '../utils/audit.js'
 import type { AuthUser } from '../middleware/auth.js'
 import { isEbayConfigured, isRetryableError } from './ebayClient.js'
-import { getActiveEbayListings, getEbayItemDetails, type ActiveEbayListing } from './ebayTradingService.js'
+import { getActiveEbayListings, getEbayItemDetails, type ActiveEbayListing, type EbayItemDetails } from './ebayTradingService.js'
 import { importMediaFromUrl } from './mediaService.js'
 import {
   cleanTitle,
@@ -46,12 +47,20 @@ import {
   normalizeProductContent,
 } from './productContentNormalizer.js'
 import { isProductPublishable } from './productMutations.js'
+import { contentPatch, maxImportImages, planImageSync, specSignature } from './ebayMirror.js'
 
 const log = logger.child({ context: 'ebay-catalog-import' })
 
 export const DEFAULT_IMPORT_MARKETPLACE = 'EBAY_US'
-const DISCOVERY_PAGE_SIZE = 100
+const DISCOVERY_PAGE_SIZE = 200
 const DISCOVERY_MAX_PAGES = 500
+/**
+ * Temporary staging positions for a kept photo while a mirror pass is
+ * reshuffling. Negative so it can never overlap the real 0..23 slots or any
+ * historical position; every staged row gets a unique value, which the
+ * (productId, sortOrder) unique key demands during multi-row moves.
+ */
+const TEMP_SORT_BASE = 1000
 
 /**
  * Auto-publish gate for the catalog auto-sync (requirement: a newly listed
@@ -61,9 +70,25 @@ const DISCOVERY_MAX_PAGES = 500
  * same publish checks the admin UI enforces (category, substantive
  * description, SEO lengths, an identity field, images with alt text, no
  * duplicate description). `EBAY_AUTO_PUBLISH=0` restores manual-only.
+ *
+ * eBay Hub override: the admin toggle (StoreSetting `ebay.autoPublish`)
+ * flips this at runtime without a redeploy — see ebayAdminRuntime.ts.
  */
 export function autoPublishEnabled(): boolean {
+  if (autoPublishOverride !== null) return autoPublishOverride
   return String(process.env.EBAY_AUTO_PUBLISH || '1').trim() !== '0'
+}
+
+/** Where the effective auto-publish decision comes from (toggle wins over env). */
+export function autoPublishSource(): 'admin' | 'env' {
+  return autoPublishOverride !== null ? 'admin' : 'env'
+}
+
+let autoPublishOverride: boolean | null = null
+
+/** eBay Hub toggle hook — true/false overrides env, null clears the override. */
+export function setEbayAutoPublishOverride(value: boolean | null): void {
+  autoPublishOverride = value === undefined ? null : value
 }
 
 function envInt(name: string, fallback: number, min: number, max: number): number {
@@ -76,8 +101,9 @@ function batchSize(): number {
   return envInt('EBAY_IMPORT_BATCH_SIZE', 4, 1, 25)
 }
 
+/** Photos mirrored per listing — eBay's full allowance (see ebayMirror.ts). */
 function maxImages(): number {
-  return envInt('EBAY_IMPORT_MAX_IMAGES', 6, 1, 20)
+  return maxImportImages()
 }
 
 /** Transient = pause the batch and retry the same item on the next tick. */
@@ -178,6 +204,7 @@ export async function enqueueCatalogImport(itemIds: string[], marketplace = DEFA
       where: { id: activeAutosync.id },
       data: { itemIds, total: itemIds.length, lastError: null },
     })
+    void processEbayImportJobs().catch((err) => log.error({ err }, 'eBay autosync import kick failed'))
     return { job: serializeImportJob(job), added: fresh.length, merged: true }
   }
 
@@ -189,6 +216,7 @@ export async function enqueueCatalogImport(itemIds: string[], marketplace = DEFA
       createdBy: null,
     },
   })
+  void processEbayImportJobs().catch((err) => log.error({ err }, 'eBay autosync import kick failed'))
   return { job: serializeImportJob(job), added: deduped.length, merged: false }
 }
 
@@ -251,7 +279,7 @@ export async function walkActiveListings(
   marketplace: string,
   options: { pageLimit?: number; maxPages?: number; failOnIncomplete?: boolean } = {},
 ): Promise<ActiveListingsWalk> {
-  const pageSize = Math.min(100, Math.max(1, Math.floor(options.pageLimit || DISCOVERY_PAGE_SIZE)))
+  const pageSize = Math.min(200, Math.max(1, Math.floor(options.pageLimit || DISCOVERY_PAGE_SIZE)))
   const maxPages = Math.min(DISCOVERY_MAX_PAGES, Math.max(1, Math.floor(options.maxPages || DISCOVERY_MAX_PAGES)))
   const ids = new Set<string>()
   const listingsById = new Map<string, ActiveEbayListing>()
@@ -489,43 +517,15 @@ async function importOne(
   }
 
   // Images are best-effort: a failed download must not fail the product.
-  // Mirror in parallel (bounded by maxImages) because each download + sharp +
-  // Cloudinary round-trip is the slowest part of a listing import.
-  const imageUrls = details.images.slice(0, maxImages())
-  const mirrored = await Promise.all(imageUrls.map(async (imageUrl, index) => {
-    try {
-      const { asset } = await importMediaFromUrl(
-        imageUrl,
-        actorId || undefined,
-        `${normalized.name} - image ${index + 1}`,
-      )
-      return { index, asset }
-    } catch (err) {
-      log.warn({ err, itemId, imageUrl }, 'eBay import: image mirror failed (product kept)')
-      return null
-    }
-  }))
-  const usableImages = mirrored.filter((entry) => entry !== null)
-
-  let mainImageUrl: string | null = null
-  for (const [sortOrder, entry] of usableImages.entries()) {
-    const isMain = sortOrder === 0
-    await prisma.productImage.create({
-      data: {
-        productId: product.id,
-        mediaAssetId: entry.asset.id,
-        url: entry.asset.url,
-        altText: `${normalized.name} - image ${entry.index + 1}`.slice(0, 500),
-        label: isMain ? 'Main' : null,
-        isMain,
-        sortOrder,
-      },
-    })
-    if (isMain) mainImageUrl = entry.asset.url
-  }
-  if (mainImageUrl) {
-    await prisma.product.update({ where: { id: product.id }, data: { ogImageUrl: mainImageUrl } })
-  }
+  // Bounded mirroring (each download + sharp + Cloudinary round-trip is the
+  // slowest unit of an import) — see mirrorProductImages below.
+  await mirrorProductImages({
+    productId: product.id,
+    itemId,
+    name: normalized.name,
+    imageUrls: details.images,
+    actorId: actorId || undefined,
+  })
 
   // Auto-publish: the catalog must reflect new eligible eBay listings within
   // minutes of being listed, which drafts alone cannot do. Publish through the
@@ -571,6 +571,300 @@ async function importOne(
   })
 
   return 'created'
+}
+
+/**
+ * Import ONE active eBay listing on demand (eBay Hub repair path).
+ *
+ * Discovery + import normally run as a background job; the Hub needs the same
+ * idempotent work for a single item the sweep missed or that was ended and
+ * re-listed. Reuses importOne exactly: an already-mapped item is 'skipped',
+ * an existing catalog SKU is 'linked' (never duplicated), a new item becomes
+ * a draft product and passes the same publish gate.
+ */
+export async function importSingleEbayItem(
+  itemId: string,
+  marketplace: string,
+  actor: AuthUser | null,
+): Promise<{ outcome: ImportOutcome; productId: string | null }> {
+  if (!isEbayConfigured()) {
+    throw Object.assign(
+      new Error('eBay is not configured (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET / EBAY_REFRESH_TOKEN missing)'),
+      { status: 503 },
+    )
+  }
+  if (!itemId) throw Object.assign(new Error('eBay item id is required'), { status: 400 })
+
+  const lookup = await loadLookup()
+  const outcome = await importOne(
+    itemId,
+    String(marketplace || DEFAULT_IMPORT_MARKETPLACE).toUpperCase(),
+    `admin-single:${Date.now()}`,
+    lookup,
+    actor?.id ?? null,
+    new Set<string>(),
+  )
+
+  const mapping = await prisma.ebayListing.findFirst({
+    where: { ebayListingId: itemId },
+    select: { productId: true },
+  })
+  await logAudit({
+    actor: actor || undefined,
+    action: 'ebay.item.import',
+    entityType: 'ebay_listing',
+    entityId: mapping?.productId,
+    entityName: itemId,
+    newValue: { itemId, marketplace, outcome, productId: mapping?.productId ?? null },
+  })
+  log.info({ itemId, marketplace, outcome, productId: mapping?.productId ?? null, actor: actor?.email }, 'eBay Hub: single listing imported')
+  return { outcome, productId: mapping?.productId ?? null }
+}
+
+/** Outcome of a product-image mirroring pass. */
+export interface ProductImageSyncResult {
+  added: number
+  removed: number
+  mainUrl: string | null
+}
+
+/**
+ * Bring one product's photo set in line with its eBay listing (mirror scope).
+ *
+ * Used twice: by the import path at product creation (first mirroring) and by
+ * the autosync deep pass whenever a seller revises a listing's photos later —
+ * new photos are downloaded and mirrored to Cloudinary, vanished photos are
+ * dropped from the site, and eBay's order stays the display order with image
+ * #0 as the main/OG image.
+ *
+ * Unchanged photos are identified by PROVENANCE (the row's source eBay URL,
+ * see planImageSync) and are kept — only their sort order / main flag / alt
+ * text are re-asserted. Legacy rows predating provenance have no source URL,
+ * so their first mirror pass is a one-time full replacement (expected — that
+ * is exactly what backfills listings cropped to ≤6 photos before).
+ *
+ * The (productId, sortOrder) unique key makes write order matter: deletes
+ * first, then kept rows are parked in a negative staging band, then new
+ * rows are created in the 0..n band, then kept rows settle at their final
+ * positions — every step is conflict-free. Best-effort per photo: a failed
+ * download skips only that photo and logs — a product with stale photos
+ * beats a broken mirror on an eBay CDN hiccup.
+ */
+export async function mirrorProductImages(input: {
+  productId: string
+  itemId: string
+  name: string
+  imageUrls: string[]
+  actorId?: string
+}): Promise<ProductImageSyncResult> {
+  const desired = [...new Set(input.imageUrls.filter(Boolean))].slice(0, maxImages())
+  const desiredUrls = new Set(desired)
+
+  const [existing, current] = await Promise.all([
+    prisma.productImage.findMany({
+      where: { productId: input.productId },
+      select: { id: true, url: true, sourceUrl: true, altText: true },
+    }),
+    prisma.product.findUnique({
+      where: { id: input.productId },
+      select: { ogImageUrl: true },
+    }),
+  ])
+  const plan = planImageSync(existing, desired)
+
+  // Exactly one keeper per desired photo. Duplicate rows for the same photo
+  // (possible in legacy data) go out with the removals — the
+  // (productId, sortOrder) unique key allows only one row per slot.
+  const keepers = new Map<string, { id: string; url: string; altText: string | null }>()
+  const surplusIds = new Set<string>()
+  for (const row of existing) {
+    const home = row.sourceUrl ?? row.url
+    if (!desiredUrls.has(home)) continue // already queued for removal
+    if (keepers.has(home)) surplusIds.add(row.id)
+    else keepers.set(home, { id: row.id, url: row.url, altText: row.altText })
+  }
+  const removeIds = new Set([...plan.toRemove, ...surplusIds])
+
+  // 1. Removals first — their sort slots become free for the settle pass.
+  if (removeIds.size > 0) {
+    await prisma.productImage.deleteMany({
+      where: { id: { in: [...removeIds] }, productId: input.productId },
+    })
+  }
+
+  // 2. Park kept rows in a negative staging band. Every value is unique and
+  //    the band is virgin territory (legacy positions are 0..23), so moving
+  //    several rows "out of the way" cannot hit the unique key even mid-loop.
+  //    desired indices are disjoint between kept and newly-mirrored photos,
+  //    so the final settle in (3)+(4) can never collide either.
+  const keptByIndex = new Map<number, { id: string; url: string; altText: string | null; home: string }>()
+  for (const [home, row] of keepers.entries()) {
+    keptByIndex.set(desired.indexOf(home), { ...row, home })
+  }
+  for (const [index, row] of keptByIndex.entries()) {
+    await prisma.productImage.update({
+      where: { id: row.id },
+      data: { sortOrder: -(TEMP_SORT_BASE + index), isMain: false },
+    })
+  }
+
+  // 3. Mirror and create the photos the site is missing, in the free band.
+  const mirrored = await Promise.all(plan.toAdd.map(async (imageUrl) => {
+    try {
+      const { asset } = await importMediaFromUrl(
+        imageUrl,
+        input.actorId || undefined,
+        `${input.name} - image ${desired.indexOf(imageUrl) + 1}`,
+      )
+      return { url: asset.url, assetId: asset.id, sourceUrl: imageUrl, index: desired.indexOf(imageUrl) }
+    } catch (err) {
+      log.warn({ err, itemId: input.itemId, imageUrl }, 'eBay image mirror failed (image skipped)')
+      return null
+    }
+  }))
+  const rows = mirrored.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+
+  for (const entry of rows) {
+    await prisma.productImage.create({
+      data: {
+        productId: input.productId,
+        mediaAssetId: entry.assetId,
+        url: entry.url,
+        sourceUrl: entry.sourceUrl,
+        altText: `${input.name} - image ${entry.index + 1}`.slice(0, 500),
+        label: entry.index === 0 ? 'Main' : null,
+        isMain: entry.index === 0,
+        sortOrder: entry.index,
+      },
+    })
+  }
+
+  // 4. Final settle for kept rows: eBay's position, main flag, a stamped
+  //    sourceUrl (pure-provenance matching from now on) and fresh alt text.
+  for (const [index, row] of keptByIndex.entries()) {
+    const altText = `${input.name} - image ${index + 1}`.slice(0, 500)
+    await prisma.productImage.update({
+      where: { id: row.id },
+      data: {
+        sortOrder: index,
+        isMain: index === 0,
+        label: index === 0 ? 'Main' : null,
+        sourceUrl: row.home,
+        ...(row.altText !== altText ? { altText } : {}),
+      },
+    })
+  }
+
+  const mainUrl =
+    rows.find((entry) => entry.index === 0)?.url ??
+    keptByIndex.get(0)?.url ??
+    null
+
+  if (mainUrl && mainUrl !== current?.ogImageUrl) {
+    await prisma.product.update({ where: { id: input.productId }, data: { ogImageUrl: mainUrl } })
+  } else if (!mainUrl && desired.length === 0 && current?.ogImageUrl) {
+    // eBay reports zero photos for the listing: the mirror owns the OG image
+    // too, so clear the stale reference instead of leaving it garbage.
+    await prisma.product.update({ where: { id: input.productId }, data: { ogImageUrl: null } })
+  }
+
+  return { added: rows.length, removed: removeIds.size, mainUrl }
+}
+
+/**
+ * Full one-way content re-sync of an eBay listing onto its catalog row
+ * (mirror scope): display name, description, short description, item
+ * specifics, identity fields and the complete photo set.
+ *
+ * Slug, SKU, website category, brand and SEO title are deliberately NOT
+ * overwritten — a listing revision must never move the storefront URL or
+ * refund a human's category/SEO decisions. Returns how many things actually
+ * changed; the caller logs only real changes so sweeps stay greppable.
+ */
+export async function syncFullEbayProduct(input: {
+  product: {
+    id: string
+    sku: string
+    name: string
+    description: string | null
+    shortDescription: string | null
+    keyFeatures: string[]
+    includedItems: string[]
+    manufacturer: string | null
+    modelNumber: string | null
+    mpn: string | null
+  }
+  details: EbayItemDetails
+}): Promise<{ changed: boolean; contentUpdated: boolean; specsUpdated: boolean; imagesAdded: number; imagesRemoved: number }> {
+  const { product, details } = input
+  const sku = product.sku || normalizeEbaySku(null, details.itemId)
+
+  const plainDescription = htmlToPlainText(details.descriptionHtml)
+  const identity = extractIdentity(details.specifics)
+  const condition = mapEbayCondition(details.condition)
+  const normalized = normalizeProductContent({
+    // Same empty-title guard the import path uses: GetItem should always
+    // carry a title, but a degenerate listing must not crash normalization.
+    name: cleanTitle(details.title) || `eBay item ${details.itemId}`,
+    sku,
+    condition,
+    conditionNotes: details.condition,
+    manufacturer: identity.manufacturer,
+    modelNumber: identity.modelNumber,
+    mpn: identity.mpn,
+    description: plainDescription,
+    specs: details.specifics,
+    categoryName: details.categoryName,
+  })
+
+  // Content: only fields that genuinely differ get written.
+  const patch = contentPatch(product, normalized)
+  if (patch) {
+    await prisma.product.update({ where: { id: product.id }, data: patch })
+  }
+
+  // Item specifics: replaced wholesale when the (order-sensitive) signature
+  // of eBay's spec list differs from the row's specs.
+  const existingSpecs = await prisma.productSpec.findMany({
+    where: { productId: product.id },
+    select: { name: true, value: true },
+    orderBy: { sortOrder: 'asc' },
+  })
+
+  let specsUpdated = false
+  if (specSignature(existingSpecs.map((spec) => ({ name: spec.name, value: spec.value })))
+      .join('\n') !== specSignature(normalized.specs).join('\n')) {
+    await prisma.productSpec.deleteMany({ where: { productId: product.id } })
+    for (const [index, spec] of normalized.specs.entries()) {
+      await prisma.productSpec.create({
+        data: {
+          productId: product.id,
+          name: spec.name.slice(0, 255),
+          value: spec.value,
+          isPublic: true,
+          sortOrder: index,
+        },
+      })
+    }
+    specsUpdated = true
+  }
+
+  // Photos: when the listing carries no picture set, mirrorProductImages
+  // handles the "all removed" case itself — pass the empty list through.
+  const imageSync = await mirrorProductImages({
+    productId: product.id,
+    itemId: details.itemId,
+    name: normalized.name,
+    imageUrls: details.images,
+  })
+
+  return {
+    changed: Boolean(patch) || specsUpdated || imageSync.added > 0 || imageSync.removed > 0,
+    contentUpdated: Boolean(patch),
+    specsUpdated,
+    imagesAdded: imageSync.added,
+    imagesRemoved: imageSync.removed,
+  }
 }
 
 // Per-job backoff after a rate limit / outage. Kept in memory: a restart
@@ -745,10 +1039,11 @@ async function processJob(job: EbayImportJob): Promise<void> {
 
 let running = false
 
-/** One bounded batch. Safe to call from a fixed-interval scheduler. */
+/** One bounded batch. Safe to call from an event or queued-work timer. */
 export async function processEbayImportJobs(): Promise<void> {
   if (running) return
   running = true
+  let hasMoreWork = false
   try {
     let job = await prisma.ebayImportJob.findFirst({
       where: { status: 'running' },
@@ -766,27 +1061,66 @@ export async function processEbayImportJobs(): Promise<void> {
       })
     }
     await processJob(job)
+    const remaining = await prisma.ebayImportJob.findFirst({
+      where: { status: { in: ['queued', 'running'] } },
+      select: { id: true },
+    })
+    hasMoreWork = Boolean(remaining)
   } catch (err) {
     log.error({ err }, 'eBay catalog import tick failed')
   } finally {
     running = false
+    if (hasMoreWork) scheduleNextImportBatch()
+    else if (schedulerStarted) {
+      // A transient failure or a rate-limit pause may leave the job active.
+      // Schedule a retry without waking the process when the queue is idle.
+      const pending = await prisma.ebayImportJob.findFirst({
+        where: { status: { in: ['queued', 'running'] } },
+        select: { id: true },
+      }).catch((err) => {
+        log.error({ err }, 'eBay import retry check failed')
+        return null
+      })
+      if (pending) scheduleNextImportBatch()
+    }
   }
 }
 
-// ─── Scheduler ─────────────────────────────────────────────────
+// ─── Work-driven queue runner ──────────────────────────────────
 
 const DEFAULT_INTERVAL_MS = 5_000
-let interval: ReturnType<typeof setInterval> | null = null
-let firstRun: ReturnType<typeof setTimeout> | null = null
+let nextBatch: ReturnType<typeof setTimeout> | null = null
+let schedulerStarted = false
+
+function scheduleNextImportBatch(): void {
+  if (!schedulerStarted || nextBatch || running) return
+  nextBatch = setTimeout(() => {
+    nextBatch = null
+    void processEbayImportJobs()
+  }, DEFAULT_INTERVAL_MS)
+  nextBatch.unref?.()
+}
 
 export function startEbayCatalogImportScheduler(intervalMs = DEFAULT_INTERVAL_MS) {
-  if (interval) return
-  firstRun = setTimeout(() => void processEbayImportJobs(), 5_000)
-  interval = setInterval(() => void processEbayImportJobs(), intervalMs)
-  log.info({ intervalMs }, 'eBay catalog import scheduler started')
+  if (schedulerStarted) return
+  schedulerStarted = true
+  const cadence = Number.isFinite(intervalMs) ? Math.max(1_000, Math.floor(intervalMs)) : DEFAULT_INTERVAL_MS
+  const delay = cadence === DEFAULT_INTERVAL_MS ? 1 : cadence
+  void prisma.ebayImportJob.findFirst({
+    where: { status: { in: ['queued', 'running'] } },
+    select: { id: true },
+  }).then((pending) => {
+    if (!pending || !schedulerStarted) return
+    nextBatch = setTimeout(() => {
+      nextBatch = null
+      void processEbayImportJobs()
+    }, delay)
+    nextBatch.unref?.()
+  }).catch((err) => log.error({ err }, 'eBay import startup recovery check failed'))
+  log.info({ intervalMs: cadence, idlePolling: false }, 'eBay catalog import queue runner started')
 }
 
 export function stopEbayCatalogImportScheduler() {
-  if (firstRun) { clearTimeout(firstRun); firstRun = null }
-  if (interval) { clearInterval(interval); interval = null }
+  schedulerStarted = false
+  if (nextBatch) { clearTimeout(nextBatch); nextBatch = null }
 }

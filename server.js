@@ -423,20 +423,22 @@ setInterval(() => {
 
 // ─── Content Security Policy ───────────────────────────────────
 // Enforced for every storefront response. The allow-list matches the bundled
-// application: self-hosted assets, Cloudinary images, Google Fonts, the API,
-// and PayPal. Keep this policy aligned when adding a new third-party service.
+// application: self-hosted assets, Cloudinary images, the API, and PayPal.
+// Keep this policy aligned when adding a new third-party service.
 //
 // Allowed (drawn from the actual production build):
-//   - Google Fonts:  fonts.googleapis.com (css) + fonts.gstatic.com (woff2)
 //   - Cloudinary:    res.cloudinary.com images
 //   - API:           api.alkatraders.co via fetch()
 //   - PayPal:        www.paypal.com / sandbox.paypal.com frames + SDK,
 //                    www.paypalobjects.com assets
+//   - Analytics:     googletagmanager.com + clarity.ms pixels
 //   - Inline scripts: the Vite theme bootstrap in index.html is allowed via
 //                    sha256 hashes computed at startup (no 'unsafe-inline');
 //                    the font-preload onload handler via 'unsafe-hashes'.
 //   - Inline styles: 'unsafe-inline' because React / framer-motion set style
 //                    attributes at runtime (XSS defense stays on script-src).
+//   (Fonts are self-hosted — no fonts.googleapis.com / fonts.gstatic.com
+//   origins are needed; keep it that way or extend this list again.)
 function sha256Base64(value) {
   return crypto.createHash('sha256').update(value).digest('base64')
 }
@@ -488,9 +490,9 @@ function cspPolicy(nonce) {
   return [
     "default-src 'self'",
     `script-src ${scriptSrc}${unsafeHashes}`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://res.cloudinary.com https://i.ebayimg.com https://www.paypalobjects.com https://www.google-analytics.com https://*.google-analytics.com",
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data:",
     // res.cloudinary.com is required for CONNECT (not just IMG) because the
     // Workbox runtime route in vite.config.ts fetches Cloudinary image URLs
     // through the service worker (`fetchAndCachePut`). A service worker fetch

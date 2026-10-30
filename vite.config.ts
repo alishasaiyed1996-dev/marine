@@ -98,11 +98,9 @@ export default defineConfig(({ mode }) => {
               expiration: { maxEntries: 50, maxAgeSeconds: 30 * 24 * 60 * 60 },
             },
           },
-          {
-            urlPattern: /^https?:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'google-fonts' },
-          },
+          // No Google Fonts rule here on purpose: every typeface ships
+          // self-hosted from /fonts (see index.html), so no request to
+          // fonts.googleapis.com ever happens.
         ],
       },
     }),

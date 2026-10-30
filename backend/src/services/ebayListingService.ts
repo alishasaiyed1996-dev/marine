@@ -13,11 +13,19 @@
  * else USED_EXCELLENT. eBay can still reject publish when the category
  * requires extra aspects — the reason lands on the listing row (lastError)
  * for the admin view.
+ *
+ * GraphQL Inventory Mapping upgrade: `categoryId` is now OPTIONAL. When it is
+ * omitted, the latest eBay listing preview for the product supplies the
+ * recommended category id + PREFILL item aspects (see
+ * ebayListingPreviewsService.ts) — no more hand-typed category ids whenever a
+ * preview run has covered the product.
  */
 import { prisma } from '../server.js'
 import logger from '../utils/logger.js'
 import { getEffectivePrice } from '../utils/helpers.js'
 import { getUserAccessToken, updateInventoryItemQuantity, updateOfferQuantity, isEbayConfigured } from './ebayClient.js'
+import { buildInventoryItemPayload, buildOfferPayload, mapListingCondition } from './ebayPayloads.js'
+import { getLatestSuggestedPreview, mergeAspectRecommendations, markListingPreviewApplied } from './ebayListingPreviewsService.js'
 
 const log = logger.child({ context: 'ebay-listings' })
 
@@ -36,20 +44,11 @@ const ACCOUNT_ENV = [
 export interface CreateListingInput {
   productId: string
   marketplace?: string
-  /** eBay category id — required by eBay for publishable offers. */
-  categoryId: string
+  /** eBay category id — REQUIRED unless an eBay listing preview exists for
+   *  the product (its recommended category is used automatically). */
+  categoryId?: string
   /** Optional explicit price; defaults to the product's effective price. */
   price?: number
-}
-
-function mapCondition(condition: string): string {
-  switch (condition) {
-    case 'new':
-    case 'unused': return 'NEW'
-    case 'refurbished':
-    case 'reconditioned': return 'REFURBISHED'
-    default: return 'USED_EXCELLENT'
-  }
 }
 
 /**
@@ -72,7 +71,7 @@ export async function createListingForProduct(input: CreateListingInput, actorId
     where: { id: input.productId },
     select: {
       id: true, sku: true, name: true, status: true, condition: true,
-      regularPrice: true, salePrice: true, saleStartsAt: true, saleEndsAt: true, stockCount: true,
+      regularPrice: true, salePrice: true, saleStartsAt: true, saleEndsAt: true, stockCount: true, currency: true,
       description: true, shortDescription: true, manufacturer: true, mpn: true,
     },
   })
@@ -87,6 +86,22 @@ export async function createListingForProduct(input: CreateListingInput, actorId
   if (price <= 0) throw Object.assign(new Error('Product has no price — set one before listing'), { status: 400 })
 
   const marketplace = input.marketplace || 'EBAY_US'
+
+  // ── Category resolution: admin input wins, then the latest eBay listing
+  //    preview from the GraphQL Inventory Mapping API. Without either there is
+  //    nothing publishable — error with the remedy, not a bare id requirement.
+  const suggested = input.categoryId?.trim() ? null : await getLatestSuggestedPreview(product.id)
+  const categoryId = input.categoryId?.trim() || suggested?.categoryId || ''
+  if (!categoryId) {
+    throw Object.assign(
+      new Error('eBay categoryId is required — no eBay listing preview suggestion exists for this product. Run "Generate eBay suggestions" in the Hub or supply the id.'),
+      { status: 400 },
+    )
+  }
+  // Listing currency must follow the product, not a hardcoded USD: an offer on
+  // EBAY_GB priced in USD is not publishable with the intended price.
+  const siteCurrency = String(product.currency || '').trim().toUpperCase()
+  const currency = /^[A-Z]{3}$/.test(siteCurrency) ? siteCurrency : 'USD'
   const listing = await prisma.ebayListing.upsert({
     where: { sku_marketplace: { sku: product.sku, marketplace } },
     create: { productId: product.id, sku: product.sku, marketplace, status: 'pending' },
@@ -107,17 +122,25 @@ export async function createListingForProduct(input: CreateListingInput, actorId
   const aspects: Record<string, string[]> = {}
   if (product.manufacturer) aspects.Brand = [product.manufacturer]
   if (product.mpn) aspects.MPN = [product.mpn]
-
-  const itemPayload = {
-    availability: { shipToLocationAvailability: { quantity: centralQty } },
-    condition: mapCondition(product.condition),
-    product: {
-      title: product.name.slice(0, 80),
-      description: (product.description || product.shortDescription || product.name).slice(0, 4000),
-      ...(imageUrls.length > 0 ? { imageUrls } : {}),
-      ...(Object.keys(aspects).length > 0 ? { aspects } : {}),
-    },
+  // Enrich with eBay's PREFILL aspects when a listing preview covers this
+  // product — this is what keeps the category happy without the admin knowing
+  // every required item specifics value by heart.
+  const { aspects: enrichedAspects, added } = suggested
+    ? mergeAspectRecommendations(aspects, suggested.recommendedAspects)
+    : { aspects, added: [] as string[] }
+  if (added.length > 0) {
+    log.info({ productId: product.id, sku: product.sku, addedAspects: added, categoryId }, 'eBay listing enriched with listing-preview PREFILL aspects')
   }
+
+  // Payload shape is built (and contract-tested) in ebayPayloads.ts.
+  const itemPayload = buildInventoryItemPayload({
+    quantity: centralQty,
+    condition: mapListingCondition(product.condition),
+    title: product.name.slice(0, 80),
+    description: (product.description || product.shortDescription || product.name).slice(0, 4000),
+    imageUrls,
+    aspects: enrichedAspects,
+  })
   const itemRes = await fetch(`${API_BASE}/sell/inventory/v1/inventory_item/${encodeURIComponent(product.sku)}`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -130,18 +153,18 @@ export async function createListingForProduct(input: CreateListingInput, actorId
   }
 
   // ── Create or update the eBay offer. ──
-  const offerPayload = {
+  const offerPayload = buildOfferPayload({
     sku: product.sku,
     marketplaceId: marketplace,
-    format: 'FIXED_PRICE',
-    categoryId: input.categoryId,
-    pricingSummary: { price: { value: price.toFixed(2), currency: 'USD' } },
-    condition: mapCondition(product.condition),
+    categoryId,
+    price,
+    currency,
+    condition: mapListingCondition(product.condition),
     merchantLocationKey: process.env.EBAY_MERCHANT_LOCATION_KEY,
     fulfillmentPolicyId: process.env.EBAY_FULFILLMENT_POLICY_ID,
     paymentPolicyId: process.env.EBAY_PAYMENT_POLICY_ID,
     returnPolicyId: process.env.EBAY_RETURN_POLICY_ID,
-  }
+  })
 
   let offerId = listing.ebayOfferId
   if (!offerId) {
@@ -206,6 +229,9 @@ export async function createListingForProduct(input: CreateListingInput, actorId
       lastError: publishError,
     },
   })
+
+  // Bookkeeping: the preview that supplied the category was consumed.
+  if (suggested) await markListingPreviewApplied(suggested.rowId)
 
   log.info({ productId: product.id, sku: product.sku, offerId, listingId, qty: centralQty, actorId },
     'eBay listing created/updated with central quantity')

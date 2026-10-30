@@ -13,8 +13,18 @@
  *  - Offer quantity lives at availability.shipToLocationAvailability.quantity
  *    and is updated via PUT /sell/inventory/v1/offer/{offerId} (get-modify-write).
  *  - Orders: GET /sell/fulfillment/v1/order/{orderId}.
+ *
+ * Modernized GraphQL gateway (Oct 2026): the Inventory Mapping API (listing
+ * previews) posts to https://graphqlapi.ebay.com/graphql with the SAME user
+ * token refresh grant, but the OAuth request must carry the extra
+ * `sell.inventory.mapping` scope. Because an eBay refresh-token grant only
+ * accepts scopes the refresh token was granted at mint time, the mapping
+ * token is minted SEPARATELY (getMappingUserAccessToken): until the admin
+ * re-mints EBAY_REFRESH_TOKEN with that scope, every other eBay call keeps
+ * working and only the GraphQL mapping calls report a clear 503.
  */
 import logger from '../utils/logger.js'
+import { buildOfferQuantityPayload } from './ebayPayloads.js'
 
 const log = logger.child({ context: 'ebay-client' })
 
@@ -22,6 +32,8 @@ const ENV = (process.env.EBAY_ENV || 'sandbox').toLowerCase()
 const API_BASE = ENV === 'production' ? 'https://api.ebay.com' : 'https://api.sandbox.ebay.com'
 const OAUTH_URL = `${ENV === 'production' ? 'https://api.ebay.com' : 'https://api.sandbox.ebay.com'}/identity/v1/oauth2/token`
 const SCOPE = 'https://api.ebay.com/oauth/api_scope'
+/** Modernized GraphQL gateway (Inventory Mapping etc.). Sandbox mirrors it. */
+const GRAPHQL_URL = `${ENV === 'production' ? 'https://graphqlapi.ebay.com' : 'https://graphqlapi.sandbox.ebay.com'}/graphql`
 
 /** True when Sell API calls can authenticate (app credentials + user token). */
 export function isEbayConfigured(): boolean {
@@ -94,6 +106,106 @@ export async function getUserAccessToken(): Promise<string> {
   userTokenExpiresAt = Date.now() + Math.floor(data.expires_in * 0.9) * 1000
   log.info({ env: ENV, expiresIn: data.expires_in }, 'eBay user access token acquired')
   return cachedUserToken!
+}
+
+/** GraphQL Inventory Mapping scope (replaces the REST inventory-scoping for
+ *  listing previews). Requires a refresh token minted WITH this scope. */
+const MAPPING_SCOPE = 'https://api.ebay.com/oauth/api_scope/sell.inventory.mapping'
+const MAPPING_USER_SCOPES = [...USER_SCOPES, MAPPING_SCOPE]
+
+let cachedMappingToken: string | null = null
+let mappingTokenExpiresAt = 0
+
+/**
+ * User token for the GraphQL Inventory Mapping API. Minted against the
+ * MAPPING_USER_SCOPES set; when the stored refresh token predates that scope
+ * eBay rejects the grant (invalid_scope) and we surface a concrete
+ * re-mint instruction — every REST call keeps working in the meantime.
+ */
+export async function getMappingUserAccessToken(): Promise<string> {
+  const clientId = process.env.EBAY_CLIENT_ID
+  const clientSecret = process.env.EBAY_CLIENT_SECRET
+  const refreshToken = process.env.EBAY_REFRESH_TOKEN
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw Object.assign(new Error('eBay user token not configured (EBAY_CLIENT_ID / EBAY_CLIENT_SECRET / EBAY_REFRESH_TOKEN missing)'), { status: 503 })
+  }
+  if (cachedMappingToken && Date.now() < mappingTokenExpiresAt) return cachedMappingToken
+
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+  const res = await fetch(OAUTH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${basic}` },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, scope: MAPPING_USER_SCOPES.join(' ') }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    const invalidScope = /invalid_scope|scope/i.test(body)
+    throw Object.assign(
+      new Error(
+        invalidScope
+          ? `eBay OAuth rejected the sell.inventory.mapping scope (${res.status}) — re-mint EBAY_REFRESH_TOKEN with that scope in the developer portal (User Tokens → scopes), see docs/ebay-listing-previews.md`
+          : `eBay user OAuth failed (${res.status}): ${body.slice(0, 200)}`,
+      ),
+      { status: 503 },
+    )
+  }
+  const data = (await res.json()) as { access_token: string; expires_in: number }
+  cachedMappingToken = data.access_token
+  mappingTokenExpiresAt = Date.now() + Math.floor(data.expires_in * 0.9) * 1000
+  log.info({ env: ENV, expiresIn: data.expires_in }, 'eBay GraphQL mapping access token acquired')
+  return cachedMappingToken!
+}
+
+/**
+ * Marketplace selector for the Inventory Mapping API. The API rules: US
+ * marketplace only (eBay Motors excluded) and the marketplace is chosen by
+ * the X-EBAY-C-MARKETPLACE-ID header, NOT an input field.
+ */
+const MAPPING_MARKETPLACE = 'EBAY_US'
+
+/**
+ * POST a GraphQL operation to the modernized gateway. Authentication equals
+ * the REST layer (Bearer user token) plus the mapping-specific marketplace
+ * header. `errors` in a 200 body is a GraphQL error surface, not an HTTP
+ * failure — normalize everything to an Error with the first message so
+ * callers keep their existing status-carrying error convention.
+ */
+export async function graphqlFetch<T>(
+  query: string,
+  variables: Record<string, unknown>,
+  operationName?: string,
+): Promise<T> {
+  const token = await getMappingUserAccessToken()
+  const res = await fetch(GRAPHQL_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      // Documented marketplace selection for the Inventory Mapping API
+      // ("Set the marketplace by including the X-EBAY-C-MARKETPLACE-ID
+      // header with the value EBAY_US").
+      'X-EBAY-C-MARKETPLACE-ID': MAPPING_MARKETPLACE,
+    },
+    body: JSON.stringify({ query, variables, ...(operationName ? { operationName } : {}) }),
+  })
+  const raw = await res.text().catch(() => '')
+  if (!res.ok) {
+    throw Object.assign(new Error(`eBay GraphQL failed (${res.status}): ${raw.slice(0, 300)}`), { status: res.status })
+  }
+  type GraphqlResponseBody = { data?: T; errors?: Array<{ message?: string; path?: (string | number)[] }> }
+  let body: GraphqlResponseBody | null = null
+  try { body = raw ? (JSON.parse(raw) as GraphqlResponseBody) : null } catch { /* malformed */ }
+  if (!body) {
+    throw Object.assign(new Error(`eBay GraphQL returned an unreadable body: ${raw.slice(0, 200)}`), { status: 502 })
+  }
+  if (body.errors && body.errors.length > 0) {
+    const message = body.errors.map((e) => e?.message || JSON.stringify(e)).join('; ').slice(0, 300)
+    throw Object.assign(new Error(`eBay GraphQL error: ${message}`), { status: 502 })
+  }
+  if (!body.data) {
+    throw Object.assign(new Error('eBay GraphQL response carried no data'), { status: 502 })
+  }
+  return body.data
 }
 
 async function ebayFetch<T>(path: string, init?: RequestInit): Promise<{ ok: boolean; status: number; data: T | null; raw: string }> {
@@ -178,17 +290,9 @@ export async function updateOfferQuantity(offerId: string, quantity: number): Pr
     throw Object.assign(new Error(`eBay getOffer failed (${current.status}): ${current.raw.slice(0, 200)}`), { status: current.status })
   }
   const offer = current.data
-  const payload = {
-    sku: offer.sku,
-    marketplaceId: offer.marketplaceId,
-    format: offer.format || ['FIXED_PRICE'],
-    availability: {
-      shipToLocationAvailability: {
-        ...(offer.availability?.shipToLocationAvailability || {}),
-        quantity,
-      },
-    },
-  }
+  // Shared builder (ebayPayloads.ts): preserves allocationThreshold and the
+  // existing format while setting the purchasable quantity.
+  const payload = buildOfferQuantityPayload(offer, quantity)
   const res = await ebayFetch<{ offerId?: string }>(`/sell/inventory/v1/offer/${encodeURIComponent(offerId)}`, {
     method: 'PUT',
     body: JSON.stringify(payload),

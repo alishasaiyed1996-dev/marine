@@ -11,6 +11,34 @@ separately in the agent todo list; this file only holds manual actions.
 
 ## 🔴 Pending now
 
+### MT-24 · ⬜ REQUIRED for eBay listing previews — re-mint the user refresh token with the new GraphQL scope
+
+eBay's **Inventory Mapping API** (`startListingPreviewsCreation`) went GA as part of the
+Modernized GraphQL APIs and needs a scope this app's token was not minted with:
+`https://api.ebay.com/oauth/api_scope/sell.inventory.mapping`. An eBay refresh-token grant
+can only return scopes the refresh token was granted at mint time — until the token is
+re-minted, listing-creation keeps working but the Hub's *Generate suggestions* button fails
+with `invalid_scope` (the backend surfaces a precise re-mint message; see
+docs/ebay-listing-previews.md).
+
+Steps (same flow as MT-5's user token, one extra click):
+
+1. Sign in at developer.ebay.com → **Application Keys** → this app → **User Tokens (OAuth)**.
+2. Tick/enable the **sell.inventory.mapping** scope alongside the existing
+   `sell.inventory` + `sell.fulfillment` ones and run the **Get a User Token (Authorization code)** flow again.
+3. Copy the new refresh token and set `EBAY_REFRESH_TOKEN` on Railway (all environments).
+4. Redeploy/check restart, then on the eBay Hub → Listings → **Generate suggestions**:
+   a task row appears, completes within ~a minute (≤10 products per run — the API's
+   documented maximum), and the preview table fills with eBay-recommended categories.
+
+Verify: the button stops returning the scope error and returns a task id. Sandbox first
+(`EBAY_ENV=sandbox`), where the query is supported per eBay's docs. On the first
+successful run also check `ebay_listing_previews.mapping_reference_id` is populated —
+per eBay's guide that 25-char id should accompany every listing created/revised from
+a preview; our REST publish flow has no field for it until eBay's sell APIs expose one
+(or we adopt the GraphQL listing APIs), so it stays a stored diagnostics reference.
+
+
 ### MT-20 · ✅ DONE — SSR rate-limit exemption + brand discovery (2026-10-27)
 
 Completed from the workstation with Railway CLI access; recorded here because parts of it

@@ -16,6 +16,7 @@
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "test": "tsx --test \"src/**/*.test.ts\"",
+    "ebay:validate": "tsx src/scripts/validateEbaySandboxPayloads.ts",
     "test:watch": "tsx --test --watch \"src/**/*.test.ts\""
   },
   "dependencies": {
