@@ -836,7 +836,7 @@ function shellFooter(locale = 'en') {
 <a href="/${locale}/emergency/">Emergency parts</a> ·
 <a href="/${locale}/privacy-policy/">Privacy</a> ·
 <a href="/${locale}/terms-of-service/">Terms</a> ·
-<a href="/${locale}/refund-policy/">Refund policy</a>
+<a href="/${locale}/refund-policy/">Return &amp; Exchange Policy</a>
 </nav></footer>`
 }
 

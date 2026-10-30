@@ -117,10 +117,10 @@ export const STATIC_PAGE_META = {
     h1: "Terms & Conditions",
   },
   "refund-policy": {
-    title: "Return & Refund Policy | Alka Traders",
+    title: "Return and Exchange Policy | Alka Traders",
     description:
-      "Alka Traders return and refund policy. 30-day return window, RMA required. Details on eligibility, process, damaged items, and refund timelines.",
-    h1: "Return & Refund Policy",
+      "Alka Traders return and exchange policy: all sales are final. Review item condition, availability, lead time, shipping and price before confirming an order.",
+    h1: "Return and Exchange Policy",
   },
 }
 

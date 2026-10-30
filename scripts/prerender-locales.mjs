@@ -68,8 +68,9 @@ const LOCALE_BODIES = {
       "ولأن القطع البحرية والصناعية تختلف في الحالة ومدة التوريد والمصدر، فإن عرض السعر وتأكيد الطلب يحددان الشروط التجارية الخاصة بكل متطلب. اقرأ الشروط الكاملة في هذه الصفحة وتواصل مع الفريق قبل الطلب إذا كان أي شيء غير واضح.",
     ],
     "refund-policy": [
-      "توضح سياسة الإرجاع والاسترداد نافذة الإرجاع البالغة 30 يوما واشتراط الحصول على تصريح إرجاع قبل الشحن، والحالة والوثائق المطلوبة لقطعة مؤهلة للإرجاع. كما تغطي القطع التالفة أو الموردة بشكل خاطئ والأدلة اللازمة لفتح مطالبة.",
-      "يعتمد توقيت الاسترداد على وسيلة الدفع ونتيجة الفحص. اقرأ السياسة الكاملة في هذه الصفحة قبل إرجاع أي قطعة، وتواصل مع الفريق مع رقم الطلب ليتم تسجيل المرتجع ومتابعته.",
+      "جميع المبيعات التي تتم عبر Alka Traders نهائية. لا نقبل الإرجاع ولا نوفر الاستبدال. يضم الكتالوج معدات مستعملة ومخزوناً فائضاً وتجميعات متوقفة عن الإنتاج، إضافة إلى منتجات يتم استيرادها أو ترتيبها لمشترٍ محدد.",
+      "توضح صفحات المنتجات حالة القطعة في الملخص والوصف، بما في ذلك ما إذا كانت مستعملة. قبل تأكيد الطلب، نقدم حالة القطعة وتوفرها ومدة التوريد وخيار الشحن والسعر كتابةً. يرجى مراجعة التفاصيل وإرسال لوحة البيانات أو الرقم التسلسلي أو رقم القطعة أو مرجع IMPA للتحقق من المطابقة مع فريق المشتريات.",
+      "لا نقبل الإرجاع أو الاستبدال بسبب تغيير الرأي أو طلب قطعة أو مواصفة خاطئة أو عدم التوافق عندما تم تأكيد رقم القطعة والتفاصيل أو لأي سبب بعد تقديم الطلب. تواصل مع فريق المشتريات قبل الشراء إذا كان لديك سؤال حول القائمة أو الطلب.",
     ],
   },
   es: {
@@ -122,8 +123,9 @@ const LOCALE_BODIES = {
       "Dado que las piezas marítimas e industriales varían en estado, plazo de entrega y origen, el presupuesto y la confirmación del pedido definen las condiciones comerciales concretas de cada requisito. Lea los términos completos en esta página y contacte con el equipo antes de pedir si algo no queda claro.",
     ],
     "refund-policy": [
-      "La política de devoluciones y reembolsos explica la ventana de devolución de 30 días, la necesidad de una autorización de devolución antes del envío y el estado y la documentación exigidos para una devolución elegible. También cubre los artículos dañados o enviados por error y las pruebas necesarias para abrir una reclamación.",
-      "El plazo de reembolso depende del método de pago y del resultado de la inspección. Lea la política completa en esta página antes de devolver un artículo y contacte con el equipo indicando el número de pedido para que la devolución quede registrada y se pueda seguir.",
+      "Todas las ventas realizadas por Alka Traders son definitivas. No aceptamos devoluciones ni ofrecemos cambios. Gran parte del catálogo incluye equipos usados, existencias excedentes, conjuntos descatalogados o productos importados o adquiridos para un comprador concreto.",
+      "Las páginas de producto indican el estado del artículo en el resumen y la descripción, incluso si es usado. Antes de confirmar un pedido, facilitamos por escrito el estado, la disponibilidad, el plazo de entrega, la opción de envío y el precio. Revise estos datos y envíe la placa de características, el número de serie, el número de pieza o la referencia IMPA para que compras pueda verificar la coincidencia.",
+      "No aceptamos devoluciones ni cambios por cambio de opinión, por pedir una pieza o especificación incorrecta, por incompatibilidad cuando se confirmó el número de pieza y los detalles, ni por otro motivo posterior al pedido. Si tiene dudas sobre un anuncio o un pedido pendiente, contacte con compras antes de comprar.",
     ],
   },
 }

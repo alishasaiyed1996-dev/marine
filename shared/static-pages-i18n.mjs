@@ -92,10 +92,10 @@ export const LOCALIZED_PAGE_META = {
       h1: "الشروط والأحكام",
     },
     "refund-policy": {
-      title: "سياسة الإرجاع والاسترداد | Alka Traders",
+      title: "سياسة الإرجاع والاستبدال | Alka Traders",
       description:
-        "سياسة الإرجاع والاسترداد في Alka Traders: نافذة إرجاع مدتها 30 يوما مع تصريح إرجاع مطلوب. تفاصيل الأهلية والإجراءات والعناصر التالفة ومواعيد الاسترداد.",
-      h1: "سياسة الإرجاع والاسترداد",
+        "سياسة الإرجاع والاستبدال في Alka Traders: جميع المبيعات نهائية. راجع حالة القطعة وتوفرها ومدة التوريد والشحن والسعر قبل تأكيد الطلب.",
+      h1: "سياسة الإرجاع والاستبدال",
     },
   },
   es: {
@@ -172,10 +172,10 @@ export const LOCALIZED_PAGE_META = {
       h1: "Términos y condiciones",
     },
     "refund-policy": {
-      title: "Política de devoluciones y reembolsos | Alka Traders",
+      title: "Política de devoluciones y cambios | Alka Traders",
       description:
-        "Política de devoluciones y reembolsos de Alka Traders: ventana de 30 días y RMA obligatorio. Elegibilidad, proceso, artículos dañados y plazos de reembolso.",
-      h1: "Política de devoluciones y reembolsos",
+        "Política de devoluciones y cambios de Alka Traders: todas las ventas son definitivas. Revise el estado, la disponibilidad, el plazo, el envío y el precio antes de confirmar.",
+      h1: "Política de devoluciones y cambios",
     },
   },
 }

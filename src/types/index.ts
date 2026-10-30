@@ -160,6 +160,7 @@ export interface RFQFormData {
   notes: string
   source: string
   consent: boolean
+    policyAccepted: boolean
 }
 
 export interface FAQItem {

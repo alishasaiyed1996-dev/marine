@@ -369,12 +369,12 @@ export default function OfferCheckout() {
                   className="mt-0.5 w-4 h-4 accent-[var(--accent-primary)] cursor-pointer shrink-0"
                 />
                 <label htmlFor="offer-checkout-terms" className="text-[0.6875rem] text-[var(--text-secondary)] leading-relaxed cursor-pointer">
-                  {t('checkout.termsAccept')}{' '}
+                  I have read the item condition and accept the{' '}
                   <Link to={lp('/terms-of-service')} className="text-[var(--accent-primary)] underline">{t('checkout.termsLink')}</Link>
                   {', '}
                   <Link to={lp('/privacy-policy')} className="text-[var(--accent-primary)] underline">{t('checkout.privacyLink')}</Link>
                   {', '}
-                  <Link to={lp('/refund-policy')} className="text-[var(--accent-primary)] underline">{t('checkout.refundLink')}</Link>
+                  <Link to={lp('/refund-policy')} className="text-[var(--accent-primary)] underline">Return &amp; Exchange Policy</Link>
                 </label>
               </div>
               {termsError && (

@@ -25,6 +25,8 @@ const rfqSchema = z.object({
   // When the visitor gave consent. Recorded with the request so the agreement
   // has a timestamp, not just a boolean the client always sends as true.
   consentAt: z.string().datetime({ offset: true }).optional(),
+  policyAccepted: z.literal(true),
+  policyAcceptedAt: z.string().datetime({ offset: true }),
 })
 
 // ─── Submit RFQ ────────────────────────────────────────────────

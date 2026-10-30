@@ -189,7 +189,7 @@ const STATIC_ROUTES = [
     links: [
       { path: '/en/contact/', label: 'Contact for privacy questions' },
       { path: '/en/terms-of-service/', label: 'Terms and conditions of sale' },
-      { path: '/en/refund-policy/', label: 'Return and refund policy' },
+      { path: '/en/refund-policy/', label: 'Return and exchange policy' },
     ],
   },
   {
@@ -202,18 +202,18 @@ const STATIC_ROUTES = [
     links: [
       { path: '/en/rfq/', label: 'Request a quotation' },
       { path: '/en/privacy-policy/', label: 'Privacy policy' },
-      { path: '/en/refund-policy/', label: 'Return and refund policy' },
+      { path: '/en/refund-policy/', label: 'Return and exchange policy' },
     ],
   },
   {
     slug: 'refund-policy',
     body: [
-      'The return and refund policy explains the 30-day return window, the requirement for a return authorization before shipment, and the condition and documentation needed for an eligible return. It also covers damaged or incorrectly supplied items and the evidence required to open a claim.',
-      'Refund timing depends on the payment method and the inspection outcome. Read the full policy on this page before returning an item, and contact the team with the order number so the return can be logged and tracked.',
-      'Claims for damaged or incorrectly supplied items are handled with photographic evidence and the original packing materials. Once the inspection outcome is confirmed, refunds are issued through the original payment method, and the case stays open with an order reference until the buyer confirms the resolution.',
+      'All sales made by Alka Traders are final. We do not accept returns and we do not offer exchanges. Much of the catalog is used equipment, surplus stock, discontinued assemblies, or items imported or arranged for a specific buyer. Used and surplus items cannot be restocked or resold as new, and their condition cannot be verified once they leave our control.',
+      'Every product page states the item condition in its summary and description, including where an item is used. Before confirming an order, we provide the condition, availability, lead time, shipping option, and price in writing. Please review these carefully and send the nameplate, serial plate, part number, or IMPA reference so the procurement team can check it against the listing.',
+      'We do not accept returns or exchanges for change of mind, ordering the wrong part or specification, incompatibility where the part number and details were confirmed, or any reason after the order is placed. We do not charge restocking or handling fees because we do not process returns. Contact our procurement team before you buy if you have a question; we will answer plainly, including when we are not the right supplier.',
     ],
     links: [
-      { path: '/en/contact/', label: 'Open a return or claim' },
+      { path: '/en/contact/', label: 'Contact the procurement team before buying' },
       { path: '/en/terms-of-service/', label: 'Terms and conditions' },
       { path: '/en/privacy-policy/', label: 'Privacy policy' },
     ],

@@ -99,7 +99,7 @@ export const Footer = memo(function Footer() {
           <div className="flex items-center gap-4">
             <Link to={lp('/privacy-policy')} className="hover:text-white/90 transition-colors no-underline text-white/65">Privacy Policy</Link>
             <Link to={lp('/terms-of-service')} className="hover:text-white/90 transition-colors no-underline text-white/65">Terms of Service</Link>
-            <Link to={lp('/refund-policy')} className="hover:text-white/90 transition-colors no-underline text-white/65">Refund Policy</Link>
+            <Link to={lp('/refund-policy')} className="hover:text-white/90 transition-colors no-underline text-white/65">Return &amp; Exchange Policy</Link>
           </div>
           <span>{t('footer.tagline')}</span>
         </div>

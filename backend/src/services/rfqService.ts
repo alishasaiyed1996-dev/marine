@@ -27,13 +27,13 @@ export async function createRfq(data: {
   partNumber?: string; brand?: string; quantity?: number
   deliveryLocation?: string; urgency?: string; notes?: string
   source?: string; consent: boolean
-  consentAt?: string
+  consentAt?: string; policyAccepted: boolean; policyAcceptedAt: string
 }) {
   // `Rfq.source` is VarChar(50) in Postgres while the request schema allows
   // 200 characters — clamp here so an over-long client value can never fail
   // the insert with a 500. (The storefront already truncates its generated
   // attribution tokens; this protects against any other client.)
-  const { notes, consentAt, ...dbFields } = {
+  const { notes, consentAt, policyAccepted, policyAcceptedAt, ...dbFields } = {
     ...data,
     source: data.source?.slice(0, 50),
   }
@@ -41,7 +41,10 @@ export async function createRfq(data: {
     data: {
       rfqNumber: await generateRfqNumber(),
       ...dbFields,
-      internalNotes: notes || null,
+      internalNotes: [
+        notes,
+        policyAccepted ? `Return and Exchange Policy accepted at ${new Date(policyAcceptedAt).toISOString()}` : null,
+      ].filter(Boolean).join('\n\n') || null,
       // The agreement is only meaningful with a timestamp.
       ...(consentAt ? { consentAt: new Date(consentAt) } : {}),
       status: 'new',

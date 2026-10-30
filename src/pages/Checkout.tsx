@@ -360,7 +360,7 @@ export default function Checkout() {
       idempotencyKey: idempotencyKeyRef.current,
       // The server enforces this; sending it documents the exact acceptance
       // the customer made on the review step.
-      termsAccepted: true,
+      termsAccepted: termsAccepted,
       subtotal,
       tax,
       total,
@@ -388,7 +388,7 @@ export default function Checkout() {
     })
     createdOrderFingerprintRef.current = checkoutFingerprint()
     return serverOrderId
-  }, [cart, shipping, paymentMethod, subtotal, tax, total, checkoutFingerprint, currency])
+  }, [cart, shipping, paymentMethod, subtotal, tax, total, checkoutFingerprint, currency, termsAccepted])
 
   /** Fires the GA4 purchase event once per order. */
   const trackOrderPurchase = useCallback((orderNumber: string, orderTotal: number) => {

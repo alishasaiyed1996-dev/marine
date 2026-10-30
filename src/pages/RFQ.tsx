@@ -45,6 +45,7 @@ const INITIAL_RFQ_FORM: RFQFormData = {
   notes: '',
   source: '',
   consent: false,
+  policyAccepted: false,
 }
 
 export default function RFQ() {
@@ -78,6 +79,7 @@ export default function RFQ() {
       if (!formData.deliveryLocation.trim()) newErrors.deliveryLocation = true
     } else if (step === 3) {
       if (!formData.consent) newErrors.consent = true
+      if (!formData.policyAccepted) newErrors.policyAccepted = true
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -118,6 +120,9 @@ export default function RFQ() {
         notes: formData.notes || undefined,
         source: formData.source || (attribution.origin !== 'direct' ? attribution.origin : undefined),
         consent: formData.consent,
+        consentAt: new Date().toISOString(),
+        policyAccepted: formData.policyAccepted,
+        policyAcceptedAt: new Date().toISOString(),
       })
       // Use the server-assigned RFQ number if available
       if (result.rfqNumber) {
@@ -415,6 +420,22 @@ export default function RFQ() {
                         {t('rfq.consent')}
                       </span>
                     </label>
+                    <label htmlFor="rfq-policy-accepted" className="flex items-start gap-3 mb-5 cursor-pointer">
+                      <input
+                        id="rfq-policy-accepted"
+                        type="checkbox"
+                        checked={formData.policyAccepted}
+                        onChange={(e) => update('policyAccepted', e.target.checked)}
+                        aria-invalid={errors.policyAccepted || undefined}
+                        aria-describedby={errors.policyAccepted ? 'rfq-policy-error' : undefined}
+                        className="mt-0.5 accent-[var(--accent-primary)] w-4 h-4 cursor-pointer shrink-0"
+                      />
+                      <span className={`text-xs leading-relaxed ${errors.policyAccepted ? 'text-danger' : 'text-[var(--text-secondary)]'}`}>
+                        I have read the item condition and accept the{' '}
+                        <Link to={lp('/refund-policy')} className="text-[var(--accent-primary)] underline">Return &amp; Exchange Policy</Link>.
+                      </span>
+                    </label>
+                    {errors.policyAccepted && <p id="rfq-policy-error" className="text-xs text-[var(--danger)] mb-4" role="alert">Please confirm that you have read the item condition and policy.</p>}
                     {submitError && <p className="text-xs text-[var(--danger)] mb-4">{submitError}</p>}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <button type="button" onClick={() => goToStep(2)}

@@ -270,7 +270,7 @@ function shellFooterNav() {
 <a href="/en/contact/">Contact</a> ·
 <a href="/en/privacy-policy/">Privacy</a> ·
 <a href="/en/terms-of-service/">Terms</a> ·
-<a href="/en/refund-policy/">Refund policy</a>
+<a href="/en/refund-policy/">Return &amp; Exchange Policy</a>
 </nav></footer>`
 }
 
