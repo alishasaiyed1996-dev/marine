@@ -75,6 +75,9 @@ export const storefront = {
       source?: string; consent: boolean
       /** When the visitor gave consent — recorded with the request. */
       consentAt?: string
+      /** Return & Exchange Policy acknowledgement checkbox (RFQ step 3). */
+      policyAccepted?: boolean
+      policyAcceptedAt?: string
     }) => api.post<{ message: string; rfqNumber: string; id: string }>('/storefront/rfq', data),
   },
 
