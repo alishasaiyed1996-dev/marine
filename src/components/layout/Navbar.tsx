@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -103,38 +103,61 @@ export function Navbar() {
   )
 
   // ── Scroll tracking: shadow + mobile top-bar hide ──────────────
-  const lastScrollY = useRef(0)
-  const ticking = useRef(false)
-
   useEffect(() => {
+    // Guards that keep the sticky header from "shaking" on phones:
+    //   1. JITTER FLOOR — a move smaller than 8px (momentum settle,
+    //      rubber-band bounce, elastic overscroll) never toggles the bar.
+    //   2. RESIZE GUARD — iOS/Android show/hide the URL bar while scrolling,
+    //      which resizes the viewport and shifts scrollY without the user
+    //      moving the page. Those frames are noise, never a scroll intent.
+    //   3. TOGGLE COOLDOWN — longer than the 300ms collapse transition, so
+    //      the bar never flip-flops mid-animation. Rapid collapse/expand of
+    //      a height-animating bar is exactly what phones read as a shake.
+    const JITTER_FLOOR_PX = 8
+    const COOLDOWN_MS = 360
+    let lastY = Math.max(0, window.scrollY)
+    let lastHeight = window.innerHeight
+    let lastToggleAt = 0
+    let barHidden = false
+    let rafId = 0
+
     const handleScroll = () => {
-      if (ticking.current) return
-      ticking.current = true
-      requestAnimationFrame(() => {
-        const scrollY = window.scrollY
+      if (rafId) return
+      rafId = requestAnimationFrame(() => {
+        rafId = 0
+        const scrollY = Math.max(0, window.scrollY)
+        const height = window.innerHeight
         setScrolled(scrollY > 32)
 
-        // On mobile: hide the utility bar when scrolling down past the
-        // threshold, show it again when scrolling back up. Only kicks in
-        // after the user has scrolled enough that the top bar is off-screen
-        // anyway — no visible flicker.
-        if (window.innerWidth < 1024) {
-          const THRESHOLD = 80
-          if (scrollY > lastScrollY.current && scrollY > THRESHOLD) {
-            setTopBarHidden(true)
-          } else if (scrollY < lastScrollY.current) {
+        if (window.innerWidth >= 1024) {
+          if (barHidden) {
+            barHidden = false
             setTopBarHidden(false)
           }
-        } else {
-          setTopBarHidden(false)
+        } else if (height === lastHeight) {
+          const delta = scrollY - lastY
+          const now = performance.now()
+          if (now - lastToggleAt >= COOLDOWN_MS) {
+            if (delta > JITTER_FLOOR_PX && scrollY > 96 && !barHidden) {
+              barHidden = true
+              lastToggleAt = now
+              setTopBarHidden(true)
+            } else if (delta < -JITTER_FLOOR_PX && barHidden) {
+              barHidden = false
+              lastToggleAt = now
+              setTopBarHidden(false)
+            }
+          }
         }
-
-        lastScrollY.current = scrollY
-        ticking.current = false
+        lastY = scrollY
+        lastHeight = height
       })
     }
     window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      if (rafId) cancelAnimationFrame(rafId)
+    }
   }, [])
 
   useEffect(() => {
@@ -187,85 +210,90 @@ export function Navbar() {
     <header className="sticky top-0 z-50">
       {/* ── TOP UTILITY BAR: email/phone · trust indicators ── */}
       <div
-        className={`navbar-top-bar border-b border-[var(--header-utility-border)] bg-[var(--header-utility-bg)] pt-[env(safe-area-inset-top)] text-[var(--header-utility-text)]${
+        className={`navbar-top-bar border-b border-[var(--header-utility-border)] bg-[var(--header-utility-bg)] text-[var(--header-utility-text)]${
           topBarHidden ? ' navbar-top-bar-hidden' : ''
         }`}
       >
-        <div className="mx-auto max-w-[1280px] px-4 sm:px-6">
-          {/* Desktop / tablet: single 40px row */}
-          <div className="hidden h-10 items-center justify-between text-[13px] font-medium sm:flex">
-            <div className="flex items-center gap-6 max-[899px]:gap-4">
-              <a
-                href={`mailto:${settings.rfqEmail}`}
-                className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)] max-[899px]:text-xs"
-              >
-                <Mail size={13} className="shrink-0 text-[var(--accent-primary)]" />
-                {settings.rfqEmail}
-              </a>
-              <a
-                href={`tel:${settings.phoneNumber}`}
-                className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)] max-[899px]:text-xs"
-              >
-                <Phone size={13} className="shrink-0 text-[var(--accent-primary)]" />
-                {/* dir=ltr keeps "+91 …" from rendering as "918799095041+" in RTL */}
-                <span dir="ltr">{settings.phoneNumber}</span>
-              </a>
-              {/* 640-767px is too narrow for the full trust row alongside
-                  email+phone, but the free-shipping promise always fits and
-                  is the headline of this bar — keep it visible at every width. */}
-              <span className="hidden min-[640px]:max-[767px]:flex items-center gap-1.5 text-xs whitespace-nowrap">
-                <Truck size={12} className="shrink-0 text-[var(--accent-primary)]" />
-                {shippingPromise.label}
-              </span>
-            </div>
-            {/* Trust items compact from 768px — measured minimum width for the
-                email+phone row alongside all three trust texts is ~700px in
-                every language, so 768px+ fits comfortably. 640-767px keeps
-                email+phone only; phones (<640px) get the trust row in the
-                compact two-line layout instead. */}
-            <div className="hidden min-[768px]:flex items-center gap-5 max-[899px]:gap-1.5">
-              {TRUST_ITEMS.map((item, i) => (
-                <div key={item.labelKey} className="flex items-center gap-5 max-[899px]:gap-1.5">
-                  {i > 0 && <span className="h-3.5 w-px bg-[var(--header-utility-border)] max-[899px]:hidden" aria-hidden="true" />}
-                  <span className="flex items-center gap-1.5 whitespace-nowrap max-[899px]:text-[11px]">
-                    <item.icon size={13} className="shrink-0 text-[var(--accent-primary)]" />
-                    {item.labelKey === 'freeShipping' ? shippingPromise.label : t(`topbar.${item.labelKey}`)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Mobile: two centered rows. The contact row wraps on very
-              narrow screens — 280px cannot fit email + phone side by side,
-              and the tail used to clip inside the topbar's overflow:hidden. */}
-          <div className="flex flex-col items-center gap-1 py-2 text-xs font-medium sm:hidden">
-            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-              <a
-                href={`mailto:${settings.rfqEmail}`}
-                className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)]"
-              >
-                <Mail size={12} className="shrink-0 text-[var(--accent-primary)]" />
-                {settings.rfqEmail}
-              </a>
-              <a
-                href={`tel:${settings.phoneNumber}`}
-                className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)]"
-              >
-                <Phone size={12} className="shrink-0 text-[var(--accent-primary)]" />
-                <span dir="ltr">{settings.phoneNumber}</span>
-              </a>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[11px]">
-              {TRUST_ITEMS.map((item, i) => (
-                <span key={item.labelKey} className="flex items-center gap-2.5">
-                  {i > 0 && <span className="opacity-40" aria-hidden="true">•</span>}
-                  <span className="flex items-center gap-1 whitespace-nowrap">
-                    <item.icon size={12} className="shrink-0 text-[var(--accent-primary)]" />
-                    {item.labelKey === 'freeShipping' ? shippingPromise.label : t(`topbar.${item.labelKey}`)}
-                  </span>
+        {/* The safe-area padding lives INSIDE the collapsing wrapper so the
+            hide-on-scroll animation collapses the bar's true height,
+            notch inset included. */}
+        <div className="navbar-top-bar-inner pt-[env(safe-area-inset-top)]">
+          <div className="mx-auto max-w-[1280px] px-4 sm:px-6">
+            {/* Desktop / tablet: single 40px row */}
+            <div className="hidden h-10 items-center justify-between text-[13px] font-medium sm:flex">
+              <div className="flex items-center gap-6 max-[899px]:gap-4">
+                <a
+                  href={`mailto:${settings.rfqEmail}`}
+                  className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)] max-[899px]:text-xs"
+                >
+                  <Mail size={13} className="shrink-0 text-[var(--accent-primary)]" />
+                  {settings.rfqEmail}
+                </a>
+                <a
+                  href={`tel:${settings.phoneNumber}`}
+                  className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)] max-[899px]:text-xs"
+                >
+                  <Phone size={13} className="shrink-0 text-[var(--accent-primary)]" />
+                  {/* dir=ltr keeps "+91 …" from rendering as "918799095041+" in RTL */}
+                  <span dir="ltr">{settings.phoneNumber}</span>
+                </a>
+                {/* 640-767px is too narrow for the full trust row alongside
+                    email+phone, but the free-shipping promise always fits and
+                    is the headline of this bar — keep it visible at every width. */}
+                <span className="hidden min-[640px]:max-[767px]:flex items-center gap-1.5 text-xs whitespace-nowrap">
+                  <Truck size={12} className="shrink-0 text-[var(--accent-primary)]" />
+                  {shippingPromise.label}
                 </span>
-              ))}
+              </div>
+              {/* Trust items compact from 768px — measured minimum width for the
+                  email+phone row alongside all three trust texts is ~700px in
+                  every language, so 768px+ fits comfortably. 640-767px keeps
+                  email+phone only; phones (<640px) get the trust row in the
+                  compact two-line layout instead. */}
+              <div className="hidden min-[768px]:flex items-center gap-5 max-[899px]:gap-1.5">
+                {TRUST_ITEMS.map((item, i) => (
+                  <div key={item.labelKey} className="flex items-center gap-5 max-[899px]:gap-1.5">
+                    {i > 0 && <span className="h-3.5 w-px bg-[var(--header-utility-border)] max-[899px]:hidden" aria-hidden="true" />}
+                    <span className="flex items-center gap-1.5 whitespace-nowrap max-[899px]:text-[11px]">
+                      <item.icon size={13} className="shrink-0 text-[var(--accent-primary)]" />
+                      {item.labelKey === 'freeShipping' ? shippingPromise.label : t(`topbar.${item.labelKey}`)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Mobile: two centered rows. The contact row wraps on very
+                narrow screens — 280px cannot fit email + phone side by side,
+                and the tail used to clip inside the topbar's overflow:hidden. */}
+            <div className="flex flex-col items-center gap-1 py-2 text-xs font-medium sm:hidden">
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                <a
+                  href={`mailto:${settings.rfqEmail}`}
+                  className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)]"
+                >
+                  <Mail size={12} className="shrink-0 text-[var(--accent-primary)]" />
+                  {settings.rfqEmail}
+                </a>
+                <a
+                  href={`tel:${settings.phoneNumber}`}
+                  className="utility-link flex items-center gap-1.5 font-medium text-[var(--header-utility-text)] no-underline transition-colors hover:text-[var(--accent-primary)]"
+                >
+                  <Phone size={12} className="shrink-0 text-[var(--accent-primary)]" />
+                  <span dir="ltr">{settings.phoneNumber}</span>
+                </a>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[11px]">
+                {TRUST_ITEMS.map((item, i) => (
+                  <span key={item.labelKey} className="flex items-center gap-2.5">
+                    {i > 0 && <span className="opacity-40" aria-hidden="true">•</span>}
+                    <span className="flex items-center gap-1 whitespace-nowrap">
+                      <item.icon size={12} className="shrink-0 text-[var(--accent-primary)]" />
+                      {item.labelKey === 'freeShipping' ? shippingPromise.label : t(`topbar.${item.labelKey}`)}
+                    </span>
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>

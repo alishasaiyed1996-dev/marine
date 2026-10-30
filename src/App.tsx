@@ -285,9 +285,11 @@ export default function App() {
     <PayPalProvider>
       <AppContent />
     </PayPalProvider>
+    {/* Inside the router on purpose: the float hides itself on the payment
+        routes, which needs useLocation. */}
+    <WhatsAppFloat />
     </BrowserRouter>
     <CookieConsent />
-    <WhatsAppFloat />
     </ToastProvider>
   )
 }

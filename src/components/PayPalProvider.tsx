@@ -2,17 +2,8 @@ import { PayPalScriptProvider, usePayPalScriptReducer } from '@paypal/react-payp
 import { type ReactNode, useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { storefront } from '../lib/api/storefront'
+import { PAYMENT_ROUTE } from '../lib/routes'
 import { PayPalAvailabilityContext } from '../hooks/usePayPalAvailability'
-
-/**
- * Routes whose UI actually renders PayPal buttons. The PayPal SDK is a large
- * third-party script that used to download on EVERY page (home, catalog, even
- * the admin panel) just because the provider sat at the app root — it competed
- * with page content for bandwidth and main-thread time, which read as a slow
- * site. The availability context still reports the configured state everywhere,
- * so checkout keeps its no-flicker behaviour when the route activates.
- */
-const PAYPAL_ROUTE = /\/(?:checkout|account\/offers\/[^/]+\/pay)\/?$/
 
 /** Reads the SDK loading state from inside the provider and publishes it. */
 function PayPalScriptStatus({ children }: { children: ReactNode }) {
@@ -87,10 +78,13 @@ export function PayPalProvider({ children }: { children: ReactNode }) {
     )
   }
 
-  // Off the PayPal routes: keep the availability context (checkout reads it to
+  // Off the payment routes: keep the availability context (checkout reads it to
   // stay flicker-free), but do NOT mount the script provider — the SDK only
-  // downloads on pages that actually render PayPal buttons.
-  if (!PAYPAL_ROUTE.test(location.pathname)) {
+  // downloads on pages that actually render PayPal buttons. It used to load on
+  // EVERY page (home, catalog, even the admin panel) because the provider sat
+  // at the app root, competing with page content for bandwidth and main-thread
+  // time, which read as a slow site.
+  if (!PAYMENT_ROUTE.test(location.pathname)) {
     return (
       <PayPalAvailabilityContext.Provider value={{ configured: true, loading: false }}>
         {children}
