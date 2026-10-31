@@ -66,15 +66,20 @@ jobs:
         # a green check that cannot fail is worse than no check at all.
         run: npx tsc -b --noEmit
 
-      - name: Unit tests (root)
-        # Root tests only — the backend suite needs backend node_modules and
-        # runs in the backend job / CI.
-        run: npm run test
-
       - name: Build frontend
         # The deployable web artifact is the SPA plus prerendered routes,
         # sitemap and the frontend/dist copy — not just Vite's output.
         run: npm run build:frontend:full
+
+      - name: Unit tests (root)
+        # Root tests only — the backend suite needs backend node_modules and
+        # runs in the backend job / CI.
+        #
+        # Runs AFTER the build: tests/legacy-html.test.mjs spawns server.js and
+        # probes prerendered routes under frontend/dist, so with an unbuilt tree
+        # it fails on a missing artifact rather than on a real regression
+        # (which is exactly how this job stayed red while ci.yml was green).
+        run: npm run test
 
   # ─── Deploy to Railway ───────────────────────────────────────
   # Triggers a Railway redeploy via the project's deploy hook URL.
