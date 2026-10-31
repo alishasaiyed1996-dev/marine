@@ -6,7 +6,7 @@ import { useStore } from '../../store/useStore'
 import { VALID_LOCALES, LOCALE_TO_OG } from '../../lib/locale'
 import { getCspNonce } from '../../lib/csp'
 import { buildMerchantReturnPolicy } from '../../../shared/product-page.mjs'
-import { SHIPPED_LOCALES, hasTranslatedRoute } from '../../../shared/route-i18n.mjs'
+import { hasTranslatedRoute, hreflangAlternatesFor } from '../../../shared/route-i18n.mjs'
 import type { Language } from '../../types'
 
 interface SEOProps {
@@ -26,7 +26,7 @@ interface SEOProps {
   /** Emit <meta name="robots" content="noindex, follow"> — used for search
    *  results, junk filter combinations, and unavailable products (B18/B20). */
   noindex?: boolean
-  jsonLd?: Record<string, any>[]
+  jsonLd?: Record<string, unknown>[]
   /** Explicit locales with genuinely equivalent translated page content. */
   alternateLocales?: Language[]
 }
@@ -35,30 +35,6 @@ const BASE_URL = import.meta.env.VITE_SITE_URL || 'https://alkatraders.co'
 const SITE_NAME = 'Alka Traders'
 const DEFAULT_DESCRIPTION = 'Marine & industrial equipment supplier — ship spares, surplus machinery, electrical automation, hydraulic systems, and emergency procurement. Based in Bhavnagar, Gujarat, India.'
 const DEFAULT_OG_IMAGE = `${BASE_URL}/images/alka-traders-logo.png`
-
-/**
- * Build absolute hreflang links for the shipped locales.
- *
- * The audit found this returning an empty array while the storefront offered
- * Arabic and Spanish — no locale declared its equivalents. Only routes with a
- * verified translation get an alternate; the catalog pages stay English-only.
- */
-function buildHreflangLinks(_locale: Language, pathWithoutLocale: string): Array<{ hreflang: string; href: string }> {
-  const path = pathWithoutLocale.endsWith('/') ? pathWithoutLocale : `${pathWithoutLocale}/`
-  const root = path === '/' ? '/' : path
-  const links: Array<{ hreflang: string; href: string }> = []
-
-  for (const candidate of SHIPPED_LOCALES) {
-    if (!hasTranslatedRoute(root, candidate)) continue
-    // The English page is canonical under /en/ (the bare path 301s to it),
-    // so every alternate must carry its locale prefix.
-    const candidatePath = `/${candidate}${root}`
-    links.push({ hreflang: candidate, href: `${BASE_URL}${candidatePath}` })
-  }
-  // x-default always points at the English page.
-  links.push({ hreflang: 'x-default', href: `${BASE_URL}/en${root}` })
-  return links
-}
 
 export function SEO({
   title,
@@ -158,7 +134,11 @@ export function SEO({
   // translation in that language. Catalog pages are English-only, so their
   // AR/ES variants stay noindex and point hreflang at the English page.
   const localeHasTranslation = hasTranslatedRoute(pathWithoutLocale, language)
-  const hreflangLinks = buildHreflangLinks(language, pathWithoutLocale).filter((link) =>
+  // Alternates come from the ONE shared hreflang policy (the same function the
+  // prerenderer, the sitemap and server.js use), filtered to the locales this
+  // page actually offers. Non-translated routes get no alternates here —
+  // matching the prerendered head instead of adding self-referential links.
+  const hreflangLinks = hreflangAlternatesFor(pathWithoutLocale, BASE_URL).filter((link) =>
     link.hreflang === 'x-default' || alternateLocales.includes(link.hreflang as Language),
   )
 

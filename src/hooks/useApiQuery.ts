@@ -16,7 +16,8 @@ const queryKeys = {
     featured: () => ['products', 'featured'] as const,
     newArrivals: () => ['products', 'new-arrivals'] as const,
     detail: (id?: string) => ['products', 'detail', id] as const,
-  },  categories: {
+  },
+  categories: {
     all: ['categories'] as const,
   },
   brands: {
@@ -140,7 +141,8 @@ export function useProductDetail(id?: string) {
 export function useCategories() {
   return useQuery({
     queryKey: queryKeys.categories.all,
-    queryFn: () => api.get<{ categories: any[] }>('/storefront/categories'),
+    // Same endpoint as the typed storefront client — one shared query shape.
+    queryFn: () => storefront.categories.list(),
     staleTime: 15 * 60 * 1000, // Categories rarely change
   })
 }
@@ -150,7 +152,7 @@ export function useCategories() {
 export function useBrands() {
   return useQuery({
     queryKey: queryKeys.brands.all,
-    queryFn: () => api.get<{ brands: any[] }>('/storefront/brands'),
+    queryFn: () => storefront.brands.list(),
     staleTime: 15 * 60 * 1000,
   })
 }
@@ -164,7 +166,7 @@ async function fetchIndustries(): Promise<Industry[]> {
   try {
     const res = await storefront.industries.list()
     if (res.industries?.length) {
-      return res.industries.map((i: any) => ({
+      return res.industries.map((i) => ({
         id: i.slug || i.id,
         name: i.name,
         icon: i.icon || 'Ship',
@@ -211,7 +213,7 @@ export function prefetchNavData(path: string) {
   } else if (path === '/brands') {
     void queryClient.prefetchQuery({
       queryKey: queryKeys.brands.all,
-      queryFn: () => api.get<{ brands: any[] }>('/storefront/brands'),
+      queryFn: () => storefront.brands.list(),
       staleTime: 15 * 60 * 1000,
     })
   } else if (path === '/industries') {
@@ -240,5 +242,3 @@ export function useOrders(userId?: string, page = 1, limit = 20) {
     placeholderData: keepPreviousData,
   })
 }
-
-

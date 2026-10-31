@@ -64,6 +64,17 @@ export interface ProductFormData {
 
 export type TabId = 'basics' | 'images' | 'pricing' | 'inventory' | 'specs' | 'details' | 'seo' | 'notes'
 
+// Fields whose validation errors live on the SEO tab: a failed save must open
+// the tab that owns the field. `description` is edited on Basics (not Details),
+// so it is deliberately NOT here — routing it to Details hid the error field.
+const SEO_TAB_FIELDS = ['slug', 'seoTitle', 'seoDescription', 'mpn', 'gtin']
+
+/** The tab that owns a failing field; anything unlisted falls to Basics. */
+function errorTab(field: string | undefined): TabId {
+  if (field === 'images') return 'images'
+  return SEO_TAB_FIELDS.includes(field ?? '') ? 'seo' : 'basics'
+}
+
 export const TABS: { id: TabId; label: string }[] = [
   { id: 'basics', label: 'Basics' },
   { id: 'images', label: 'Images' },
@@ -464,8 +475,8 @@ export function useProductForm() {
         return { ...prev, images }
       })
       toast('Image uploaded', 'success')
-    } catch (err: any) {
-      toast(err.message || 'Upload failed', 'error')
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Upload failed', 'error')
     } finally {
       pendingUploadsRef.current = Math.max(0, pendingUploadsRef.current - 1)
       if (pendingUploadsRef.current === 0) setUploadingImage(false)
@@ -493,7 +504,7 @@ export function useProductForm() {
       const firstField = Object.keys(validationErrors)[0]
       // `description` is edited on the Basics tab, not Details — routing it to
       // Details hid the error and left the field off screen.
-      setActiveTab(firstField === 'images' ? 'images' : ['slug', 'seoTitle', 'seoDescription', 'mpn', 'gtin'].includes(firstField) ? 'seo' : 'basics')
+      setActiveTab(errorTab(firstField))
       return
     }
 
@@ -646,7 +657,7 @@ export function useProductForm() {
         details.forEach((d) => { fieldErrors[d.field] = d.message })
         setErrors(fieldErrors)
         const firstField = details[0]?.field
-        setActiveTab(firstField === 'images' ? 'images' : ['slug', 'seoTitle', 'seoDescription', 'mpn', 'gtin'].includes(firstField) ? 'seo' : 'basics')
+        setActiveTab(errorTab(firstField))
         toast('Please fix the highlighted field errors', 'error')
       } else {
         toast(msg, 'error')

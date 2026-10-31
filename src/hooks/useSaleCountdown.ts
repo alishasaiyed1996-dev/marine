@@ -8,9 +8,6 @@ export interface Countdown {
   expired: boolean
 }
 
-/** @deprecated Use `Countdown`. Kept for callers that referenced the old name. */
-export type SaleCountdown = Countdown
-
 /**
  * Counts down to `endsAt` (ISO date string) using the app-wide shared ticker
  * (see TickerProvider) so every timed UI element — sale cards, RFQ response

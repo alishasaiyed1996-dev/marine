@@ -25,8 +25,8 @@ const APPLY = process.argv.includes('--apply')
 const idArg = process.argv.find((a) => a.startsWith('--id='))
 const ONLY_ID = idArg ? idArg.split('=')[1] : undefined
 
-// Field pick order — mirrors extractIdentity() in src/lib/seo/productSeo.ts
-// and extractIdentityQuick() in scripts/fetch-products.mjs.
+// Field pick order — mirrors the identity extraction in
+// shared/product-page.mjs and extractIdentityQuick() in scripts/fetch-products.mjs.
 const PICKS: Record<string, string[]> = {
   modelNumber: ['model', 'model number', 'model no', 'manufacturer model'],
   mpn: ['mpn', 'manufacturer part number', 'part number'],

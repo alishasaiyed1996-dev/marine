@@ -5,7 +5,7 @@ import { useStore } from '../../store/useStore'
 import { storefront } from '../../lib/api'
 import { useLocalizedPath } from '../../lib/locale'
 import { useOverlayBehavior } from '../../lib/overlay'
-import { SearchInput, SearchResultsList } from '../search'
+import { SearchInput, SearchResultsList, SEARCH_TYPE_LABEL } from '../search'
 import type { SearchResult } from '../search'
 
 const pages = [
@@ -190,7 +190,7 @@ export function CommandSearch() {
           results={results}
           activeIndex={activeIndex}
           onSelect={handleSelect}
-          getTypeLabel={(type) => t('search.' + type + 's')}
+          getTypeLabel={(type) => t(SEARCH_TYPE_LABEL[type])}
         />
 
         {q && results.length === 0 && <div className="p-8 text-center text-sm text-[var(--text-muted)]">{t('search.noResults')}</div>}

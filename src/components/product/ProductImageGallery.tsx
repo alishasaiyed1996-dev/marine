@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, ZoomIn, Share2, ImageOff } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ZoomIn, Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useLocale } from '../../lib/locale'
 import { OptimizedImage } from '../ui/OptimizedImage'
@@ -20,7 +20,7 @@ interface ProductImageGalleryProps {
  *    active one highlighted) — standard e-commerce pattern.
  *  - Prev/next arrows + keyboard ← → navigation.
  *  - Desktop hover zoom, mobile pinch / double-tap zoom preserved.
- *  - Graceful handling when a product has no images at all (placeholder icon).
+ *  - Products with no uploaded photos fall back to the placeholder image URL.
  */
 export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   const { t } = useTranslation()
@@ -35,10 +35,10 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   // ── Image list: fall back to the shared placeholder when empty ──
+  // (always at least one entry, so the stage below has an image to render)
   const images = product.images?.length
     ? product.images
     : [{ url: getProductImageUrl(product.filename, 1200), alt: product.name, label: undefined as string | undefined }]
-  const hasImages = images.length > 0
 
   const [activeIndex, setActiveIndex] = useState(0)
   const active = images[Math.min(activeIndex, images.length - 1)]
@@ -231,40 +231,32 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
           className="relative overflow-hidden rounded-xl bg-[var(--primary-bg)] aspect-square w-full flex items-center justify-center"
           onTouchEnd={handleStageTouchEnd}
         >
-          {hasImages ? (
-            <OptimizedImage
-              key={active.url}
-              src={active.url}
-              alt={active.alt || buildImageAlt(product.name, product)}
-              width={1200}
-              height={1200}
-              loading="eager"
-              fetchPriority="high"
-              sizes="(max-width: 1024px) 100vw, 55vw"
-              transformWidth={1200}
-              className={`w-full h-full object-contain transition-transform duration-200 ${
-                showZoom ? 'scale-150' : touchScale > 1 ? '' : 'scale-100'
-              }`}
-              style={{
-                transform: showZoom
-                  ? 'scale(1.5)'
-                  : touchScale > 1
-                  ? `scale(${touchScale})`
-                  : undefined,
-                transformOrigin: showZoom
-                  ? `${zoomPos.x}% ${zoomPos.y}%`
-                  : `${touchOrigin.x}% ${touchOrigin.y}%`,
-              }}
-            />
-          ) : (
-            <div className="flex flex-col items-center gap-2 text-[var(--text-muted)]" aria-hidden>
-              <ImageOff size={40} strokeWidth={1.5} />
-              <span className="text-xs font-mono uppercase tracking-wider">{t('product.noImage')}</span>
-            </div>
-          )}
-
+          <OptimizedImage
+            key={active.url}
+            src={active.url}
+            alt={active.alt || buildImageAlt(product.name, product)}
+            width={1200}
+            height={1200}
+            loading="eager"
+            fetchPriority="high"
+            sizes="(max-width: 1024px) 100vw, 55vw"
+            transformWidth={1200}
+            className={`w-full h-full object-contain transition-transform duration-200 ${
+              showZoom ? 'scale-150' : touchScale > 1 ? '' : 'scale-100'
+            }`}
+            style={{
+              transform: showZoom
+                ? 'scale(1.5)'
+                : touchScale > 1
+                ? `scale(${touchScale})`
+                : undefined,
+              transformOrigin: showZoom
+                ? `${zoomPos.x}% ${zoomPos.y}%`
+                : `${touchOrigin.x}% ${touchOrigin.y}%`,
+            }}
+          />
           {/* Prev / next arrows — only when there are multiple photos */}
-          {isMulti && hasImages && (
+          {isMulti && (
             <>
               <button
                 onClick={goPrev}
@@ -326,7 +318,7 @@ export function ProductImageGallery({ product }: ProductImageGalleryProps) {
         </div>
 
         {/* ── Thumbnail strip ── */}
-        {isMulti && hasImages && (
+        {isMulti && (
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={t('product.ariaGalleryThumbs')}>
             {images.map((img, idx) => (
               <button

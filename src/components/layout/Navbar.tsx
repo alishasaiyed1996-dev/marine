@@ -609,6 +609,13 @@ export function Navbar() {
                   >
                     <Package size={13} /> My Orders
                   </Link>
+                  <Link
+                    to={localizedPath('/account/offers')}
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-[var(--nav-text-muted)] no-underline transition-colors hover:bg-[var(--surface-soft)] hover:text-[var(--nav-text)]"
+                  >
+                    <HandCoins size={13} /> My Offers
+                  </Link>
                   <button
                     onClick={() => { logout(); setMobileOpen(false) }}
                     className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-[var(--danger)] transition-colors hover:bg-[var(--surface-soft)]"

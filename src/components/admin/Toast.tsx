@@ -48,7 +48,10 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   const Icon = config.icon
 
   return (
-    <div className={`pointer-events-auto flex items-center gap-3 rounded-xl ${config.bg} ${config.text} px-4 py-3 shadow-lg animate-[slideIn_0.3s_ease] min-w-[280px] max-w-[400px]`}>
+    // Slide-up entrance reuses the design system's `slideUp` keyframe —
+    // the previous arbitrary `slideIn` animation named a keyframe that
+    // doesn't exist anywhere, so toasts rendered with no animation.
+    <div className={`pointer-events-auto flex items-center gap-3 rounded-xl ${config.bg} ${config.text} px-4 py-3 shadow-lg animate-slide-up min-w-[280px] max-w-[400px]`}>
       <Icon size={16} className="shrink-0" />
       <span className="text-xs font-bold flex-1">{toast.message}</span>
       <button onClick={onDismiss} className="shrink-0 opacity-70 hover:opacity-100"><X size={14} /></button>

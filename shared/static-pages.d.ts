@@ -6,6 +6,9 @@
 
 export declare const SITE_NAME: string
 
+/** Canonical "countries served" figure woven into the copy below. */
+export declare const COUNTRIES_SERVED: string
+
 export interface StaticPageMeta {
   /** Document title, including the brand suffix. */
   title: string

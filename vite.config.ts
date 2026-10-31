@@ -34,23 +34,27 @@ export default defineConfig(({ mode }) => {
       // server.js computes still matches) but stops it competing with the
       // first paint — Lighthouse flagged it under render-blocking-insight.
       injectRegister: 'script-defer',
-      // Only the favicon is precached. The old `images/*.png|avif` globs pulled
+      // Precache the PWA icon (splash/install image). The old globs pulled
       // ~9 MB of images into the install step, so Workbox downloaded them in the
       // background on every first visit / after every deploy — saturating the
       // connection and starving the visible page images (they loaded seconds
       // late). Runtime image caching still happens via the Cloudinary route.
-      includeAssets: ['favicon.ico'],
+      includeAssets: ['images/alka-traders-logo-400.png'],
       manifest: {
-        name: 'Alka Traders — Marine Equipment Supplier',
+        // The single PWA manifest. Do not add another static manifest file to
+        // public/ — the plugin injects <link rel="manifest"> into index.html,
+        // and a second one makes install behavior browser-dependent.
+        name: 'Alka Traders — Marine & Industrial Equipment',
         short_name: 'Alka Traders',
-        description: 'Global marine and industrial equipment supplier',
-        theme_color: '#111827',
-        background_color: '#f8f9fb',
+        description: 'Global supplier of marine spares, industrial equipment, surplus machinery, and emergency procurement.',
+        theme_color: '#0c2d48',
+        background_color: '#04101b',
         display: 'standalone',
         scope: '/',
         start_url: '/',
         icons: [
           { src: '/images/alka-traders-logo-400.png', sizes: '400x400', type: 'image/png' },
+          { src: '/images/alka-traders-logo.png', sizes: '1024x1024', type: 'image/png' },
         ],
       },
       workbox: {

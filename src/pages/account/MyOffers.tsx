@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -46,9 +46,6 @@ export default function MyOffers() {
     enabled: Boolean(user),
     staleTime: 15 * 1000,
   })
-
-  // Clear the one-shot "offer submitted" flag from the product page.
-  useEffect(() => { useStore.setState({ offerJustSubmitted: false }) }, [])
 
   if (!user) {
     return (

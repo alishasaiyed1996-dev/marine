@@ -13,7 +13,7 @@ export function BrandsMarquee() {
 
   const { row1, row2 } = useMemo(() => {
     if (brandsData?.brands?.length) {
-      const names = brandsData.brands.map((b: any) => b.name).filter(Boolean)
+      const names = brandsData.brands.map((b) => b.name).filter(Boolean)
       const mid = Math.ceil(names.length / 2)
       return { row1: names.slice(0, mid), row2: names.slice(mid) }
     }

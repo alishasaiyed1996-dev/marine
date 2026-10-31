@@ -1,42 +1,26 @@
 import type { Config } from 'tailwindcss'
 
+/*
+ * Design tokens actually referenced by the markup.
+ *
+ * Most styling here goes through CSS custom properties (`var(--…)`) defined in
+ * src/index.css, so only the tokens that appear in real utility classes are
+ * declared below — everything else was pruned so dead tokens can't linger.
+ * The color names are the exception: they exist so `text-danger`,
+ * `bg-success/10`, `bg-navy-deep` etc. resolve without arbitrary values.
+ */
 const config: Config = {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        'primary-bg': 'var(--primary-bg)',
-        'secondary-bg': 'var(--secondary-bg)',
         surface: 'var(--surface)',
-        'surface-soft': 'var(--surface-soft)',
-        'surface-raised': 'var(--surface-raised)',
-        'accent-primary': 'var(--accent-primary)',
-        'accent-primary-hover': 'var(--accent-primary-hover)',
         'accent-blue': 'var(--accent-blue)',
         'accent-gold': 'var(--accent-gold)',
-        'accent-teal': 'var(--accent-teal)',
-        'text-primary': 'var(--text-primary)',
-        'text-secondary': 'var(--text-secondary)',
-        'text-muted': 'var(--text-muted)',
-        border: 'var(--border)',
+        'navy-deep': 'var(--navy-deep)',
         danger: 'var(--danger)',
         success: 'var(--success)',
-        'brick-ember': 'var(--brick-ember)',
-        honeydew: 'var(--honeydew)',
-        'navy-deep': 'var(--navy-deep)',
-        'navy-mid': 'var(--navy-mid)',
-        'navy-light': 'var(--navy-light)',
-        'gold-light': 'var(--gold-light)',
-        'gold-dark': 'var(--gold-dark)',
-        'gold-muted': 'var(--gold-muted)',
-        'teal-soft': 'var(--teal-soft)',
-        'input-bg': 'var(--input-bg)',
-        'input-border': 'var(--input-border)',
-        'input-text': 'var(--input-text)',
-        'input-placeholder': 'var(--input-placeholder)',
-        'btn-hover-dark': 'var(--accent-primary-hover)',
-        'btn-hover-gold': 'var(--btn-hover-gold)',
       },
       fontFamily: {
         display: ['Space Grotesk', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
@@ -45,96 +29,36 @@ const config: Config = {
         manrope: ['Manrope', 'DM Sans', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
       },
       fontSize: {
-        'hero': ['clamp(44px, 7vw, 84px)', { lineHeight: '1.0', letterSpacing: '-0.025em', fontWeight: '700' }],
-        'display-2xl': ['clamp(36px, 5vw, 56px)', { lineHeight: '1.1', letterSpacing: '-0.02em', fontWeight: '700' }],
         'display-xl': ['clamp(32px, 4.5vw, 52px)', { lineHeight: '1.12', letterSpacing: '-0.02em', fontWeight: '700' }],
         'display-lg': ['clamp(28px, 3.5vw, 44px)', { lineHeight: '1.15', letterSpacing: '-0.015em', fontWeight: '700' }],
         'section': ['clamp(34px, 4.5vw, 52px)', { lineHeight: '1.08', letterSpacing: '-0.01em', fontWeight: '700' }],
         'section-xl': ['clamp(34px, 4.5vw, 52px)', { lineHeight: '1.08', letterSpacing: '-0.01em', fontWeight: '700' }],
         'section-lg': ['clamp(28px, 3vw, 36px)', { lineHeight: '1.2', letterSpacing: '0', fontWeight: '700' }],
-        'heading-xl': ['1.5rem', { lineHeight: '1.25', letterSpacing: '0', fontWeight: '700' }],
-        'heading-lg': ['1.25rem', { lineHeight: '1.3', letterSpacing: '0', fontWeight: '600' }],
-        'heading-md': ['1.125rem', { lineHeight: '1.35', letterSpacing: '0', fontWeight: '600' }],
-        'heading-sm': ['1rem', { lineHeight: '1.4', letterSpacing: '0', fontWeight: '600' }],
         'body-lg': ['1.125rem', { lineHeight: '1.65', letterSpacing: '0', fontWeight: '400' }],
         'body': ['1rem', { lineHeight: '1.6', letterSpacing: '0', fontWeight: '400' }],
         'body-sm': ['0.875rem', { lineHeight: '1.5', letterSpacing: '0', fontWeight: '400' }],
         'label': ['0.8125rem', { lineHeight: '1.4', letterSpacing: '0.01em', fontWeight: '600' }],
-        'caption': ['0.75rem', { lineHeight: '1.4', letterSpacing: '0.01em', fontWeight: '400' }],
-        'overline': ['0.6875rem', { lineHeight: '1.4', letterSpacing: '0.15em', fontWeight: '700' }],
-        'micro': ['0.625rem', { lineHeight: '1.3', letterSpacing: '0.05em', fontWeight: '500' }],
+      },
+      /* `widest` widens the Tailwind default (0.1em → 0.15em) for the
+         uppercase micro-labels; the other names come from Tailwind itself. */
+      letterSpacing: {
+        widest: '0.15em',
       },
       lineHeight: {
-        'display': '0.92',
-        'heading': '1.1',
-        'body': '1.6',
-        'relaxed': '1.65',
-        'loose': '1.75',
-      },
-      letterSpacing: {
-        'tighter': '-0.05em',
-        'tight': '-0.025em',
-        'snug': '-0.01em',
-        'normal': '0',
-        'wide': '0.025em',
-        'wider': '0.05em',
-        'widest': '0.15em',
-        'ultra': '0.2em',
-      },
-      spacing: {
-        '18': '4.5rem',
-        '22': '5.5rem',
-        '30': '7.5rem',
-        '44': '11rem',
-        '76': '19rem',
-        '88': '22rem',
-        '100': '25rem',
-        '128': '32rem',
+        relaxed: '1.65',
       },
       boxShadow: {
-        'soft': 'var(--shadow-soft)',
-        'card': 'var(--shadow-card)',
-        'gold': '0 12px 26px rgba(232, 170, 36, 0.24)',
-        'danger': '0 0 20px rgba(239, 68, 68, 0.3)',
         'focus-gold': '0 0 0 3px var(--focus-ring-gold)',
-        'focus-blue': '0 0 0 3px var(--focus-ring-blue)',
-      },
-      borderRadius: {
-        '2xl': '16px',
-        '3xl': '20px',
-        '4xl': '28px',
-      },
-      transitionDuration: {
-        '400': '400ms',
-        '600': '600ms',
-        '800': '800ms',
       },
       animation: {
-        'fade-up': 'fadeUp 0.6s ease forwards',
-        'fade-in': 'fadeIn 0.6s ease forwards',
         'marquee-left': 'marqueeLeft 40s linear infinite',
         'marquee-right': 'marqueeRight 35s linear infinite',
-        'marquee-left-slow': 'marqueeLeft 55s linear infinite',
-        'marquee-right-slow': 'marqueeRight 50s linear infinite',
-        'beam-pulse': 'beamPulse 4s ease-in-out infinite',
-        'gradient-text': 'gradientText 6s ease infinite',
         shimmer: 'shimmerSweep 2.5s ease-in-out infinite',
-        'border-spin': 'borderSpin 1s linear infinite',
         checkmark: 'checkmark 0.6s ease 0.3s both',
         'danger-pulse': 'dangerPulse 1.6s ease-in-out infinite',
-        'word-cycle': 'wordCycle 0.5s ease forwards',
-        'scale-in': 'scaleIn 0.3s ease forwards',
         'slide-up': 'slideUp 0.4s ease forwards',
       },
       keyframes: {
-        fadeUp: {
-          '0%': { opacity: '0', transform: 'translateY(30px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
         marqueeLeft: {
           '0%': { transform: 'translateX(0)' },
           '100%': { transform: 'translateX(-50%)' },
@@ -142,22 +66,6 @@ const config: Config = {
         marqueeRight: {
           '0%': { transform: 'translateX(-50%)' },
           '100%': { transform: 'translateX(0)' },
-        },
-        beamPulse: {
-          '0%, 100%': { opacity: '0.04' },
-          '50%': { opacity: '0.12' },
-        },
-        gradientText: {
-          '0%, 100%': { backgroundPosition: '0% 50%' },
-          '50%': { backgroundPosition: '100% 50%' },
-        },
-        shimmerSweep: {
-          '0%': { left: '-100%' },
-          '100%': { left: '200%' },
-        },
-        borderSpin: {
-          '0%': { transform: 'rotate(0deg)' },
-          '100%': { transform: 'rotate(360deg)' },
         },
         checkmark: {
           '0%': { transform: 'scale(0) rotate(45deg)', opacity: '0' },
@@ -167,14 +75,6 @@ const config: Config = {
         dangerPulse: {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.55' },
-        },
-        wordCycle: {
-          '0%': { opacity: '0', transform: 'translateY(12px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        scaleIn: {
-          '0%': { opacity: '0', transform: 'scale(0.95)' },
-          '100%': { opacity: '1', transform: 'scale(1)' },
         },
         slideUp: {
           '0%': { opacity: '0', transform: 'translateY(20px)' },

@@ -93,7 +93,6 @@ async function getCsrfToken(): Promise<string | null> {
       return csrfToken
     } catch {
       console.warn('[api] CSRF token fetch failed — continuing without CSRF protection')
-      csrfTokenPromise = null
       return null
     } finally {
       csrfTokenPromise = null

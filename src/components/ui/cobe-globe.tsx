@@ -23,7 +23,8 @@ const SUPPORTS_ANCHOR =
   typeof CSS.supports === 'function' &&
   CSS.supports('bottom', 'anchor(top)')
 
-interface GlobeProps {  markers?: Marker[]
+interface GlobeProps {
+  markers?: Marker[]
   arcs?: Arc[]
   className?: string
   markerColor?: [number, number, number]

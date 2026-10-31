@@ -93,20 +93,13 @@ export function AuthModal() {
     }
   }, [showAuthModal, clearAuthErrors])
 
+  // Switching tabs resets field state: whichever fields that tab owns must
+  // start clean, and a failed sign-in message must not follow the user to the
+  // Sign Up tab.
   useEffect(() => {
     setErrors({})
     setShowPassword(false)
     setShowConfirmPassword(false)
-    // A failed sign-in message must not follow the user to the Sign Up tab.
-    clearAuthErrors()
-  }, [activeTab, clearAuthErrors])
-
-  // Escape key closes modal
-  useEffect(() => {
-    setErrors({})
-    setShowPassword(false)
-    setShowConfirmPassword(false)
-    // A failed sign-in message must not follow the user to the Sign Up tab.
     clearAuthErrors()
   }, [activeTab, clearAuthErrors])
 

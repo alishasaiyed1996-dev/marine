@@ -365,6 +365,18 @@ export interface EbayEventRetryResult {
   note?: string
 }
 
+// CSV exports need the raw text body (the JSON pipeline would treat it as an
+// error), so they go through fetch directly — the token/credentials handling
+// is shared here instead of being copy-pasted per endpoint.
+async function fetchCsvExport(path: string): Promise<string> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: getAdminToken() ? { Authorization: `Bearer ${getAdminToken()}` } : undefined,
+    credentials: 'include',
+  })
+  if (!res.ok) throw new ApiError(res.status, 'Export failed')
+  return res.text()
+}
+
 export const admin = {
   // eBay marketplace sync (central inventory mirrors)
   ebay: {
@@ -488,14 +500,7 @@ export const admin = {
       api.post<{ product: ApiProduct }>(`/admin/products/${id}/duplicate`, undefined, { auth: 'admin' }),
     importCsv: (rows: Record<string, string>[]) =>
       api.post<{ created: number; skipped: number; errors: string[] }>('/admin/products/import/csv', { rows }, { auth: 'admin' }),
-    exportCsv: async () => {
-      const res = await fetch(`${API_BASE}/admin/products/export/csv`, {
-        headers: getAdminToken() ? { Authorization: `Bearer ${getAdminToken()}` } : undefined,
-        credentials: 'include',
-      })
-      if (!res.ok) throw new ApiError(res.status, 'Export failed')
-      return res.text()
-    },
+    exportCsv: () => fetchCsvExport('/admin/products/export/csv'),
   },
 
   // Categories
@@ -537,14 +542,7 @@ export const admin = {
       api.patch<{ order: ApiOrder }>(`/admin/orders/${id}/tracking`, { trackingNumber, courier }, { auth: 'admin' }),
     cancel: (id: string, reason?: string) =>
       api.post<{ order: ApiOrder }>(`/admin/orders/${id}/cancel`, { reason }, { auth: 'admin' }),
-    exportCsv: async () => {
-      const res = await fetch(`${API_BASE}/admin/orders/export/csv`, {
-        headers: getAdminToken() ? { Authorization: `Bearer ${getAdminToken()}` } : undefined,
-        credentials: 'include',
-      })
-      if (!res.ok) throw new ApiError(res.status, 'Export failed')
-      return res.text()
-    },
+    exportCsv: () => fetchCsvExport('/admin/orders/export/csv'),
   },
 
   // RFQs
@@ -585,14 +583,7 @@ export const admin = {
       api.patch<{ offer: ApiOffer }>(`/admin/offers/${id}/counter`, { counterPrice }, { auth: 'admin' }),
     convertToOrder: (id: string) =>
       api.post<{ order: ApiOrder }>(`/admin/offers/${id}/convert-to-order`, undefined, { auth: 'admin' }),
-    exportCsv: async () => {
-      const res = await fetch(`${API_BASE}/admin/offers/export/csv`, {
-        headers: getAdminToken() ? { Authorization: `Bearer ${getAdminToken()}` } : undefined,
-        credentials: 'include',
-      })
-      if (!res.ok) throw new ApiError(res.status, 'Export failed')
-      return res.text()
-    },
+    exportCsv: () => fetchCsvExport('/admin/offers/export/csv'),
   },
 
   // Customers

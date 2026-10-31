@@ -3,10 +3,11 @@
  *
  * These are the "API contract" types that both frontend and backend agree on.
  * They mirror the Prisma models and are the canonical source of truth for
- * API response shapes. Use these instead of duplicating types.
+ * API response shapes.
  *
  * The frontend's own simplified UI types (src/types/index.ts) build on top
- * of these via the adapter layer (src/lib/adapters.ts).
+ * of these via the adapter layer (src/lib/adapters.ts) — declare new shapes
+ * here rather than re-typing them wherever they're needed.
  */
 
 // ─── Product ───────────────────────────────────────────────────

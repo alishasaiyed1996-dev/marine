@@ -6,6 +6,12 @@ import { hasAnalyticsConsent, onConsentChange } from '../../lib/consent'
 import { trackPageView } from '../../lib/analytics'
 
 /**
+ * reset-password URLs carry a one-time token, so page_location must never
+ * include them (the tag config honors this too).
+ */
+const RESET_PASSWORD_PATH = /^\/(en\/|ar\/|es\/)?reset-password/i
+
+/**
  * Loads the Google Analytics 4 tag — but only with consent.
  *
  * The tag itself may be declared in index.html (see the gtag bootstrap there) or
@@ -55,7 +61,7 @@ export function StoreAnalytics() {
       window.dataLayer = []
     }
 
-    const isExcludedPath = () => /^\/(en\/|ar\/|es\/)?reset-password/i.test(location.pathname)
+    const isExcludedPath = () => RESET_PASSWORD_PATH.test(location.pathname)
 
     const loadTag = () => {
       if (!hasAnalyticsConsent()) return
@@ -102,7 +108,7 @@ export function StoreAnalytics() {
     // required either way because the tag is configured with send_page_view:false.
     const hasTag = Boolean(googleAnalyticsId?.trim()) || Boolean(window.__alkaStaticGaId)
     if (!hasTag) return
-    if (/^\/(en\/|ar\/|es\/)?reset-password/i.test(location.pathname)) return
+    if (RESET_PASSWORD_PATH.test(location.pathname)) return
     if (!hasAnalyticsConsent()) return
     // The tag is configured with `send_page_view: false`, so the SPA is
     // responsible for every page view.

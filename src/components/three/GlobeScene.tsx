@@ -1,10 +1,9 @@
 import { useRef, useMemo, useEffect } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Sphere, Line } from '@react-three/drei'
+import { Sphere } from '@react-three/drei'
 import * as THREE from 'three'
 
 function GlobeInner() {
-  const meshRef = useRef<THREE.Mesh>(null!)
   const groupRef = useRef<THREE.Group>(null!)
   const invalidate = useThree((s) => s.invalidate)
   const gl = useThree((s) => s.gl)
@@ -58,19 +57,10 @@ function GlobeInner() {
   const radius = 2.8
   const nodePositions = nodes.map((n) => latLngToPosition(n.lat, n.lng, radius))
 
-  // Connection lines between nodes
-  const lines = useMemo(() => {
-    const pairs: [number, number][] = []
-    return pairs.map(([i, j]) => ({
-      from: nodePositions[i],
-      to: nodePositions[j],
-    }))
-  }, [nodePositions])
-
   return (
     <group ref={groupRef}>
       {/* Globe sphere */}
-      <Sphere ref={meshRef} args={[radius, 64, 64]}>
+      <Sphere args={[radius, 64, 64]}>
         <meshPhongMaterial
           color="#0A1628"
           emissive="#0EA5E9"
@@ -91,18 +81,6 @@ function GlobeInner() {
         <ringGeometry args={[radius * 0.8, radius * 1.1, 64]} />
         <meshBasicMaterial color="#0EA5E9" transparent opacity={0.08} side={THREE.DoubleSide} />
       </mesh>
-
-      {/* Connection lines */}
-      {lines.map((line, i) => (
-        <Line
-          key={i}
-          points={[line.from, line.to]}
-          color="#0EA5E9"
-          lineWidth={1}
-          transparent
-          opacity={0.2}
-        />
-      ))}
 
       {/* Node dots */}
       {nodePositions.map((pos, i) => (

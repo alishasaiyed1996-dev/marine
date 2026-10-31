@@ -22,10 +22,11 @@ const categories = [
   { name: 'Ship Navigation', slug: 'ship-navigation', file: 'Ship navigation.jpeg' },
 ]
 
-function encodePath(name: string) {
-  // Serve category images from Cloudinary CDN
-  const slug = name.replace(/\.\w+$/, '').toLowerCase().replace(/\s+/g, '-')
-  return `https://res.cloudinary.com/y7up4zti/image/upload/v1/alka/categories/${slug}`
+function encodePath(file: string) {
+  // Serve category images from Cloudinary CDN — the public IDs are the local
+  // file names, slugified (extension stripped, lowercase, spaces dashed).
+  const publicId = file.replace(/\.\w+$/, '').toLowerCase().replace(/\s+/g, '-')
+  return `https://res.cloudinary.com/y7up4zti/image/upload/v1/alka/categories/${publicId}`
 }
 
 export function ShopByCategory() {

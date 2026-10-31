@@ -1,3 +1,6 @@
+import { useEffect, useRef } from 'react'
+import { applyImageFallback, applyCloudinaryTransform } from '../../lib/utils'
+
 interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   src: string
   alt: string
@@ -27,9 +30,6 @@ interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> 
     failedSrc?: string,
   ) => void
 }
-
-import { useEffect, useRef } from 'react'
-import { applyImageFallback, applyCloudinaryTransform } from '../../lib/utils'
 
 /**
  * Browser-picked srcSet for callers that declare a `sizes` layout: the base

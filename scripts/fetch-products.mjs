@@ -135,9 +135,9 @@ export async function fetchPublishedProducts({ maxPages = 50, pageSize = 100 } =
 
 /**
  * Extract verified identity (model/mpn/impa/manufacturer/size) from Item
- * Specifics lines in the admin description. Mirrors extractIdentity() in
- * src/lib/seo/productSeo.ts (kept in sync — this is a plain-JS twin for
- * build-time scripts that cannot import TS).
+ * Specifics lines in the admin description. Mirrors the identity extraction
+ * in shared/product-page.mjs (kept in sync — this is a plain-JS twin for
+ * the React app and build scripts).
  */
 export function extractIdentityQuick(description, structured) {
   const specs = new Map()
@@ -161,7 +161,7 @@ export function extractIdentityQuick(description, structured) {
     size: pick('size', 'nominal size'),
     material: pick('material', 'body material'),
   }
-  // Structured admin columns win (mirrors productSeo.ts)
+  // Structured admin columns win (mirrors shared/product-page.mjs)
   const structuredIdentity = {}
   if (structured?.manufacturer) structuredIdentity.manufacturer = String(structured.manufacturer).trim()
   if (structured?.modelNumber) structuredIdentity.model = String(structured.modelNumber).trim()
@@ -174,7 +174,7 @@ const TYPE_NOUN_RE = /\b((?:marine|industrial|hydraulic|pneumatic|electric|elect
 
 /**
  * Derive a clean product type from a supplier-style name. Mirrors
- * extractProductType() in src/lib/seo/productSeo.ts.
+ * extractProductType() in shared/product-page.mjs.
  */
 export function extractProductTypeQuick(name, category) {
   const stripped = String(name || '')

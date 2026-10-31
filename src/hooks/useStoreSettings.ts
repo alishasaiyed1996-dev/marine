@@ -196,11 +196,12 @@ async function fetchSettingsAndNotify(): Promise<StoreSettings> {
       notifySubscribers(cachedSettings)
       return cachedSettings
     })
-    .catch(() => {
-      fetchPromise = null
-      return DEFAULTS
-    })
+    // Swallow failures: settings are optional improvement-candy, the defaults
+    // above are the real fallback. No caller awaits this promise.
+    .catch(() => DEFAULTS)
     .finally(() => {
+      // A failed fetch clears the in-flight promise so the next subscriber
+      // mount retries instead of awaiting a rejected promise forever.
       fetchPromise = null
     })
   return fetchPromise

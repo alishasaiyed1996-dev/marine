@@ -1,7 +1,10 @@
 import { memo } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Mail, Phone, MapPin } from 'lucide-react'
 import { WhatsAppIcon } from '../ui/WhatsAppIcon'
+import { useStoreSettings } from '../../hooks/useStoreSettings'
+import { useLocalizedPath } from '../../lib/locale'
 
 function LinkedInIcon({ size = 16 }: { size?: number }) {
   return (
@@ -10,9 +13,6 @@ function LinkedInIcon({ size = 16 }: { size?: number }) {
     </svg>
   )
 }
-import { useTranslation } from 'react-i18next'
-import { useStoreSettings } from '../../hooks/useStoreSettings'
-import { useLocalizedPath } from '../../lib/locale'
 
 // Memoized: Footer reads no route state, so it must not re-render on every
 // navigation — only when its props/settings/i18n actually change.

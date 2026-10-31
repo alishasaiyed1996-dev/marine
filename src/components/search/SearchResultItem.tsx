@@ -18,6 +18,17 @@ const iconMap: Record<SearchResultType, ComponentType<{ size?: number; className
   brand: Package,
 }
 
+/** i18n key for each result-type badge. The `search.*` namespace uses
+ *  irregular plurals ("categories"), and "brands" simply had no key — the
+ *  old `t('search.' + type + 's')` spelled out missing keys like
+ *  "search.categorys" for every category or brand row. */
+export const SEARCH_TYPE_LABEL: Record<SearchResultType, string> = {
+  product: 'search.products',
+  page: 'search.pages',
+  category: 'search.categories',
+  brand: 'search.brands',
+}
+
 interface SearchResultItemProps {
   result: SearchResult
   isActive: boolean

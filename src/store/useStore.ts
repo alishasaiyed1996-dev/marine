@@ -107,8 +107,6 @@ interface AppState {
   authError: string | null
   /** Neutral sign-up message (e.g. "check your inbox") — not an error. */
   authNotice: string | null
-  /** One-shot flag set after submitting an offer (product page → toast/redirect). */
-  offerJustSubmitted: boolean
   login: (email: string, password: string) => Promise<boolean>
   register: (name: string, email: string, password: string, phone?: string, company?: string, country?: string) => Promise<boolean>
   logout: () => Promise<void>
@@ -140,7 +138,6 @@ interface AppState {
   orderPlaced: boolean
   setOrderPlaced: (placed: boolean) => void
   orderId: string
-  generateOrderId: () => void
   cancelRequested: boolean
   setCancelRequested: (req: boolean) => void
   cancelReason: string
@@ -182,6 +179,10 @@ function computeCartTotals(cart: CartItem[]) {
   }
   return { cartTotal: total, cartCount: count }
 }
+
+// The persisted cart is parsed once at store creation (init reads it directly,
+// seeding both the cart lines and the derived totals).
+const persistedCart = loadState<CartItem[]>('cart', [])
 
 export const useStore = create<AppState>((set, get) => ({
   toggleTheme: () =>
@@ -434,8 +435,8 @@ export const useStore = create<AppState>((set, get) => ({
   clearAuthErrors: () => set({ authError: null, authNotice: null, adminLoginError: null }),
 
   // Cart
-  cart: loadState<CartItem[]>('cart', []),
-  ...computeCartTotals(loadState<CartItem[]>('cart', [])),
+  cart: persistedCart,
+  ...computeCartTotals(persistedCart),
   showCartDrawer: false,
   setShowCartDrawer: (showCartDrawer) => set({ showCartDrawer }),
   addToCart: (product) =>
@@ -545,11 +546,8 @@ export const useStore = create<AppState>((set, get) => ({
   orderPlaced: false,
   setOrderPlaced: (orderPlaced) => set({ orderPlaced }),
   orderId: '',
-  generateOrderId: () =>
-    set({ orderId: `AT-ORD-${Math.floor(10000 + Math.random() * 90000)}` }),
   orderSummary: null,
   setOrderSummary: (orderSummary) => set({ orderSummary }),
-  offerJustSubmitted: false,
   orderSkippedItems: [],
   setOrderSkippedItems: (orderSkippedItems) => set({ orderSkippedItems }),
   cancelRequested: false,

@@ -207,6 +207,10 @@ export declare const DEFAULT_BASE_URL: string
 export declare const MARKETPLACE_NOISE_RE: RegExp
 export declare function cleanProductName(value: unknown): string
 
+/** True when a SKU is a bare UUID placeholder (mirrors src/lib/description.ts
+    so the data layer and the SEO layer agree on what counts as "no SKU"). */
+export declare function isUuidSku(value: string | null | undefined): boolean
+
 /** Part-family phrases repeated across a hub's own product names. */
 export declare function hubProductFacts(
   products: Array<{ name?: string | null } | null | undefined> | null | undefined,

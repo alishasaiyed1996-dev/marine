@@ -9,3 +9,9 @@ export declare const TRANSLATED_ROUTES: readonly string[]
 export declare function toRoutePath(pathname: string): string
 export declare function hasTranslatedRoute(pathname: string, locale: string): boolean
 export declare function isIndexableRoute(pathname: string, locale: string): boolean
+
+/** One page's hreflang alternates, or [] for routes without translations. */
+export declare function hreflangAlternatesFor(
+  pathOrUrl: string,
+  baseUrl: string,
+): Array<{ hreflang: string; href: string }>

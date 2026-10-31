@@ -34,7 +34,7 @@ export function Marquee({ items, direction = 'left', speed = '30s' }: MarqueePro
         {[...items, ...items].map((item, i) => (
           <span
             key={`${item}-${i}`}
-            className="inline-flex items-center px-5 py-[10px] mx-1.5 rounded-full bg-[var(--surface)] border border-[var(--border)] font-semibold text-sm text-[var(--text-secondary)] tracking-[1px] whitespace-nowrap flex-shrink-0 hover:border-[var(--muted-teal)] hover:text-[var(--text-primary)] transition-all duration-300"
+            className="inline-flex items-center px-5 py-[10px] mx-1.5 rounded-full bg-[var(--surface)] border border-[var(--border)] font-semibold text-sm text-[var(--text-secondary)] tracking-[1px] whitespace-nowrap flex-shrink-0 hover:border-[var(--accent-primary)] hover:text-[var(--text-primary)] transition-all duration-300"
           >
             {item}
           </span>

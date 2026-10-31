@@ -1,8 +1,9 @@
 /**
  * Standard API response envelope types.
  *
- * These define the shape of every API response. Use these to replace
- * ad-hoc response typing throughout the codebase.
+ * These define the shape of every API response. src/lib/api-types.ts builds
+ * on top of these — new response shapes should extend what's here instead of
+ * hand-rolling another local pagination/paragraph type.
  */
 
 // ─── Pagination ───────────────────────────────────────────────

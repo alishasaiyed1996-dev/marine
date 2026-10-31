@@ -8,16 +8,13 @@ import { useLocalizedPath } from '../../lib/locale'
 import { useStoreSettings } from '../../hooks/useStoreSettings'
 import { useOverlayBehavior } from '../../lib/overlay'
 import { OptimizedImage } from '../ui/OptimizedImage'
-
-
+import { getProductImageUrl, formatMoney } from '../../lib/utils'
 
 const backdropVariants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1 },
   exit: { opacity: 0 },
 } as const
-
-import { getProductImageUrl, formatMoney } from '../../lib/utils'
 
 export function CartDrawer() {
   const { t } = useTranslation()

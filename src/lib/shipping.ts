@@ -52,7 +52,6 @@ const REGION_ALIASES: Record<string, string> = {
   uk: 'united kingdom',
   'great britain': 'united kingdom',
   england: 'united kingdom',
-  uae: 'uae',
   'united arab emirates': 'uae',
 }
 

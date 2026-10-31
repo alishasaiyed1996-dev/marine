@@ -7,7 +7,7 @@ import { storefront } from '../lib/api'
 import { useLocalizedPath } from '../lib/locale'
 import { useCategories } from '../hooks/useApiQuery'
 import { SEO } from '../components/seo/SEO'
-import { SearchInput, SearchResultsList } from '../components/search'
+import { SearchInput, SearchResultsList, SEARCH_TYPE_LABEL } from '../components/search'
 import type { SearchResult } from '../components/search'
 
 const pages = [
@@ -169,7 +169,7 @@ export default function SearchPage() {
           activeIndex={activeIndex}
           onSelect={handleSelect}
           maxHeight="none"
-          getTypeLabel={(type) => t('search.' + type + 's')}
+          getTypeLabel={(type) => t(SEARCH_TYPE_LABEL[type])}
         />
 
         {query && results.length === 0 && !loading && (

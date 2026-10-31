@@ -9,7 +9,8 @@ export function useLiveOrders(intervalMs = 30000) {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await admin.orders.list({ limit: '20', sort: 'newest' })
+      // listOrders already returns newest-first (createdAt desc server-side).
+      const res = await admin.orders.list({ limit: '20' })
       setOrders(res?.orders || [])
     } catch (err) {
       console.warn('[useLiveOrders] Fetch failed, will retry on next interval:', err)

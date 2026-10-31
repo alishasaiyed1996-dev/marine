@@ -8,6 +8,7 @@
  *
  * Example of problematic code:
  *   <Helmet>
+ *     {/* this comment can leak into the rendered <title> */}
  *     <title>My Page</title>
  *     <meta name="description" content="..." />
  *   </Helmet>

@@ -15,7 +15,6 @@
 import {
   buildProductPage,
   buildImageAlt as sharedBuildImageAlt,
-  mapCondition as sharedMapCondition,
 } from '../../../shared/product-page.mjs'
 import type {
   BuildProductPageOptions,
@@ -86,84 +85,6 @@ export function buildProductSeo(
   }
 }
 
-/** Derive a clean product type from a supplier-style product name. */
-export function extractProductType(name: string, category: string): string {
-  return buildProductPage({ name, category, description: '' }).productType
-}
-
-export interface ProductIdentity {
-  model?: string
-  mpn?: string
-  impa?: string
-  manufacturer?: string
-  brand?: string
-  size?: string
-  material?: string
-}
-
-/**
- * Pull verified identity fields for a product. Structured admin columns win;
- * Item Specifics parsed from the description fill anything still unknown.
- */
-export function extractIdentity(
-  _name: string,
-  description?: string,
-  structured?: {
-    manufacturer?: string | null
-    modelNumber?: string | null
-    mpn?: string | null
-    impaCode?: string | null
-  },
-): ProductIdentity {
-  const page = buildProductPage({
-    description: description || '',
-    manufacturer: structured?.manufacturer,
-    modelNumber: structured?.modelNumber,
-    mpn: structured?.mpn,
-    impaCode: structured?.impaCode,
-  })
-  return {
-    ...(page.model ? { model: page.model } : {}),
-    ...(page.mpn ? { mpn: page.mpn } : {}),
-    ...(page.impa ? { impa: page.impa } : {}),
-    ...(page.manufacturer ? { manufacturer: page.manufacturer } : {}),
-    ...(page.brand ? { brand: page.brand } : {}),
-    ...(page.specs.find((spec) => spec.label === 'Size')?.value
-      ? { size: page.specs.find((spec) => spec.label === 'Size')?.value }
-      : {}),
-    ...(page.specs.find((spec) => spec.label === 'Material')?.value
-      ? { material: page.specs.find((spec) => spec.label === 'Material')?.value }
-      : {}),
-  }
-}
-
-/** Backwards-compatible title builder (prefer buildProductSeo for new code). */
-export function buildProductTitle(
-  input: ProductSeoInput,
-  _identity?: ProductIdentity,
-  _productType?: string,
-): string {
-  return buildProductPage(input, { baseUrl: BASE_URL }).title
-}
-
-/** Backwards-compatible meta description builder. */
-export function buildMetaDescription(
-  input: ProductSeoInput,
-  _identity?: ProductIdentity,
-  _productType?: string,
-): string {
-  return buildProductPage(input, { baseUrl: BASE_URL }).metaDescription
-}
-
-/** Backwards-compatible H1 builder. */
-export function buildH1(
-  input: ProductSeoInput,
-  _identity?: ProductIdentity,
-  _productType?: string,
-): string {
-  return buildProductPage(input, { baseUrl: BASE_URL }).h1
-}
-
 /** Identity-rich image alt text; falls back to the catalog name. */
 export function buildImageAlt(
   name: string,
@@ -178,11 +99,6 @@ export function buildImageAlt(
   },
 ): string {
   return sharedBuildImageAlt(name, identity)
-}
-
-/** Map the internal condition enum to schema.org Offer itemCondition. */
-export function mapCondition(condition: string): string {
-  return sharedMapCondition(condition)
 }
 
 export type { ProductPageModel }

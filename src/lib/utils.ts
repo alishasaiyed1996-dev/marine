@@ -27,16 +27,6 @@ const CLOUDINARY_CLOUD_NAME = 'y7up4zti'
 const CLOUDINARY_BASE = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/v1`
 
 /**
- * Safely format a product image URL.
- * Priority:
- *   1. Cloudinary CDN for product images (product-XXX[_category].jpg)
- *   2. Absolute URLs (http/https) → passed through
- *   3. Local static files → /images/products/...
- *
- * Note: all uploads (products, brand logos) go to Cloudinary — there is no
- * local /uploads/ pipeline anymore.
- */
-/**
  * Deterministic SKU base derived from a product name — slugifies to uppercase
  * alphanumerics + dashes, capped at 20 chars, with a 'PRODUCT' fallback.
  * Used for the live "auto SKU" preview in the product form: it updates on
@@ -80,6 +70,16 @@ export function applyCloudinaryTransform(url: string, width?: number): string {
   return url.replace('/image/upload/', `/image/upload/f_auto,q_auto,w_${width},c_limit/`)
 }
 
+/**
+ * Safely format a product image URL.
+ * Priority:
+ *   1. Cloudinary CDN for product images (product-XXX[_category].jpg)
+ *   2. Absolute URLs (http/https) → passed through
+ *   3. Local static files → /images/products/...
+ *
+ * Note: all uploads (products, brand logos) go to Cloudinary — there is no
+ * local /uploads/ pipeline anymore.
+ */
 export function getProductImageUrl(pathOrFilename?: string, width = 800): string {
   if (!pathOrFilename) return applyCloudinaryTransform(`${CLOUDINARY_BASE}/alka/static/placeholder`, width)
   if (pathOrFilename.startsWith('http://') || pathOrFilename.startsWith('https://')) {
@@ -125,6 +125,10 @@ export function getImageFallbackUrl(failedSrc: string): string {
 export function applyImageFallback(img: HTMLImageElement): void {
   const current = img.getAttribute('src') || img.src
   const uploadPath = '/image/upload/'
+
+  // React attaches onError directly to the element, so clearing `img.onerror`
+  // would do nothing — the retry chain stops via this flag instead.
+  if (img.dataset.fallbackDone) return
 
   // A transformed Cloudinary URL failed. Try the untransformed original once
   // before giving up: on-demand transformations can be rate-limited or fail
@@ -176,7 +180,7 @@ export function applyImageFallback(img: HTMLImageElement): void {
   }
   // Placeholder failed → stop retrying to avoid infinite loops
   if (current.includes('/images/placeholder.jpg')) {
-    img.onerror = null
+    img.dataset.fallbackDone = '1'
   }
 }
 

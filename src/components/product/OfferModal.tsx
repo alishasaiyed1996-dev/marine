@@ -48,7 +48,7 @@ export function OfferModal({ product, onClose }: OfferModalProps) {
         onClose()
       }, 2500)
     } catch (err: unknown) {
-      setError((err as Error).message || 'Failed to submit offer. Please try again.')
+      setError(err instanceof Error ? err.message : 'Failed to submit offer. Please try again.')
     } finally {
       setSubmitting(false)
     }

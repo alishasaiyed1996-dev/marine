@@ -23,7 +23,7 @@ export const COUNTRIES_WITHOUT_STATE = new Set([
   'GB', 'IE', 'ZA', 'NG', 'GH', 'KE', 'TZ', 'UG', 'HK', 'SG', 'MY', 'PH',
   'ID', 'VN', 'TH', 'PK', 'BD', 'LK', 'NP', 'AE', 'SA', 'QA', 'BH', 'KW',
   'OM', 'JO', 'EG', 'MA', 'DZ', 'TN', 'LY', 'SD', 'ET', 'ZM', 'ZW', 'MZ',
-  'AO', 'CM', 'CI', 'SN', 'ML', 'NE', 'TD', 'GH', 'BW', 'NA', 'MZ',
+  'AO', 'CM', 'CI', 'SN', 'ML', 'NE', 'TD', 'BW', 'NA',
 ])
 
 export function requiresPostalCode(country: string): boolean {
