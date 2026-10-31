@@ -1,18 +1,18 @@
-/**
- * ESLint rule: no-comments-in-helmet
- *
- * Warns when JSX comments (e.g. opening brace slash-star ... star-closing-brace)
- * are used inside Helmet components.
- * These comments can be rendered as visible text by react-helmet-async,
- * causing UI artifacts on the page.
- *
- * Example of problematic code:
- *   <Helmet>
- *     {/* this comment can leak into the rendered <title> */}
- *     <title>My Page</title>
- *     <meta name="description" content="..." />
- *   </Helmet>
- */
+// ESLint rule: no-comments-in-helmet
+//
+// Warns when JSX comments are used inside Helmet components.
+// These comments can be rendered as visible text by react-helmet-async,
+// causing UI artifacts on the page.
+//
+// Example of problematic code:
+//   <Helmet>
+//     <title>My Page</title>
+//     <meta name="description" content="..." />
+//     ... a JSX comment anywhere inside this element is flagged ...
+//   </Helmet>
+//
+// Kept as line comments on purpose: a block comment cannot quote the literal
+// JSX comment delimiters without closing itself early and breaking the parse.
 
 /** @type {import('eslint').Rule.RuleModule} */
 export default {
